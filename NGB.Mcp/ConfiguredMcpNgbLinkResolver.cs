@@ -1,5 +1,6 @@
 using System.Collections.Frozen;
 using System.Text.RegularExpressions;
+using NGB.Tools.Http;
 
 namespace NGB.Mcp;
 
@@ -22,7 +23,7 @@ public sealed class ConfiguredMcpNgbLinkResolver : IMcpNgbLinkResolver
             || !string.IsNullOrEmpty(origin.Query)
             || !string.IsNullOrEmpty(origin.Fragment)
             || origin.AbsolutePath != "/"
-            || !(origin.Scheme == "https" || allowLocalhostHttp && origin.Scheme == "http" && origin.IsLoopback))
+            || !(origin.Scheme == "https" || allowLocalhostHttp && origin.Scheme == "http" && HttpEndpointUri.IsLocalhost(origin)))
         {
             throw new ArgumentException("MCP links require a trusted HTTPS UI origin.", nameof(origin));
         }

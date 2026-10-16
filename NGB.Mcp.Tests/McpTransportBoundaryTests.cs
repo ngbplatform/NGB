@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Moq;
+using NGB.Hosting.AspNetCore;
 using NGB.Mcp.AspNetCore;
 using NGB.Runtime.Security;
 using NGB.Testing.Mcp;
@@ -127,6 +128,23 @@ public sealed class McpTransportBoundaryTests
         }
     }
 
+    [Theory]
+    [InlineData("", "/other")]
+    [InlineData("/wrong-prefix", "/mcp")]
+    public async Task NonCanonicalRequestPathIsRejectedBeforeReadingBody(string pathBase, string path)
+    {
+        using var request = new FailedStream();
+        var (http, filter, budget, provider) = Create(request);
+        using (budget)
+        using (provider)
+        {
+            http.Request.PathBase = pathBase;
+            http.Request.Path = path;
+            var result = await filter.InvokeAsync(new DefaultEndpointFilterInvocationContext(http), Unexpected);
+            Assert.Equal(400, Assert.IsAssignableFrom<IStatusCodeHttpResult>(result).StatusCode);
+        }
+    }
+
     [Fact]
     public async Task AnonymousSnapshotIsRejectedEvenIfTheTransportWasAuthenticated()
     {
@@ -145,7 +163,6 @@ public sealed class McpTransportBoundaryTests
     {
         var settings = Options.Create(new NgbMcpOptions
         {
-            Enabled = true,
             Resource = "https://ngb.example/mcp",
             MaxRequestBytes = maximumBytes,
             ConcurrentRequests = 1,
@@ -159,9 +176,12 @@ public sealed class McpTransportBoundaryTests
         http.Request.Scheme = "https";
         http.Request.Host = new HostString("ngb.example");
         http.Request.Method = "POST";
+        http.Request.Path = "/mcp";
         http.Request.Body = request;
         var budget = new McpRequestBudget(settings);
-        return (http, new McpEndpointFilter(settings, budget), budget, provider);
+        var endpoint = new McpEndpointAddress(settings.Value, new NgbHostingOptions());
+        endpoint.Map("/mcp");
+        return (http, new McpEndpointFilter(settings, budget, endpoint), budget, provider);
     }
 
     private static ValueTask<object?> Unexpected(EndpointFilterInvocationContext context)

@@ -52,13 +52,15 @@ public sealed class McpLinkTests
             new Dictionary<string, string> { ["report"] = route }));
     }
 
-    [Fact]
-    public void LocalDevelopmentRequiresExplicitOptIn()
+    [Theory]
+    [InlineData("http://localhost:5173")]
+    [InlineData("http://pm-ui.localhost:5173")]
+    public void LocalDevelopmentRequiresExplicitOptIn(string origin)
     {
         var routes = new Dictionary<string, string> { ["report"] = "/reports/{typeCode}" };
-        Assert.Throws<ArgumentException>(() => new ConfiguredMcpNgbLinkResolver(new Uri("http://localhost:5173"), routes));
-        var resolver = new ConfiguredMcpNgbLinkResolver(new Uri("http://localhost:5173"), routes, allowLocalhostHttp: true);
-        Assert.Equal("http://localhost:5173/reports/custom.test", resolver.Resolve("report", "custom.test", null)!.AbsoluteUri);
+        Assert.Throws<ArgumentException>(() => new ConfiguredMcpNgbLinkResolver(new Uri(origin), routes));
+        var resolver = new ConfiguredMcpNgbLinkResolver(new Uri(origin), routes, allowLocalhostHttp: true);
+        Assert.Equal(origin + "/reports/custom.test", resolver.Resolve("report", "custom.test", null)!.AbsoluteUri);
     }
 
     [Fact]

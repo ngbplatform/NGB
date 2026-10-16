@@ -114,7 +114,7 @@ function hostEnvironment(host) {
     Attachments__MinIO__AllowInsecureHttp: 'true',
     ASPNETCORE_URLS: host === 'BackgroundJobs' ? 'http://127.0.0.1:5184' : 'http://127.0.0.1:5181',
     ...(mcpEnabled ? {
-      Mcp__Enabled: 'true',
+      FeatureManagement__Mcp: 'true',
       Mcp__Resource: 'http://localhost:5181/mcp',
       Mcp__AllowLocalhostHttp: 'true',
     } : {}),

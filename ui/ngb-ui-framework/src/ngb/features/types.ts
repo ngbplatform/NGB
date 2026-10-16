@@ -8,4 +8,5 @@ export type FeatureState = {
 export const NGB_FEATURES = {
   attachments: 'Attachments',
   notes: 'Notes',
+  mcp: 'Mcp',
 } as const

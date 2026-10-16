@@ -3,10 +3,15 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using NGB.Runtime.Security;
+using NGB.Tools.Http;
 
 namespace NGB.Mcp.AspNetCore;
 
-internal sealed class McpEndpointFilter(IOptions<NgbMcpOptions> options, McpRequestBudget budget) : IEndpointFilter
+internal sealed class McpEndpointFilter(
+    IOptions<NgbMcpOptions> options,
+    McpRequestBudget budget,
+    McpEndpointAddress endpoint)
+    : IEndpointFilter
 {
     // Buffer in small chunks; a larger configured budget must not allocate that entire budget per request.
     private const int BodyReadBufferBytes = 16 * 1024;
@@ -18,11 +23,12 @@ internal sealed class McpEndpointFilter(IOptions<NgbMcpOptions> options, McpRequ
     {
         var http = context.HttpContext;
         var settings = options.Value;
-        var resource = new Uri(settings.Resource);
+        var resource = endpoint.Resource;
         http.Response.Headers.CacheControl = "no-store";
 
-        if ((!http.Request.IsHttps && !(settings.AllowLocalhostHttp && resource.IsLoopback))
-            || !string.Equals(http.Request.Host.Value, resource.Authority, StringComparison.OrdinalIgnoreCase))
+        if ((!http.Request.IsHttps && !(settings.AllowLocalhostHttp && HttpEndpointUri.IsLocalhost(resource)))
+            || !string.Equals(http.Request.Host.Value, resource.Authority, StringComparison.OrdinalIgnoreCase)
+            || !string.Equals((http.Request.PathBase + http.Request.Path).Value, resource.AbsolutePath, StringComparison.Ordinal))
         {
             return Results.StatusCode(StatusCodes.Status400BadRequest);
         }

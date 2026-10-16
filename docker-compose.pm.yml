@@ -299,6 +299,9 @@ services:
     extra_hosts:
       - "${KEYCLOAK_PUBLIC_HOST}:host-gateway"
     environment:
+      Ngb__Hosting__PublicApiUrl: ${PM_API_PUBLIC_URL:-https://localhost:${PM_API_HTTPS_PORT}}
+      FeatureManagement__Mcp: ${FEATURE_MCP:-false}
+      Mcp__AllowLocalhostHttp: ${MCP_ALLOW_LOCALHOST_HTTP:-false}
       FeatureManagement__Attachments: ${FEATURE_ATTACHMENTS:-false}
       FeatureManagement__Notes: ${FEATURE_NOTES:-false}
       Attachments__UploadExpirationEnabled: ${ATTACHMENTS_UPLOAD_EXPIRATION_ENABLED:-false}

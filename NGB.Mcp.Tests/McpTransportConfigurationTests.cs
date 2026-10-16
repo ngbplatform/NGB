@@ -1,6 +1,9 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using NGB.Core.Features;
 using NGB.Mcp.AspNetCore;
+using NGB.Runtime.Features;
+using NGB.Tools.Exceptions;
 using Xunit;
 
 namespace NGB.Mcp.Tests;
@@ -31,7 +34,7 @@ public sealed class McpTransportConfigurationTests
     {
         var values = new Dictionary<string, string?>
         {
-            ["Mcp:Enabled"] = "true",
+            ["FeatureManagement:Mcp"] = "true",
             ["Mcp:Resource"] = "https://ngb.example/mcp",
             [name] = value
         };
@@ -45,8 +48,27 @@ public sealed class McpTransportConfigurationTests
         var services = new ServiceCollection();
         services.AddNgbMcp(new ConfigurationBuilder().Build());
         using var provider = services.BuildServiceProvider();
-        Assert.False(provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<NgbMcpOptions>>().Value.Enabled);
+        Assert.True(provider.GetRequiredService<NgbFeatureRegistry>().Contains(NgbFeatures.Mcp));
+        Assert.Null(provider.GetService<McpEndpointAddress>());
         Assert.Null(provider.GetService<McpReadToolRegistry>());
+    }
+
+    [Theory]
+    [InlineData("Mcp:Enabled", "true")]
+    [InlineData("Mcp:Enabled", "false")]
+    [InlineData("FeatureManagement:Mcp", "yes")]
+    [InlineData("FeatureManagement:mcp", "true")]
+    [InlineData("FeatureManagement:Mcp:Enabled", "true")]
+    public void ObsoleteOrInvalidSwitchFailsWithTheRegisteredFeatureKey(string key, string value)
+    {
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            [key] = value
+        }).Build();
+
+        var error = Assert.Throws<NgbConfigurationViolationException>(() => new ServiceCollection().AddNgbMcp(configuration));
+
+        Assert.Contains("FeatureManagement:", error.Message);
     }
 
     [Theory]
@@ -57,7 +79,7 @@ public sealed class McpTransportConfigurationTests
     {
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {
-            ["Mcp:Enabled"] = "true",
+            ["FeatureManagement:Mcp"] = "true",
             ["Mcp:Resource"] = "https://ngb.example/mcp",
             ["Mcp:MaxRequestBytes"] = maximumBytes.ToString()
         }).Build();
@@ -75,7 +97,7 @@ public sealed class McpTransportConfigurationTests
     {
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {
-            ["Mcp:Enabled"] = "true",
+            ["FeatureManagement:Mcp"] = "true",
             ["Mcp:Resource"] = resource,
             ["Mcp:AllowLocalhostHttp"] = "true"
         }).Build();

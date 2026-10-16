@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Cors.Infrastructure;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Configuration;
@@ -10,7 +11,12 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol.AspNetCore;
 using ModelContextProtocol.AspNetCore.Authentication;
+using NGB.Core.Features;
+using NGB.Hosting.AspNetCore;
 using NGB.Hosting.AspNetCore.Identity;
+using NGB.Runtime.DependencyInjection;
+using NGB.Tools.Exceptions;
+using NGB.Tools.Http;
 
 namespace NGB.Mcp.AspNetCore;
 
@@ -22,12 +28,21 @@ public static class DependencyInjection
 
     public static IServiceCollection AddNgbMcp(this IServiceCollection services, IConfiguration configuration)
     {
-        var settings = configuration.GetSection("Mcp").Get<NgbMcpOptions>() ?? new();
-        services.AddOptions<NgbMcpOptions>().Bind(configuration.GetSection("Mcp"));
-        if (!settings.Enabled)
+        if (configuration.GetSection("Mcp:Enabled").Exists())
+            throw new NgbConfigurationViolationException("Mcp:Enabled has been replaced by FeatureManagement:Mcp. Configure only the registered feature flag.");
+
+        services.AddNgbFeatureManagement(configuration);
+        if (!configuration.GetValue<bool>($"FeatureManagement:{NgbFeatures.Mcp}"))
             return services;
 
+        var settings = configuration.GetSection("Mcp").Get<NgbMcpOptions>() ?? new();
+        services.AddOptions<NgbMcpOptions>().Bind(configuration.GetSection("Mcp"));
+
         Validate(settings);
+        var hosting = configuration.GetSection(NgbHostingOptions.ConfigurationSection).Get<NgbHostingOptions>() ?? new();
+        var endpoint = new McpEndpointAddress(settings, hosting);
+        services.AddOptions<NgbHostingOptions>().Bind(configuration.GetSection(NgbHostingOptions.ConfigurationSection));
+        services.AddSingleton(endpoint);
 
         if (settings.PublicUiOrigin is not null)
         {
@@ -43,17 +58,17 @@ public static class DependencyInjection
         services.AddAuthentication().AddJwtBearer(BearerScheme).AddMcp(Scheme, "NGB MCP", options =>
         {
             options.ForwardAuthenticate = BearerScheme;
-            options.ResourceMetadataUri = new Uri(new Uri(settings.Resource), "/.well-known/oauth-protected-resource" + new Uri(settings.Resource).AbsolutePath);
+            options.ResourceMetadataUri = endpoint.MetadataUri;
         });
 
         services.AddOptions<McpAuthenticationOptions>(Scheme).Configure<KeycloakSettings>((options, keycloak) =>
         {
-            if (!IsSecureAbsoluteUri(keycloak.Issuer, settings.AllowLocalhostHttp))
+            if (!HttpEndpointUri.IsSecureAbsolute(keycloak.Issuer, settings.AllowLocalhostHttp))
                 throw new InvalidOperationException("MCP requires a secure existing Keycloak issuer.");
 
             options.ResourceMetadata = new()
             {
-                Resource = settings.Resource,
+                Resource = endpoint.Resource.AbsoluteUri,
                 AuthorizationServers = [keycloak.Issuer],
                 ResourceName = "NGB read-only MCP"
             };
@@ -84,21 +99,23 @@ public static class DependencyInjection
             options.TokenValidationParameters.RequireExpirationTime = true;
             options.TokenValidationParameters.ValidateAudience = true;
             options.TokenValidationParameters.RequireAudience = true;
-            var audience = string.IsNullOrWhiteSpace(settings.Audience) ? settings.Resource : settings.Audience;
+            var audience = ResolveAudience(settings, endpoint);
             options.TokenValidationParameters.AudienceValidator = (audiences, _, _) => audiences.Contains(audience, StringComparer.Ordinal);
             options.Events = new JwtBearerEvents
             {
                 OnTokenValidated = async context =>
                 {
                     await existing.Events.OnTokenValidated(context);
-                    if (context.Principal is null || !IsUserResourceToken(context.Principal, settings))
+
+                    if (context.Principal is null || !IsUserResourceToken(context.Principal, audience))
                         context.Fail("The token is not valid for this MCP resource and user flow.");
                 }
             };
         });
 
-        services.AddCors(options => options.AddPolicy(Policy, policy => policy
-            .WithOrigins(settings.AllowedOrigins.Append(new Uri(settings.Resource).GetLeftPart(UriPartial.Authority)).Distinct().ToArray())
+        services.AddCors();
+        services.AddOptions<CorsOptions>().Configure(options => options.AddPolicy(Policy, policy => policy
+            .WithOrigins(settings.AllowedOrigins.Append(endpoint.Resource.GetLeftPart(UriPartial.Authority)).Distinct().ToArray())
             .WithMethods("POST", "GET")
             .WithHeaders("Authorization", "Content-Type", "MCP-Protocol-Version", "Mcp-Method", "Mcp-Name")
             .WithExposedHeaders("WWW-Authenticate", "MCP-Protocol-Version")));
@@ -107,7 +124,7 @@ public static class DependencyInjection
         {
             policy.AddAuthenticationSchemes(Scheme);
             policy.RequireAuthenticatedUser();
-            policy.RequireAssertion(context => IsUserResourceToken(context.User, settings));
+            policy.RequireAssertion(context => IsUserResourceToken(context.User, ResolveAudience(settings, endpoint)));
         }));
 
         services.AddMcpServer()
@@ -120,13 +137,14 @@ public static class DependencyInjection
 
     public static IEndpointRouteBuilder MapNgbMcp(this IEndpointRouteBuilder endpoints, string pattern = "/mcp")
     {
-        var settings = endpoints.ServiceProvider.GetRequiredService<IOptions<NgbMcpOptions>>().Value;
-        if (!settings.Enabled)
+        // Registration captures the startup feature state; configuration reloads cannot remap the endpoint.
+        var endpoint = endpoints.ServiceProvider.GetService<McpEndpointAddress>();
+        if (endpoint is null)
             return endpoints;
 
+        var settings = endpoints.ServiceProvider.GetRequiredService<IOptions<NgbMcpOptions>>().Value;
         Validate(settings);
-        if (!string.Equals(new Uri(settings.Resource).AbsolutePath, pattern, StringComparison.Ordinal))
-            throw new InvalidOperationException("MCP endpoint path must match the configured canonical resource URI.");
+        endpoint.Map(pattern);
 
         // Validate metadata immediately. The startup service validates scoped dependencies asynchronously.
         _ = endpoints.ServiceProvider.GetRequiredService<McpReadToolRegistry>();
@@ -137,10 +155,12 @@ public static class DependencyInjection
         return endpoints;
     }
 
-    private static bool IsUserResourceToken(ClaimsPrincipal principal, NgbMcpOptions settings)
+    private static string ResolveAudience(NgbMcpOptions settings, McpEndpointAddress endpoint)
+        => string.IsNullOrWhiteSpace(settings.Audience) ? endpoint.Resource.AbsoluteUri : settings.Audience;
+
+    private static bool IsUserResourceToken(ClaimsPrincipal principal, string audience)
     {
         var subject = principal.FindFirst("sub")?.Value ?? principal.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        var audience = string.IsNullOrWhiteSpace(settings.Audience) ? settings.Resource : settings.Audience;
 
         return !string.IsNullOrWhiteSpace(subject)
             && principal.FindAll("aud").Any(claim => string.Equals(claim.Value, audience, StringComparison.Ordinal))
@@ -155,23 +175,16 @@ public static class DependencyInjection
         if (options.MaxRequestBytes <= 0)
             throw new InvalidOperationException($"{nameof(NgbMcpOptions)}.{nameof(options.MaxRequestBytes)} must be positive.");
 
-        if (!IsSecureAbsoluteUri(options.Resource, options.AllowLocalhostHttp)
-            || new Uri(options.Resource).AbsolutePath == "/"
-            || string.IsNullOrWhiteSpace(options.AuthenticationScheme)
+        if (string.IsNullOrWhiteSpace(options.AuthenticationScheme)
             || options.AuthenticationScheme == Scheme
             || options.AuthenticationScheme == BearerScheme
             || options.ConcurrentRequests is < 1 or > 256
             || options.RequestsPerMinute is < 1 or > 100_000
             || options.RequestTimeoutSeconds is < 1 or > 300
-            || options.AllowedOrigins.Any(origin => !IsSecureAbsoluteUri(origin, options.AllowLocalhostHttp)
+            || options.AllowedOrigins.Any(origin => !HttpEndpointUri.IsSecureAbsolute(origin, options.AllowLocalhostHttp)
                 || new Uri(origin).GetLeftPart(UriPartial.Authority) != origin))
         {
             throw new InvalidOperationException("Invalid MCP resource, origin or request-limit configuration.");
         }
     }
-
-    private static bool IsSecureAbsoluteUri(string value, bool allowLocalhostHttp)
-        => Uri.TryCreate(value, UriKind.Absolute, out var uri)
-            && string.IsNullOrEmpty(uri.UserInfo) && string.IsNullOrEmpty(uri.Query) && string.IsNullOrEmpty(uri.Fragment)
-            && (uri.Scheme == "https" || allowLocalhostHttp && uri is { Scheme: "http", IsLoopback: true });
 }

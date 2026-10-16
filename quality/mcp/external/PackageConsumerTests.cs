@@ -63,8 +63,8 @@ public sealed class PackageConsumerTests
             ["KeycloakSettings:Issuer"] = identity.Issuer,
             ["KeycloakSettings:RequireHttpsMetadata"] = "false",
             ["KeycloakSettings:ClientIds:0"] = "ngb-rest-tests",
-            ["Mcp:Enabled"] = "true",
-            ["Mcp:Resource"] = origin + "/mcp",
+            ["FeatureManagement:Mcp"] = "true",
+            ["Ngb:Hosting:PublicApiUrl"] = origin,
             ["Mcp:Audience"] = KeycloakFixture.Audience,
             ["Mcp:RequestsPerMinute"] = "10000",
             ["Mcp:AllowLocalhostHttp"] = "true"

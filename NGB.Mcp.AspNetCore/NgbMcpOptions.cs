@@ -2,8 +2,9 @@ namespace NGB.Mcp.AspNetCore;
 
 public sealed class NgbMcpOptions
 {
-    public bool Enabled { get; set; }
+    /// <summary>Optional canonical endpoint override; otherwise uses Ngb:Hosting:PublicApiUrl and the mapped MCP route.</summary>
     public string Resource { get; set; } = string.Empty;
+
     public string Audience { get; set; } = string.Empty;
     public string AuthenticationScheme { get; set; } = "Bearer";
     public string[] AllowedOrigins { get; set; } = [];

@@ -168,13 +168,19 @@ do not expose buckets publicly or implement a separate application ACL.
 
 The API includes the public `NGB.Platform.Mcp.AspNetCore` package and the
 `AddNgbMcp` / `MapNgbMcp` composition. MCP is disabled by default. To enable it in
-the local Compose API, add these environment settings to that service:
+the local Compose API, set this in the private `.env` file and recreate the API:
 
-```yaml
-Mcp__Enabled: "true"
-Mcp__Resource: "http://localhost:5181/mcp"
-Mcp__AllowLocalhostHttp: "true"
+```dotenv
+FEATURE_MCP=true
+MCP_ALLOW_LOCALHOST_HTTP=true
 ```
+
+Compose sets `Ngb__Hosting__PublicApiUrl` from `API_PUBLIC_URL`, defaulting to
+`http://localhost:5181`, and permits local HTTP only with
+`MCP_ALLOW_LOCALHOST_HTTP=true`. MCP derives `/mcp` from that shared API address.
+Production sets the common public HTTPS URL and
+keeps `Mcp__AllowLocalhostHttp=false`. `Mcp__Resource` is an optional full URL
+override for a separately exposed endpoint, not a required second API address.
 
 Register your MCP client in the existing Keycloak realm, enable Authorization
 Code with PKCE S256, register the client's exact callback URI, and assign an

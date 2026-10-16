@@ -22,6 +22,7 @@ public static class FeatureServiceCollectionExtensions
         [
             new(NgbFeatures.Attachments, "Attachments", "Attachments & Notes"),
             new(NgbFeatures.Notes, "Notes", "Attachments & Notes"),
+            new(NgbFeatures.Mcp, "MCP Server", "Integrations"),
             .. additionalFeatures ?? []
         ]);
         var flags = registry.Definitions.ToDictionary(x => x.Code, _ => (string?)bool.FalseString);

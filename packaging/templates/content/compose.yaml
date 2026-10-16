@@ -70,6 +70,9 @@ services:
         NUGET_CONFIG: ${NGB_NUGET_CONFIG:-NuGet.Config}
     environment:
       <<: *application-environment
+      Ngb__Hosting__PublicApiUrl: ${API_PUBLIC_URL:-http://localhost:5181}
+      FeatureManagement__Mcp: ${FEATURE_MCP:-false}
+      Mcp__AllowLocalhostHttp: ${MCP_ALLOW_LOCALHOST_HTTP:-false}
       KeycloakSettings__ClientIds__0: ngb-web
       KeycloakAdminClientSettings__BaseUrl: http://keycloak:8080
       KeycloakAdminClientSettings__Realm: ngb-app

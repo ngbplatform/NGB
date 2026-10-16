@@ -71,9 +71,13 @@ PM_DEMO_VENDORS=
 PM_DEMO_OCCUPANCY_RATE=
 
 # Features (applied when the API starts)
+FEATURE_MCP=true
 FEATURE_ATTACHMENTS=true
 FEATURE_NOTES=true
 ATTACHMENTS_UPLOAD_EXPIRATION_ENABLED=true
+
+# MCP (local development; public endpoint uses the API URL)
+MCP_ALLOW_LOCALHOST_HTTP=true
 
 # MinIO
 MINIO_IMAGE_REPOSITORY=ghcr.io/coollabsio/minio

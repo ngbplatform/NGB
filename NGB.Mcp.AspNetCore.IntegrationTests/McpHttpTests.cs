@@ -10,15 +10,20 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Cors.Infrastructure;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using ModelContextProtocol;
+using ModelContextProtocol.AspNetCore.Authentication;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using NGB.Api.CurrentUser;
+using NGB.Application.Abstractions.Features;
+using NGB.Core.Features;
 using NGB.Core.Security;
 using NGB.Hosting.AspNetCore.Identity;
 using NGB.Runtime.CurrentActor;
@@ -112,12 +117,111 @@ public sealed class McpHttpTests
     }
 
     [Fact]
+    public async Task CustomMappedRouteDerivesItsAddressFromThePublicApiUrl()
+    {
+        await using var host = await TestHost.StartAsync(pattern: "/integrations/mcp");
+        using var http = new HttpClient();
+        using var metadata = JsonDocument.Parse(await http.GetStringAsync(host.Origin + "/.well-known/oauth-protected-resource/integrations/mcp"));
+        Assert.Equal(host.Resource, metadata.RootElement.GetProperty("resource").GetString());
+
+        await using var client = await McpClient.CreateAsync(new HttpClientTransport(new HttpClientTransportOptions
+        {
+            Endpoint = new Uri(host.Resource),
+            AdditionalHeaders = new Dictionary<string, string> { ["Authorization"] = "Bearer " + host.Token() }
+        }));
+        Assert.NotEmpty(await client.ListToolsAsync());
+    }
+
+    [Theory]
+    [InlineData("http://pm-keycloak.localhost:7012/realms/ngb-pm", true)]
+    [InlineData("http://pm-keycloak.localhost.evil.example:7012/realms/ngb-pm", false)]
+    [InlineData("http://keycloak.example:7012/realms/ngb-pm", false)]
+    public async Task LocalKeycloakSubdomainWorksWithoutPermittingRemoteHttp(string issuer, bool allowed)
+    {
+        if (!allowed)
+        {
+            await Assert.ThrowsAsync<InvalidOperationException>(() => TestHost.StartAsync(configure: services =>
+                services.AddSingleton(new KeycloakSettings { Issuer = issuer })));
+            return;
+        }
+
+        await using var host = await TestHost.StartAsync(configure: services =>
+            services.AddSingleton(new KeycloakSettings { Issuer = issuer }));
+        using var http = new HttpClient();
+        using var metadata = JsonDocument.Parse(await http.GetStringAsync(host.Origin + "/.well-known/oauth-protected-resource/mcp"));
+        Assert.Equal(issuer, Assert.Single(metadata.RootElement.GetProperty("authorization_servers").EnumerateArray()).GetString());
+    }
+
+    [Theory]
+    [InlineData(false, false, "")]
+    [InlineData(true, false, "")]
+    [InlineData(true, true, "")]
+    [InlineData(true, false, "/ngb")]
+    public async Task PublicAddressAndAudienceRemainCanonicalBehindATrustedProxy(bool trustProxy, bool resourceOverride, string prefix)
+    {
+        const string publicOrigin = "https://api.example";
+        var resource = publicOrigin + prefix + "/mcp";
+        var settings = new Dictionary<string, string?>
+        {
+            ["Ngb:Hosting:PublicApiUrl"] = resourceOverride ? "https://other-api.example" : publicOrigin + prefix,
+            ["Mcp:AllowLocalhostHttp"] = "true"
+        };
+        if (resourceOverride)
+            settings["Mcp:Resource"] = resource;
+
+        await using var host = await TestHost.StartAsync(settings: settings, trustProxy: trustProxy, pathBase: prefix);
+        using var http = ProtocolHttp(host);
+        http.DefaultRequestHeaders.Add("X-Forwarded-Proto", "https");
+        http.DefaultRequestHeaders.Add("X-Forwarded-Host", "api.example");
+        using var request = ToolRequest(host, "ngb_get_capabilities");
+        using var response = await http.SendAsync(request);
+        Assert.Equal(trustProxy ? HttpStatusCode.OK : HttpStatusCode.BadRequest, response.StatusCode);
+
+        http.DefaultRequestHeaders.Authorization = null;
+        using var challenge = await http.PostAsync(host.Resource, new StringContent("{}", Encoding.UTF8, "application/json"));
+        Assert.Equal(HttpStatusCode.Unauthorized, challenge.StatusCode);
+        Assert.Contains(publicOrigin + "/.well-known/oauth-protected-resource" + prefix + "/mcp", challenge.Headers.WwwAuthenticate.ToString());
+
+        using var metadataResponse = await http.GetAsync(host.Origin + "/.well-known/oauth-protected-resource" + prefix + "/mcp");
+        Assert.Equal(trustProxy ? HttpStatusCode.OK : HttpStatusCode.NotFound, metadataResponse.StatusCode);
+        if (trustProxy)
+        {
+            using var metadata = JsonDocument.Parse(await metadataResponse.Content.ReadAsStringAsync());
+            Assert.Equal(resource, metadata.RootElement.GetProperty("resource").GetString());
+
+            http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", host.Token("audience"));
+            using var wrongAudience = ToolRequest(host, "ngb_get_capabilities");
+            using var rejected = await http.SendAsync(wrongAudience);
+            Assert.Equal(HttpStatusCode.Unauthorized, rejected.StatusCode);
+        }
+    }
+
+    [Fact]
     public async Task DisabledMcpDoesNotRegisterAnEndpoint()
     {
         await using var host = await TestHost.StartAsync(enabled: false);
         using var client = new HttpClient();
         using var response = await client.PostAsync(host.Resource, new StringContent("{}", Encoding.UTF8, "application/json"));
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task FeatureDiscoveryAndEndpointKeepTheirStartupStateAfterConfigurationReload(bool enabled)
+    {
+        await using var host = await TestHost.StartAsync(enabled: enabled,
+            configure: services => services.RemoveAll<INgbFeatureService>(), reloadFeatureAfterRegistration: true);
+        await using var scope = host.Services.CreateAsyncScope();
+        var features = scope.ServiceProvider.GetRequiredService<INgbFeatureService>();
+        Assert.Equal(enabled, await features.IsEnabledAsync(NgbFeatures.Mcp, default));
+        Assert.Contains(await features.GetAllAsync(default), feature => feature.Code == NgbFeatures.Mcp && feature.Enabled == enabled);
+
+        using var http = new HttpClient();
+        using var response = await http.PostAsync(host.Resource, new StringContent("{}", Encoding.UTF8, "application/json"));
+        Assert.Equal(enabled ? HttpStatusCode.Unauthorized : HttpStatusCode.NotFound, response.StatusCode);
+        using var metadata = await http.GetAsync(host.Origin + "/.well-known/oauth-protected-resource/mcp");
+        Assert.Equal(enabled ? HttpStatusCode.OK : HttpStatusCode.NotFound, metadata.StatusCode);
     }
 
     [Fact]
@@ -520,14 +624,16 @@ public sealed class McpHttpTests
         }
     }
 
-    private sealed class TestHost(WebApplication app, string origin) : IAsyncDisposable
+    private sealed class TestHost(WebApplication app, string origin, string path) : IAsyncDisposable
     {
         private static readonly SymmetricSecurityKey Key = new(Encoding.UTF8.GetBytes("ngb-test-only-signing-key-never-use-in-production-2026"));
         internal string Origin { get; } = origin;
         internal IServiceProvider Services => app.Services;
-        internal string Resource => Origin + "/mcp";
+        internal string Resource => Origin + path;
 
-        internal static async Task<TestHost> StartAsync(bool enabled = true, Dictionary<string, string?>? settings = null, Action<IServiceCollection>? configure = null)
+        internal static async Task<TestHost> StartAsync(bool enabled = true, Dictionary<string, string?>? settings = null,
+            Action<IServiceCollection>? configure = null, string pattern = "/mcp", bool trustProxy = false, string pathBase = "",
+            bool reloadFeatureAfterRegistration = false)
         {
             var listener = new TcpListener(IPAddress.Loopback, 0);
             listener.Start();
@@ -539,8 +645,8 @@ public sealed class McpHttpTests
             builder.WebHost.UseUrls(origin);
             builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["Mcp:Enabled"] = enabled.ToString(),
-                ["Mcp:Resource"] = origin + "/mcp",
+                ["FeatureManagement:Mcp"] = enabled.ToString(),
+                ["Ngb:Hosting:PublicApiUrl"] = origin,
                 ["Mcp:AllowLocalhostHttp"] = "true"
             });
             if (settings is not null)
@@ -567,7 +673,30 @@ public sealed class McpHttpTests
             McpTestServices.AddReads(builder.Services);
             configure?.Invoke(builder.Services);
             builder.Services.AddNgbMcp(builder.Configuration);
+            if (reloadFeatureAfterRegistration)
+            {
+                builder.Configuration["FeatureManagement:Mcp"] = (!enabled).ToString();
+                ((IConfigurationRoot)builder.Configuration).Reload();
+            }
+
             var app = builder.Build();
+            if (trustProxy)
+            {
+                var forwarded = new ForwardedHeadersOptions
+                {
+                    ForwardedHeaders = ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost,
+                    ForwardLimit = 1
+                };
+                forwarded.KnownIPNetworks.Clear();
+                forwarded.KnownProxies.Clear();
+                forwarded.KnownProxies.Add(IPAddress.Loopback);
+                forwarded.KnownProxies.Add(IPAddress.IPv6Loopback);
+                forwarded.AllowedHosts.Add("api.example");
+                app.UseForwardedHeaders(forwarded);
+            }
+            if (pathBase.Length > 0)
+                app.UsePathBase(pathBase);
+
             app.Use(async (context, next) =>
             {
                 try
@@ -583,9 +712,9 @@ public sealed class McpHttpTests
             app.UseCors();
             app.UseAuthentication();
             app.UseAuthorization();
-            app.MapNgbMcp();
+            app.MapNgbMcp(pattern);
             await app.StartAsync();
-            return new TestHost(app, origin);
+            return new TestHost(app, origin, pathBase + pattern);
         }
 
         internal string Token(string scenario = "valid")
@@ -611,7 +740,8 @@ public sealed class McpHttpTests
                 claims.Add(new Claim("preferred_username", "service-account-client"));
             var token = new JwtSecurityToken(
                 issuer: Origin + (scenario == "issuer" ? "/wrong-issuer" : "/issuer"),
-                audience: scenario == "audience" ? "other-api" : app.Configuration["Mcp:Audience"] ?? Resource,
+                audience: scenario == "audience" ? "other-api" : app.Configuration["Mcp:Audience"]
+                    ?? app.Services.GetRequiredService<IOptionsMonitor<McpAuthenticationOptions>>().Get("NgbMcp").ResourceMetadata!.Resource,
                 claims: claims,
                 notBefore: DateTime.UtcNow.AddMinutes(scenario == "future" ? 2 : -10),
                 expires: scenario == "expired" ? DateTime.UtcNow.AddMinutes(-1) : DateTime.UtcNow.AddMinutes(5),

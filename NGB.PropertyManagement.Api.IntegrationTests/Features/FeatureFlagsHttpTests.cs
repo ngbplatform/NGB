@@ -36,7 +36,7 @@ public sealed class FeatureFlagsHttpTests(PmIntegrationFixture fixture) : IAsync
         await using var factory = new PmApiFactory(fixture, configuration);
         using var client = factory.CreateClient();
         var states = await client.GetFromJsonAsync<FeatureStateDto[]>("/api/features");
-        states.Should().HaveCount(2).And.OnlyContain(x => !x.Enabled);
+        states.Should().HaveCount(3).And.OnlyContain(x => !x.Enabled);
         factory.Services.GetService<IAttachmentObjectStorage>().Should().BeNull();
         (await client.GetAsync("/api/security/me/access")).StatusCode.Should().Be(HttpStatusCode.OK);
 

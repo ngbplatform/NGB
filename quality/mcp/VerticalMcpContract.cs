@@ -12,6 +12,7 @@ using ModelContextProtocol.Client;
 using NGB.Attachments;
 using NGB.Contracts.BusinessObjects;
 using NGB.Contracts.Effects;
+using NGB.Contracts.Features;
 using NGB.Contracts.Notes;
 using NGB.Contracts.Reporting;
 using NGB.Contracts.Services;
@@ -54,8 +55,8 @@ internal static class VerticalMcpContract
             ["Serilog__WriteTo__1__Args__serverUrl"] = "http://127.0.0.1:5341",
             ["ExternalLinksSettings__HealthUiUrl"] = "https://example.invalid/health",
             ["ExternalLinksSettings__BackgroundJobsUiUrl"] = "https://example.invalid/jobs",
-            ["Mcp__Enabled"] = "true",
-            ["Mcp__Resource"] = origin + "/mcp",
+            ["FeatureManagement__Mcp"] = "true",
+            ["Ngb__Hosting__PublicApiUrl"] = origin,
             ["Mcp__Audience"] = KeycloakFixture.Audience,
             ["Mcp__AllowLocalhostHttp"] = "true",
             ["Mcp__RequestsPerMinute"] = "10000"
@@ -66,6 +67,8 @@ internal static class VerticalMcpContract
         factory.StartServer();
         using var http = new HttpClient { BaseAddress = new Uri(origin) };
         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        var features = await http.GetFromJsonAsync<FeatureStateDto[]>("/api/features");
+        Assert.Contains(features!, feature => feature.Code == "Mcp" && feature.Enabled);
         await using var client = await McpClient.CreateAsync(new HttpClientTransport(
             new HttpClientTransportOptions { Endpoint = new Uri(origin + "/mcp") }, http));
         var tools = await client.ListToolsAsync();
