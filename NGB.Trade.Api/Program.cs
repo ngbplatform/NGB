@@ -9,6 +9,7 @@ using NGB.Attachments.MinIO;
 using NGB.Hosting.AspNetCore;
 using NGB.Hosting.AspNetCore.ErrorHandling;
 using NGB.Hosting.AspNetCore.Identity;
+using NGB.Mcp.AspNetCore;
 using NGB.PostgreSql.AspNetCore.DependencyInjection;
 using NGB.PostgreSql.DependencyInjection;
 using NGB.Runtime.DependencyInjection;
@@ -64,6 +65,8 @@ builder.Services.AddScoped<TradeCommandPaletteSearchService>();
 builder.Services.RemoveAll<IReportVariantAccessContext>();
 builder.Services.AddScoped<IReportVariantAccessContext, HttpReportVariantAccessContext>();
 
+builder.Services.AddNgbMcp(builder.Configuration);
+
 var app = builder.Build();
 
 if (app.Environment.IsDevelopment())
@@ -83,6 +86,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapNgbMcp();
 app.MapNgbWorkCenterHub();
 
 app.Run();

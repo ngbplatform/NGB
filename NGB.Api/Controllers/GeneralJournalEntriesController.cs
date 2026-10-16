@@ -4,6 +4,7 @@ using NGB.Accounting.Documents;
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Accounting;
 using NGB.Core.Security;
+using NGB.Runtime.Documents.GeneralJournalEntry;
 using NGB.Runtime.Security;
 
 namespace NGB.Api.Controllers;
@@ -25,18 +26,15 @@ public sealed class GeneralJournalEntriesController(IGeneralJournalEntryUiServic
         [FromQuery] string? cursor = null,
         CancellationToken ct = default)
     {
-        await RequireAsync(NgbPermissionActions.View, ct);
-
-        return string.IsNullOrWhiteSpace(cursor)
-            ? await service.GetPageAsync(offset, limit, search, dateFrom, dateTo, trash, ct)
-            : await service.GetCursorPageAsync(cursor, limit, search, dateFrom, dateTo, trash, ct);
+        var reads = new PermissionAwareGeneralJournalEntryReadService(service, access);
+        return await reads.GetPageAsync(offset, limit, search, dateFrom, dateTo, trash, cursor, ct);
     }
 
     [HttpGet("{id:guid}")]
     public async Task<GeneralJournalEntryDetailsDto> GetById([FromRoute] Guid id, CancellationToken ct)
     {
-        await RequireAsync(NgbPermissionActions.View, ct);
-        return await service.GetByIdAsync(id, ct);
+        var reads = new PermissionAwareGeneralJournalEntryReadService(service, access);
+        return await reads.GetByIdAsync(id, ct);
     }
 
     [HttpPost]

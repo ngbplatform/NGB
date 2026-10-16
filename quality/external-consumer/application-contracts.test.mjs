@@ -65,6 +65,19 @@ test('central package declarations and unrelated conditional groups remain usabl
   assert.match(planUpgrade(files, '3.2.0').changes['Directory.Packages.props'], /3.2.0/)
 })
 
+test('3.2 to 3.3 upgrades dependencies without enabling MCP or changing application code', () => {
+  const files = Object.fromEntries(Object.entries(application()).map(([path, text]) => [path, text.replaceAll('3.1.0', '3.2.0')]))
+  const before = structuredClone(files)
+  const plan = planUpgrade(files, '3.3.0')
+  assert.equal(plan.source, '3.2.0')
+  assert.equal(plan.target, '3.3.0')
+  assert.deepEqual(files, before)
+  assert.equal(plan.changes['App.Api/Program.cs'], undefined)
+  assert.match(plan.changes['Directory.Build.props'], /<NgbPlatformVersion>3.3.0<\/NgbPlatformVersion>/)
+  assert.equal(JSON.parse(plan.changes['web/package.json']).dependencies['@ngbplatform/ui'], '3.3.0')
+  assert.throws(() => planUpgrade(application(), '3.3.0'), /No automated migration/)
+})
+
 test('shared props update the platform property and direct references together', () => {
   const files = application()
   files['Directory.Build.props'] = files['Directory.Build.props'].replace('</Project>',

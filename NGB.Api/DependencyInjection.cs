@@ -56,6 +56,7 @@ public static class DependencyInjection
             }, "Report queue limits must not be negative.")
             .ValidateOnStart();
         services.TryAddSingleton<Reporting.ReportRequestBudget>();
+        services.TryAddSingleton<Application.Abstractions.Services.IReportRequestAdmission>(sp => sp.GetRequiredService<Reporting.ReportRequestBudget>());
         services.Configure<NGB.Runtime.Reporting.ReportCursorProtectionOptions>(configuration.GetSection("Reporting:Cursor"));
 
         services

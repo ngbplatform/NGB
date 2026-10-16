@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <Nullable>enable</Nullable>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <IsPublishable>false</IsPublishable>
+        <PackageId>NGB.Platform.Mcp</PackageId>
+        <NgbPlatformFirstStableInMajorVersion>3.3.0</NgbPlatformFirstStableInMajorVersion>
+        <Description>Read-only Model Context Protocol integration for NGB Platform.</Description>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\NGB.Accounting\NGB.Accounting.csproj" />
+        <ProjectReference Include="..\NGB.Application.Abstractions\NGB.Application.Abstractions.csproj" />
+        <ProjectReference Include="..\NGB.Contracts\NGB.Contracts.csproj" />
+        <ProjectReference Include="..\NGB.Core\NGB.Core.csproj" />
+        <ProjectReference Include="..\NGB.Runtime\NGB.Runtime.csproj" />
+        <ProjectReference Include="..\NGB.Tools\NGB.Tools.csproj" />
+        <ProjectReference Include="..\NGB.Notes\NGB.Notes.csproj" />
+        <ProjectReference Include="..\NGB.Attachments\NGB.Attachments.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.13" />
+        <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.13" />
+    </ItemGroup>
+
+</Project>

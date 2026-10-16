@@ -1,5 +1,14 @@
 import ts from 'typescript'
 import semver from 'semver'
+import { join } from 'node:path'
+
+export function declarationPath(target, packageRoot, emittedRoot) {
+  // TypeScript preserves supplied declarations in place; declaration emit does
+  // not copy them into outDir or append a second .d suffix.
+  return target.endsWith('.d.ts')
+    ? join(packageRoot, target)
+    : join(emittedRoot, target.replace(/\.(?:ts|js)$/, '.d.ts'))
+}
 
 export function comparePackageContracts(previous, candidate) {
   const errors = []

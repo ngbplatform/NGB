@@ -1,85 +1,38 @@
-using Microsoft.Extensions.Caching.Memory;
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Metadata;
 using NGB.Contracts.Reporting;
 using NGB.Contracts.Search;
 using NGB.Contracts.Services;
-using NGB.Tools.Exceptions;
+using NGB.Runtime.Search;
 
 namespace NGB.CRM.Api.Services;
 
 public sealed class CrmCommandPaletteSearchService(
-    IDocumentService documents,
-    ICatalogService catalogs,
-    IReportDefinitionProvider reports,
-    IMemoryCache cache,
+    IAuthorizedDocumentReadService documents,
+    IAuthorizedCatalogReadService catalogs,
+    IAuthorizedReportReadService reports,
     ILogger<CrmCommandPaletteSearchService> logger)
 {
     private const string DocumentsCode = "documents";
     private const string CatalogsCode = "catalogs";
     private const string ReportsCode = "reports";
-    private const int MaxQueryLength = 256;
-
-    private static readonly TimeSpan MetadataCacheTtl = TimeSpan.FromMinutes(10);
 
     public async Task<CommandPaletteSearchResponseDto> SearchAsync(
         CommandPaletteSearchRequestDto request,
         CancellationToken ct)
     {
-        var query = NormalizeQuery(request.Query);
-        if (query is null)
-            return new CommandPaletteSearchResponseDto([]);
+        var result = await NgbSearchPipeline.ExecuteAsync(
+            request.Query,
+            request.Limit,
+            request.Scope,
+            30,
+            (query, limit, token) => SearchDocumentsAsync(query, limit, request.Context, token),
+            (query, limit, token) => SearchCatalogsAsync(query, limit, request.Context, token),
+            SearchReportsAsync,
+            logger,
+            ct);
 
-        var scope = NormalizeScope(request.Scope);
-        var limit = Math.Min(request.Limit <= 0 ? 20 : request.Limit, 30);
-        var groups = new List<CommandPaletteGroupDto>(capacity: 3);
-        var reportsTask = scope is null or ReportsCode
-            ? SearchReportsAsync(query, limit, ct)
-            : null;
-
-        if (scope is null or DocumentsCode)
-            await AddGroupAsync(groups, DocumentsCode, () => SearchDocumentsAsync(query, limit, request.Context, ct), ct);
-
-        if (scope is null or CatalogsCode)
-            await AddGroupAsync(groups, CatalogsCode, () => SearchCatalogsAsync(query, limit, request.Context, ct), ct);
-
-        if (reportsTask is not null)
-            await AddGroupAsync(groups, ReportsCode, () => reportsTask, ct);
-
-        return new CommandPaletteSearchResponseDto(groups);
-    }
-
-    private static string? NormalizeQuery(string? query)
-    {
-        if (string.IsNullOrWhiteSpace(query))
-            return null;
-
-        if (query.Length > MaxQueryLength)
-            throw new NgbArgumentOutOfRangeException(nameof(query), query.Length, $"Search text can contain up to {MaxQueryLength} characters.");
-
-        return query.Trim();
-    }
-
-    private async Task AddGroupAsync(
-        ICollection<CommandPaletteGroupDto> groups,
-        string providerCode,
-        Func<Task<CommandPaletteGroupDto?>> action,
-        CancellationToken ct)
-    {
-        try
-        {
-            var group = await action();
-            if (group is not null)
-                groups.Add(group);
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "CRM command palette provider {ProviderCode} failed.", providerCode);
-        }
+        return new CommandPaletteSearchResponseDto(result.Groups);
     }
 
     private async Task<CommandPaletteGroupDto?> SearchDocumentsAsync(
@@ -254,62 +207,38 @@ public sealed class CrmCommandPaletteSearchService(
     }
 
     private async Task<IReadOnlyList<SearchableDescriptor>> GetDocumentDescriptorsAsync(CancellationToken ct)
-        => (await cache.GetOrCreateAsync(
-               "crm-command-palette:documents",
-               async entry =>
-               {
-                   entry.AbsoluteExpirationRelativeToNow = MetadataCacheTtl;
-                   var metadata = await documents.GetAllMetadataAsync(ct);
-                   return metadata
-                       .Where(static item => item.DocumentType.StartsWith("crm.", StringComparison.OrdinalIgnoreCase))
-                       .Select(item => new SearchableDescriptor(
-                           item.DocumentType,
-                           item.DisplayName,
-                           ResolveItemIcon(item.Icon, "file-text"),
-                           ResolveAliases(item.DocumentType, item.DisplayName)))
-                       .ToArray();
-               }))!;
+    {
+        var metadata = await documents.GetAllMetadataAsync(ct);
+        return metadata
+            .Where(static item => item.DocumentType.StartsWith("crm.", StringComparison.OrdinalIgnoreCase))
+            .Select(item => new SearchableDescriptor(
+                item.DocumentType,
+                item.DisplayName,
+                ResolveItemIcon(item.Icon, "file-text"),
+                ResolveAliases(item.DocumentType, item.DisplayName)))
+            .ToArray();
+    }
 
     private async Task<IReadOnlyList<SearchableDescriptor>> GetCatalogDescriptorsAsync(CancellationToken ct)
-        => (await cache.GetOrCreateAsync(
-               "crm-command-palette:catalogs",
-               async entry =>
-               {
-                   entry.AbsoluteExpirationRelativeToNow = MetadataCacheTtl;
-                   var metadata = await catalogs.GetAllMetadataAsync(ct);
-                   return metadata
-                       .Where(static item => item.CatalogType.StartsWith("crm.", StringComparison.OrdinalIgnoreCase))
-                       .Select(item => new SearchableDescriptor(
-                           item.CatalogType,
-                           item.DisplayName,
-                           ResolveItemIcon(item.Icon, "grid"),
-                           ResolveAliases(item.CatalogType, item.DisplayName)))
-                       .ToArray();
-               }))!;
+    {
+        var metadata = await catalogs.GetAllMetadataAsync(ct);
+        return metadata
+            .Where(static item => item.CatalogType.StartsWith("crm.", StringComparison.OrdinalIgnoreCase))
+            .Select(item => new SearchableDescriptor(
+                item.CatalogType,
+                item.DisplayName,
+                ResolveItemIcon(item.Icon, "grid"),
+                ResolveAliases(item.CatalogType, item.DisplayName)))
+            .ToArray();
+    }
 
     private async Task<IReadOnlyList<ReportDefinitionDto>> GetReportDefinitionsAsync(CancellationToken ct)
-        => (await cache.GetOrCreateAsync(
-               "crm-command-palette:reports",
-               async entry =>
-               {
-                   entry.AbsoluteExpirationRelativeToNow = MetadataCacheTtl;
-                   var definitions = await reports.GetAllDefinitionsAsync(ct);
-                   return definitions
-                       .Where(static definition => definition.ReportCode.StartsWith("crm.", StringComparison.OrdinalIgnoreCase))
-                       .ToArray();
-               }))!;
-
-    private static string? NormalizeScope(string? scope)
-        => (scope ?? string.Empty).Trim().ToLowerInvariant() switch
-        {
-            "" => null,
-            ":" or "document" or DocumentsCode => DocumentsCode,
-            "@" or "catalog" or CatalogsCode => CatalogsCode,
-            "#" or "report" or ReportsCode => ReportsCode,
-            "/" or "page" or "pages" => "pages",
-            ">" or "command" or "commands" => "commands",
-            var value => value,
-        };
+    {
+        var definitions = await reports.GetAllDefinitionsAsync(ct);
+        return definitions
+            .Where(static definition => definition.ReportCode.StartsWith("crm.", StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+    }
 
     private static string[] ResolveAliases(string code, string label)
         => code switch

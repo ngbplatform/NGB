@@ -13,7 +13,7 @@ public sealed class PermissionAwareDocumentService(
     IDocumentService inner,
     INgbAccessChecker access,
     NgbSecurityCache cache)
-    : IDocumentService
+    : IDocumentService, IAuthorizedDocumentReadService
 {
     public async Task<IReadOnlyList<DocumentTypeMetadataDto>> GetAllMetadataAsync(CancellationToken ct)
     {
@@ -121,12 +121,61 @@ public sealed class PermissionAwareDocumentService(
         int maxNodes,
         CancellationToken ct)
     {
-        await RequireAsync(documentType, NgbPermissionActions.ViewFlow, ct);
-        return await inner.GetRelationshipGraphAsync(documentType, id, depth, maxNodes, ct);
+        var snapshot = await access.GetSnapshotAsync(ct);
+
+        Require(snapshot, documentType, NgbPermissionActions.View);
+        Require(snapshot, documentType, NgbPermissionActions.ViewFlow);
+
+        var graph = await inner.GetRelationshipGraphAsync(documentType, id, depth, maxNodes, ct);
+        var allowed = graph.Nodes.Where(node => node.Kind switch
+            {
+                EntityKind.Document => snapshot.Has(NgbResourceKinds.Document, node.TypeCode, NgbPermissionActions.View),
+                EntityKind.Catalog => snapshot.Has(NgbResourceKinds.Catalog, node.TypeCode, NgbPermissionActions.View),
+                _ => false
+            })
+            .ToDictionary(node => node.NodeId, StringComparer.Ordinal);
+        var reachable = allowed.Values
+            .Where(node => node.Kind == EntityKind.Document && node.EntityId == id
+                && string.Equals(node.TypeCode, documentType, StringComparison.OrdinalIgnoreCase))
+            .Select(node => node.NodeId)
+            .ToHashSet(StringComparer.Ordinal);
+        var edges = graph.Edges
+            .Where(edge => allowed.ContainsKey(edge.FromNodeId) && allowed.ContainsKey(edge.ToNodeId))
+            .ToArray();
+        var distances = reachable.ToDictionary(nodeId => nodeId, _ => 0, StringComparer.Ordinal);
+        var frontier = new Queue<string>(reachable);
+        var neighbors = edges
+            .SelectMany(edge => new[] { (From: edge.FromNodeId, To: edge.ToNodeId), (From: edge.ToNodeId, To: edge.FromNodeId) })
+            .ToLookup(edge => edge.From, edge => edge.To, StringComparer.Ordinal);
+
+        while (frontier.TryDequeue(out var current))
+        {
+            ct.ThrowIfCancellationRequested();
+
+            foreach (var next in neighbors[current])
+            {
+                if (reachable.Add(next))
+                {
+                    distances.Add(next, distances[current] + 1);
+                    frontier.Enqueue(next);
+                }
+            }
+        }
+
+        return new RelationshipGraphDto(
+            graph.Nodes.Where(node => reachable.Contains(node.NodeId))
+                .Select(node => node with
+                {
+                    Depth = distances[node.NodeId]
+                })
+                .ToArray(),
+            // Reachability is undirected, so both endpoints of each retained edge are reachable.
+            edges.Where(edge => reachable.Contains(edge.FromNodeId)).ToArray());
     }
 
     public async Task<DocumentEffectsDto> GetEffectsAsync(string documentType, Guid id, int limit, CancellationToken ct)
     {
+        await RequireAsync(documentType, NgbPermissionActions.View, ct);
         await RequireAsync(documentType, NgbPermissionActions.ViewEffects, ct);
         return await inner.GetEffectsAsync(documentType, id, limit, ct);
     }

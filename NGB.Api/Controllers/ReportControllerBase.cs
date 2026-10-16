@@ -8,6 +8,7 @@ using NGB.Core.Reporting;
 using NGB.Core.Reporting.Exceptions;
 using NGB.Core.Security;
 using NGB.Hosting.AspNetCore.Identity;
+using NGB.Runtime.Reporting;
 using NGB.Runtime.Security;
 using NGB.Tools.Exceptions;
 
@@ -25,30 +26,15 @@ public abstract class ReportControllerBase(
     [HttpGet("~/api/report-definitions")]
     public async Task<IReadOnlyList<ReportDefinitionDto>> GetAllDefinitions(CancellationToken ct)
     {
-        var snapshot = await access.GetSnapshotAsync(ct);
-        if (!snapshot.HasAny(NgbResourceKinds.Report, NgbPermissionActions.View)
-            && !snapshot.HasAny(NgbResourceKinds.Report, NgbPermissionActions.Execute)
-            && !HasAnyAdminBackedReportAccess(snapshot))
-        {
-            return [];
-        }
-
-        return (await cache.GetOrCreateReportDefinitionsAsync(
-            snapshot,
-            async token =>
-            {
-                var all = await definitions.GetAllDefinitionsAsync(token);
-                return FilterDefinitions(all, snapshot);
-            },
-            ct))!;
+        var reads = new PermissionAwareReportReadService(definitions, engine, access, cache);
+        return await reads.GetAllDefinitionsAsync(ct);
     }
 
     [HttpGet("~/api/report-definitions/{reportCode}")]
     public async Task<ReportDefinitionDto> GetDefinition([FromRoute] string reportCode, CancellationToken ct)
     {
-        var snapshot = await access.GetSnapshotAsync(ct);
-        RequireViewOrExecuteReport(snapshot, reportCode);
-        return await definitions.GetDefinitionAsync(reportCode, ct);
+        var reads = new PermissionAwareReportReadService(definitions, engine, access, cache);
+        return await reads.GetDefinitionAsync(reportCode, ct);
     }
 
     [HttpPost("~/api/reports/{reportCode}/execute")]
@@ -57,7 +43,7 @@ public abstract class ReportControllerBase(
         [FromRoute] string reportCode,
         [FromBody] ReportExecutionRequestDto request,
         CancellationToken ct)
-        => ExecuteCoreAsync(reportCode, request, ct);
+        => new PermissionAwareReportReadService(definitions, engine, access, cache).ExecuteAsync(reportCode, request, ct);
 
     [HttpPost("~/api/reports/{reportCode}/export/xlsx")]
     [ReportRequestBudget(download: true)]
@@ -159,25 +145,6 @@ public abstract class ReportControllerBase(
         return NoContent();
     }
 
-    private async Task<ReportExecutionResponseDto> ExecuteCoreAsync(
-        string reportCode,
-        ReportExecutionRequestDto request,
-        CancellationToken ct)
-    {
-        var snapshot = await access.GetSnapshotAsync(ct);
-        RequireExecuteReport(snapshot, reportCode);
-
-        if (request.DisablePaging)
-            throw new NgbArgumentInvalidException("disablePaging", "Interactive reports require paging. Use the export endpoint for a complete download.");
-
-        if (request.Offset != 0)
-            throw new NgbArgumentInvalidException("offset", "Use the continuation cursor to request another page.");
-
-        var response = await engine.ExecuteAsync(reportCode, request, ct);
-        var sheet = ScrubForbiddenCellActions(response.Sheet, snapshot);
-        return response with { Sheet = sheet };
-    }
-
     private async Task<ReportVariantDto> SaveVariantCoreAsync(
         string reportCode,
         string variantCode,
@@ -207,22 +174,6 @@ public abstract class ReportControllerBase(
            || Has(snapshot, NgbResourceKinds.Report, reportCode, NgbPermissionActions.Execute)
            || HasAdminBackedReportAccess(snapshot, reportCode);
 
-    private static void RequireExecuteReport(PermissionSnapshot snapshot, string reportCode)
-    {
-        if (Has(snapshot, NgbResourceKinds.Report, reportCode, NgbPermissionActions.Execute)
-            || HasAdminBackedReportAccess(snapshot, reportCode))
-        {
-            return;
-        }
-
-        throw new NgbPermissionDeniedException(
-            new NgbPermissionKey(NgbResourceKinds.Report, reportCode, NgbPermissionActions.Execute));
-    }
-
-    private static bool HasAnyAdminBackedReportAccess(PermissionSnapshot snapshot)
-        => Has(snapshot, NgbResourceKinds.Admin, NgbPermissionResources.PostingLog, NgbPermissionActions.View)
-           || Has(snapshot, NgbResourceKinds.Admin, NgbPermissionResources.Integrity, NgbPermissionActions.View);
-
     private static bool HasAdminBackedReportAccess(PermissionSnapshot snapshot, string reportCode)
     {
         if (string.Equals(reportCode, AccountingReportCodes.PostingLog, StringComparison.OrdinalIgnoreCase))
@@ -246,72 +197,6 @@ public abstract class ReportControllerBase(
         }
 
         throw new NgbPermissionDeniedException(new NgbPermissionKey(NgbResourceKinds.Report, reportCode, actions[0]));
-    }
-
-    private static IReadOnlyList<ReportDefinitionDto> FilterDefinitions(
-        IReadOnlyList<ReportDefinitionDto> definitions,
-        PermissionSnapshot snapshot)
-    {
-        var result = new List<ReportDefinitionDto>(definitions.Count);
-        foreach (var definition in definitions)
-        {
-            if (CanViewOrExecuteReport(snapshot, definition.ReportCode))
-                result.Add(definition);
-        }
-
-        return result;
-    }
-
-    private static ReportSheetDto ScrubForbiddenCellActions(ReportSheetDto sheet, PermissionSnapshot snapshot)
-    {
-        if (snapshot.IsBootstrapAdmin)
-            return sheet;
-
-        return sheet with
-        {
-            Rows = ScrubRows(sheet.Rows, snapshot),
-            HeaderRows = sheet.HeaderRows is null ? null : ScrubRows(sheet.HeaderRows, snapshot)
-        };
-    }
-
-    private static IReadOnlyList<ReportSheetRowDto> ScrubRows(
-        IReadOnlyList<ReportSheetRowDto> rows,
-        PermissionSnapshot snapshot)
-    {
-        var result = new ReportSheetRowDto[rows.Count];
-        for (var i = 0; i < rows.Count; i++)
-        {
-            var row = rows[i];
-            var cells = new ReportCellDto[row.Cells.Count];
-
-            for (var j = 0; j < row.Cells.Count; j++)
-            {
-                var cell = row.Cells[j];
-                cells[j] = cell.Action is null || IsCellActionAllowed(cell.Action, snapshot)
-                    ? cell
-                    : cell with { Action = null };
-            }
-
-            result[i] = row with { Cells = cells };
-        }
-
-        return result;
-    }
-
-    private static bool IsCellActionAllowed(ReportCellActionDto action, PermissionSnapshot snapshot)
-    {
-        return action.Kind switch
-        {
-            ReportCellActionKinds.OpenDocument when !string.IsNullOrWhiteSpace(action.DocumentType)
-                => Has(snapshot, NgbResourceKinds.Document, action.DocumentType, NgbPermissionActions.View),
-            ReportCellActionKinds.OpenCatalog when !string.IsNullOrWhiteSpace(action.CatalogType)
-                => Has(snapshot, NgbResourceKinds.Catalog, action.CatalogType, NgbPermissionActions.View),
-            ReportCellActionKinds.OpenReport when action.Report is not null
-                => CanViewOrExecuteReport(snapshot, action.Report.ReportCode),
-            ReportCellActionKinds.OpenAccount
-                => Has(snapshot, NgbResourceKinds.Admin, NgbPermissionResources.ChartOfAccounts, NgbPermissionActions.View),
-            _ => false
-        };
     }
 
     private static void Require(PermissionSnapshot snapshot, string resourceKind, string resourceCode, string actionCode)

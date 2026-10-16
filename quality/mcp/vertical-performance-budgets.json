@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "samplesPerScenario": 100,
+  "maxAdditionalSqlCommands": 4,
+  "maxP95RatioToRest": 4,
+  "maxStructuredResponseBytes": 1048576
+}

@@ -332,6 +332,7 @@ public sealed class ReportControllerBaseEdgeCoverageTests
 
     private static MethodInfo Method(string methodName)
         => typeof(ReportControllerBase).GetMethod(methodName, BindingFlags.NonPublic | BindingFlags.Static)
+           ?? typeof(NGB.Runtime.Reporting.PermissionAwareReportReadService).GetMethod(methodName, BindingFlags.NonPublic | BindingFlags.Static)
            ?? throw new MissingMethodException(typeof(ReportControllerBase).FullName, methodName);
 
     private static NgbSecurityCache SecurityCache(IMemoryCache memory)

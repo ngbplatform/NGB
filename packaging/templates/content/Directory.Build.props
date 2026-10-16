@@ -1,6 +1,6 @@
 <Project>
     <PropertyGroup>
-        <NgbPlatformVersion>3.2.0</NgbPlatformVersion>
+        <NgbPlatformVersion>3.3.0</NgbPlatformVersion>
         <Nullable>enable</Nullable>
         <ImplicitUsings>enable</ImplicitUsings>
         <IsPackable>false</IsPackable>

@@ -71,14 +71,13 @@ public sealed class AgencyBillingControllersFullCoverageTests : IDisposable
     public async Task CommandPaletteSearch_DelegatesRequestAndCancellationToken()
     {
         using var cancellation = new CancellationTokenSource();
-        var documents = new Mock<IDocumentService>(MockBehavior.Strict);
+        var documents = new Mock<IAuthorizedDocumentReadService>(MockBehavior.Strict);
         documents.Setup(x => x.GetAllMetadataAsync(cancellation.Token))
             .ReturnsAsync(Array.Empty<DocumentTypeMetadataDto>());
         var service = new AgencyBillingCommandPaletteSearchService(
             documents.Object,
-            Mock.Of<ICatalogService>(),
-            Mock.Of<IReportDefinitionProvider>(),
-            _cache,
+            Mock.Of<IAuthorizedCatalogReadService>(),
+            Mock.Of<IAuthorizedReportReadService>(),
             NullLogger<AgencyBillingCommandPaletteSearchService>.Instance);
         var sut = new CommandPaletteController(service);
         var request = new CommandPaletteSearchRequestDto("needle", Scope: "documents");

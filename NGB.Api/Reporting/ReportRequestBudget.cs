@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.Extensions.Options;
+using NGB.Application.Abstractions.Services;
 
 namespace NGB.Api.Reporting;
 
@@ -21,7 +22,7 @@ public sealed class ReportRequestLimits
 }
 
 /// <summary>Per-instance limits with bounded FIFO queues before report preparation.</summary>
-public sealed class ReportRequestBudget : IDisposable
+public sealed class ReportRequestBudget : IDisposable, IReportRequestAdmission
 {
     public const string MeterName = "NGB.Reporting";
     private readonly ReportRequestLimits _limits;
@@ -90,6 +91,11 @@ public sealed class ReportRequestBudget : IDisposable
             _waiting.Record(Stopwatch.GetElapsedTime(started).TotalSeconds, tags);
         }
     }
+
+    TimeSpan IReportRequestAdmission.ExecutionTimeout => Timeout(download: false);
+
+    async ValueTask<IDisposable?> IReportRequestAdmission.AcquireAsync(CancellationToken ct)
+        => await AcquireAsync(download: false, ct);
 
     public RateLimiterStatistics Statistics(bool download) => (download ? _downloads : _pages).GetStatistics()!;
 

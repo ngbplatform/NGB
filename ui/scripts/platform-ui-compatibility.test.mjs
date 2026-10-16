@@ -4,7 +4,13 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import ts from 'typescript'
-import { compareCssTokens, comparePackageContracts, compareTypeContracts } from './platform-ui-compatibility.mjs'
+import { compareCssTokens, comparePackageContracts, compareTypeContracts, declarationPath } from './platform-ui-compatibility.mjs'
+
+test('declaration paths preserve packaged types and locate emitted TypeScript and JavaScript types', () => {
+  assert.equal(declarationPath('./tailwind-preset.d.ts', '/package', '/emitted'), '/package/tailwind-preset.d.ts')
+  assert.equal(declarationPath('./src/index.ts', '/package', '/emitted'), '/emitted/src/index.d.ts')
+  assert.equal(declarationPath('./vite-public-assets.js', '/package', '/emitted'), '/emitted/vite-public-assets.d.ts')
+})
 
 test('package conditions, CSS and peer compatibility reject breaks and accept additions', () => {
   const original = { exports: { '.': { types: './index.ts', import: './index.ts' } }, peerDependencies: { vue: '^3.5.0' } }

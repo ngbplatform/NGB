@@ -164,6 +164,38 @@ presigned upload/download endpoints. Enable `FeatureManagement:Attachments` only
 after storage validation passes. Use the platform parent-object authorization;
 do not expose buckets publicly or implement a separate application ACL.
 
+## Optional MCP endpoint
+
+The API includes the public `NGB.Platform.Mcp.AspNetCore` package and the
+`AddNgbMcp` / `MapNgbMcp` composition. MCP is disabled by default. To enable it in
+the local Compose API, add these environment settings to that service:
+
+```yaml
+Mcp__Enabled: "true"
+Mcp__Resource: "http://localhost:5181/mcp"
+Mcp__AllowLocalhostHttp: "true"
+```
+
+Register your MCP client in the existing Keycloak realm, enable Authorization
+Code with PKCE S256, register the client's exact callback URI, and assign an
+access-token audience mapper for `http://localhost:5181/mcp`. Sign in as the
+existing application user. No new platform user, service account or LLM key is
+needed. A token issued only for this audience does not become a REST API token.
+The normal Administrator and inactive-user policies remain effective.
+
+Connect a Streamable HTTP client to that URI. Protected Resource Metadata is
+available at `http://localhost:5181/.well-known/oauth-protected-resource/mcp`.
+Use the current SDK discovery flow or a supported compatibility client, then
+call `ngb_list_metadata` with `{ "limit": 10 }`. The empty starter exposes only
+installed platform definitions; custom modules extend generic reads automatically.
+
+For production, use a canonical public HTTPS resource URI and the existing
+trusted-proxy configuration. Set `Mcp:AllowedOrigins` only for actual browser
+clients. Configure `Mcp:PublicUiOrigin` and `Mcp:UiRoutes` only when your UI has
+those routes; absent routes return null links. The
+[MCP guide](https://docs.ngbplatform.com/guides/mcp-server) describes limits,
+permission checks, optional contributors, OAuth and client compatibility.
+
 ## Upgrade and deploy
 
 Select a supported transition from the [upgrade guide](https://docs.ngbplatform.com/architecture/external-app-upgrades)

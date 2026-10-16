@@ -12,7 +12,7 @@ const candidateFeed = resolve(process.argv[2] ?? join(repository, 'artifacts/nug
 const root = await mkdtemp(join(tmpdir(), 'ngb-api-compatibility-'))
 const results = []
 const runtimes = inventory.packages.filter(item => item.kind === 'runtime')
-const versions = [...new Set(runtimes.flatMap(item => [item.firstStableInMajor, item.previous]))]
+const versions = [...new Set(runtimes.flatMap(item => [item.firstStableInMajor, item.previous]).filter(version => version && version !== inventory.target))]
 const xml = value => value.replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;')
 
 if (!process.env.NGB_APICOMPAT) {

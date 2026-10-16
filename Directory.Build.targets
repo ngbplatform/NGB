@@ -1,6 +1,6 @@
 <Project>
   <!-- Baselines exist only for previously published platform packages, not hosts or new capabilities. -->
-  <PropertyGroup Condition="'$(Version)' != '$(NgbPlatformApiCompatibilityBaselineVersion)' and '$(NgbPlatformPackageKind)' != 'template' and $([System.String]::Copy('$(PackageId)').StartsWith('NGB.Platform.'))">
+  <PropertyGroup Condition="'$(Version)' != '$(NgbPlatformApiCompatibilityBaselineVersion)' and '$(Version)' != '$(NgbPlatformFirstStableInMajorVersion)' and '$(NgbPlatformPackageKind)' != 'template' and $([System.String]::Copy('$(PackageId)').StartsWith('NGB.Platform.'))">
     <PackageValidationBaselineVersion>$(NgbPlatformApiCompatibilityBaselineVersion)</PackageValidationBaselineVersion>
     <PackageValidationBaselineVersion Condition="'$(NgbPlatformFirstStableInMajorVersion)' != ''">$(NgbPlatformFirstStableInMajorVersion)</PackageValidationBaselineVersion>
   </PropertyGroup>
