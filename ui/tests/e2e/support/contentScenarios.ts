@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises'
+import { text } from 'node:stream/consumers'
 
 import { expect, type APIRequestContext, type Page, type Request } from '@playwright/test'
 
@@ -44,7 +44,7 @@ export async function verifyAttachmentsAndNotes(page: Page, scenario: ContentSce
     ])
     // Native downloads may use decomposed Unicode on macOS.
     expect(download.suggestedFilename().normalize('NFC')).toBe('résumé.txt')
-    expect(await readFile((await download.path())!, 'utf8')).toBe('NGB real storage fixture\n')
+    expect(await text(await download.createReadStream())).toBe('NGB real storage fixture\n')
 
     await page.getByRole('button', { name: 'Mark for deletion', exact: true }).click()
     await expect(page.getByText('No attachments yet.')).toBeVisible()
@@ -89,7 +89,7 @@ export async function verifyAttachmentsAndNotes(page: Page, scenario: ContentSce
       page.waitForEvent('download'),
       page.getByRole('button', { name: 'Download attachment', exact: true }).first().click(),
     ])
-    expect(await readFile((await retainedDownload.path())!, 'utf8')).toBe('NGB real storage fixture\n')
+    expect(await text(await retainedDownload.createReadStream())).toBe('NGB real storage fixture\n')
 
     expect(uploads).toHaveLength(1)
     const headers = await uploads[0]!.allHeaders()

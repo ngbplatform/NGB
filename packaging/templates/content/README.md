@@ -207,6 +207,19 @@ those routes; absent routes return null links. The
 [MCP guide](https://docs.ngbplatform.com/guides/mcp-server) describes limits,
 permission checks, optional contributors, OAuth and client compatibility.
 
+## Optional AI Assistant
+
+The shared UI and API include AI Assistant, disabled by default. Enable both
+`FEATURE_MCP=true` and `FEATURE_AI_ASSISTANT=true` and run native Ollama on the
+host with the `qwen3.5:4b` model. Compose uses
+`AI_OLLAMA_ENDPOINT=http://host.docker.internal:11434`; an API running directly
+on the host uses `http://localhost:11434`.
+
+The assistant uses the existing user's MCP permissions. Conversations remain in
+browser memory. The developer can replace `AddNgbOllamaChatClient` with another
+`IChatClient` registration. See the [AI Assistant guide](https://docs.ngbplatform.com/guides/ai-assistant)
+for model providers, startup requirements, limits and deployment configuration.
+
 ## Upgrade and deploy
 
 Select a supported transition from the [upgrade guide](https://docs.ngbplatform.com/architecture/external-app-upgrades)

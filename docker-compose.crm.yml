@@ -292,6 +292,12 @@ services:
     environment:
       Ngb__Hosting__PublicApiUrl: ${CRM_API_PUBLIC_URL:-https://localhost:${CRM_API_HTTPS_PORT}}
       FeatureManagement__Mcp: ${FEATURE_MCP:-false}
+      FeatureManagement__AiAssistant: ${FEATURE_AI_ASSISTANT:-false}
+      AiAssistant__Ollama__Endpoint: ${AI_OLLAMA_ENDPOINT:-http://host.docker.internal:11434}
+      AiAssistant__Ollama__Model: ${AI_OLLAMA_MODEL:-qwen3.5:4b}
+      AiAssistant__Ollama__ContextLength: ${AI_OLLAMA_CONTEXT_LENGTH:-32768}
+      AiAssistant__McpLoopbackPort: "443"
+      AiAssistant__TrustDevelopmentServerCertificate: "true"
       Mcp__AllowLocalhostHttp: ${MCP_ALLOW_LOCALHOST_HTTP:-false}
       FeatureManagement__Attachments: ${FEATURE_ATTACHMENTS:-false}
       FeatureManagement__Notes: ${FEATURE_NOTES:-false}

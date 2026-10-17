@@ -100,6 +100,7 @@ const props = withDefaults(
 
 const emit = defineEmits<{
   (e: 'update:open', value: boolean): void;
+  (e: 'after-leave'): void;
 }>();
 
 const lastFocusedElement = ref<HTMLElement | null>(null);
@@ -136,6 +137,7 @@ function restoreLastFocus() {
   window.setTimeout(() => {
     if (props.open) return;
     lastFocusedElement.value?.focus?.();
+    emit('after-leave');
   }, 0);
 }
 

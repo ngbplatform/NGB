@@ -12,6 +12,7 @@ using NGB.Contracts.Audit;
 using NGB.Contracts.BusinessObjects;
 using NGB.Contracts.Features;
 using NGB.Contracts.Notes;
+using NGB.Core.Features;
 using NGB.PropertyManagement.Api.IntegrationTests.Infrastructure;
 using Xunit;
 
@@ -36,7 +37,9 @@ public sealed class FeatureFlagsHttpTests(PmIntegrationFixture fixture) : IAsync
         await using var factory = new PmApiFactory(fixture, configuration);
         using var client = factory.CreateClient();
         var states = await client.GetFromJsonAsync<FeatureStateDto[]>("/api/features");
-        states.Should().HaveCount(3).And.OnlyContain(x => !x.Enabled);
+        states.Should().NotBeNull().And.OnlyContain(x => !x.Enabled);
+        states!.Select(x => x.Code).Should().BeEquivalentTo(
+            NgbFeatures.Attachments, NgbFeatures.Notes, NgbFeatures.Mcp, NgbFeatures.AiAssistant);
         factory.Services.GetService<IAttachmentObjectStorage>().Should().BeNull();
         (await client.GetAsync("/api/security/me/access")).StatusCode.Should().Be(HttpStatusCode.OK);
 

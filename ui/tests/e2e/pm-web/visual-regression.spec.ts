@@ -33,6 +33,7 @@ test.describe('pm-web visual regression', () => {
 
     await page.goto(PM_TEST_ROUTES.home)
     await expect(page.getByTestId('site-shell')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'AI Assistant', exact: true })).toHaveCount(0)
     await expect(page.getByTestId('site-shell')).toHaveScreenshot('home-shell-desktop.png', {
       animations: 'disabled',
       caret: 'hide',
@@ -79,6 +80,7 @@ test.describe('pm-web visual regression', () => {
 
     await page.goto(PM_TEST_ROUTES.genericPartyCatalog)
 
+    await expect(page.getByRole('button', { name: 'AI Assistant', exact: true })).toHaveCount(0)
     await expect(page.getByTestId('site-shell')).toHaveScreenshot('party-catalog-empty-desktop.png', {
       animations: 'disabled',
       caret: 'hide',
