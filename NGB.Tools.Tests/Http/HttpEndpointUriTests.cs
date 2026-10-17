@@ -33,6 +33,15 @@ public sealed class HttpEndpointUriTests
     }
 
     [Fact]
+    public void AbsoluteHttpEndpointChecksDoNotImplyTransportTrust()
+    {
+        Assert.True(HttpEndpointUri.IsAbsoluteHttp(new Uri("http://remote.example/api")));
+        Assert.False(HttpEndpointUri.IsSecureAbsolute("http://remote.example/api"));
+        Assert.False(HttpEndpointUri.IsAbsoluteHttp(new Uri("relative", UriKind.Relative)));
+        Assert.Throws<ArgumentNullException>(() => HttpEndpointUri.IsAbsoluteHttp(null!));
+    }
+
+    [Fact]
     public void HttpsIsAcceptedAndRelativeOrMissingUrisAreNotLocalHosts()
     {
         Assert.True(HttpEndpointUri.IsSecureAbsolute("https://api.example"));

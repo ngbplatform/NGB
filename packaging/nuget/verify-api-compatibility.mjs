@@ -59,6 +59,7 @@ for (const version of versions) {
     const args = ['package', newArchive, '--baseline-package', oldArchive,
       '--package-assembly-references', `net10.0|${candidate.references}`,
       '--baseline-package-assembly-references', `net10.0|${baseline.references}`,
+      '--exclude-attributes-file', join(repository, 'packaging/nuget/api-compatibility-excluded-attributes.txt'),
       '--enable-rule-cannot-change-parameter-name', '--enable-rule-attributes-must-match']
     const tool = process.env.NGB_APICOMPAT
     const output = execFileSync(tool ?? 'dotnet', tool ? args : ['tool', 'run', 'apicompat', '--', ...args], {

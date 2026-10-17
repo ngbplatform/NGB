@@ -3,6 +3,7 @@ using System.ClientModel.Primitives;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using NGB.Tools.Http;
 using OpenAI;
 using OpenAI.Chat;
 
@@ -17,7 +18,7 @@ public static class DependencyInjection
         Action<OpenAiAssistantOptions> configure)
     {
         services.AddOptions<OpenAiAssistantOptions>().Configure(configure)
-            .Validate(options => AiProviderEndpoint.IsValid(options.Endpoint)
+            .Validate(options => HttpEndpointUri.IsSecureAbsolute(options.Endpoint)
                 && !string.IsNullOrWhiteSpace(options.Model) && !string.IsNullOrWhiteSpace(options.ApiKey),
                 "Configure an HTTPS endpoint, model and API key for the selected OpenAI-compatible provider.")
             .ValidateOnStart();

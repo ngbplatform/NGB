@@ -14,7 +14,7 @@ public static class NgbSearchPipeline
     public static async Task<NgbSearchGroups<T>> ExecuteAsync<T>(
         string? query,
         int requestedLimit,
-        string? scope,
+        NgbSearchScope scope,
         int maximumLimit,
         Func<string, int, CancellationToken, Task<T?>> documents,
         Func<string, int, CancellationToken, Task<T?>> catalogs,
@@ -32,20 +32,22 @@ public static class NgbSearchPipeline
         if (maximumLimit is < 1 or > 50)
             throw new ArgumentOutOfRangeException(nameof(maximumLimit));
 
+        if (!Enum.IsDefined(scope))
+            throw new ArgumentOutOfRangeException(nameof(scope));
+
         query = query.Trim();
         var limit = Math.Min(requestedLimit <= 0 ? 20 : requestedLimit, maximumLimit);
-        var normalizedScope = NormalizeScope(scope);
         var groups = new List<T>(3);
         var unavailable = new List<string>(3);
-        await AddAsync("documents", documents);
-        await AddAsync("catalogs", catalogs);
-        await AddAsync("reports", reports);
+        await AddAsync(NgbSearchScope.Documents, "documents", documents);
+        await AddAsync(NgbSearchScope.Catalogs, "catalogs", catalogs);
+        await AddAsync(NgbSearchScope.Reports, "reports", reports);
 
         return new NgbSearchGroups<T>(groups, unavailable);
 
-        async Task AddAsync(string code, Func<string, int, CancellationToken, Task<T?>> search)
+        async Task AddAsync(NgbSearchScope source, string code, Func<string, int, CancellationToken, Task<T?>> search)
         {
-            if (normalizedScope is not null && normalizedScope != code)
+            if (scope != NgbSearchScope.All && scope != source)
                 return;
 
             ct.ThrowIfCancellationRequested();
@@ -66,16 +68,4 @@ public static class NgbSearchPipeline
             }
         }
     }
-
-    private static string? NormalizeScope(string? scope)
-        => (scope ?? string.Empty).Trim().ToLowerInvariant() switch
-        {
-            "" => null,
-            ":" or "document" or "documents" => "documents",
-            "@" or "catalog" or "catalogs" => "catalogs",
-            "#" or "report" or "reports" => "reports",
-            "/" or "page" or "pages" => "pages",
-            ">" or "command" or "commands" => "commands",
-            var value => value
-        };
 }

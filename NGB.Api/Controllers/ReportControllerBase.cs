@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using System.Text.Json;
 using NGB.Api.Reporting;
@@ -8,34 +9,63 @@ using NGB.Core.Reporting;
 using NGB.Core.Reporting.Exceptions;
 using NGB.Core.Security;
 using NGB.Hosting.AspNetCore.Identity;
-using NGB.Runtime.Reporting;
 using NGB.Runtime.Security;
 using NGB.Tools.Exceptions;
 
 namespace NGB.Api.Controllers;
 
-public abstract class ReportControllerBase(
-    IReportDefinitionProvider definitions,
-    IReportEngine engine,
-    IReportVariantService variants,
-    IReportDownloadService downloads,
-    INgbAccessChecker access,
-    NgbSecurityCache cache)
-    : ControllerBase
+public abstract class ReportControllerBase : ControllerBase
 {
-    [HttpGet("~/api/report-definitions")]
-    public async Task<IReadOnlyList<ReportDefinitionDto>> GetAllDefinitions(CancellationToken ct)
+    private readonly IReportVariantService _variants;
+    private readonly IReportDownloadService _downloads;
+    private readonly INgbAccessChecker _access;
+
+    public ReportControllerBase(
+        IAuthorizedReportReadService reads,
+        IReportVariantService variants,
+        IReportDownloadService downloads,
+        INgbAccessChecker access)
+        : this(variants, downloads, access)
     {
-        var reads = new PermissionAwareReportReadService(definitions, engine, access, cache);
-        return await reads.GetAllDefinitionsAsync(ct);
+        ArgumentNullException.ThrowIfNull(reads);
+        Reads = reads;
     }
 
-    [HttpGet("~/api/report-definitions/{reportCode}")]
-    public async Task<ReportDefinitionDto> GetDefinition([FromRoute] string reportCode, CancellationToken ct)
+    /// <summary>
+    /// Preserves existing controller subclasses. Reads resolve the registered service from the request scope.
+    /// New subclasses should inject <see cref="IAuthorizedReportReadService"/> directly.
+    /// </summary>
+    public ReportControllerBase(
+        IReportDefinitionProvider definitions,
+        IReportEngine engine,
+        IReportVariantService variants,
+        IReportDownloadService downloads,
+        INgbAccessChecker access,
+        NgbSecurityCache cache)
+        : this(variants, downloads, access)
     {
-        var reads = new PermissionAwareReportReadService(definitions, engine, access, cache);
-        return await reads.GetDefinitionAsync(reportCode, ct);
     }
+
+    private ReportControllerBase(
+        IReportVariantService variants,
+        IReportDownloadService downloads,
+        INgbAccessChecker access)
+    {
+        _variants = variants;
+        _downloads = downloads;
+        _access = access;
+    }
+
+    private IAuthorizedReportReadService Reads
+        => field ?? HttpContext.RequestServices.GetRequiredService<IAuthorizedReportReadService>();
+
+    [HttpGet("~/api/report-definitions")]
+    public Task<IReadOnlyList<ReportDefinitionDto>> GetAllDefinitions(CancellationToken ct)
+        => Reads.GetAllDefinitionsAsync(ct);
+
+    [HttpGet("~/api/report-definitions/{reportCode}")]
+    public Task<ReportDefinitionDto> GetDefinition([FromRoute] string reportCode, CancellationToken ct)
+        => Reads.GetDefinitionAsync(reportCode, ct);
 
     [HttpPost("~/api/reports/{reportCode}/execute")]
     [ReportRequestBudget]
@@ -43,7 +73,7 @@ public abstract class ReportControllerBase(
         [FromRoute] string reportCode,
         [FromBody] ReportExecutionRequestDto request,
         CancellationToken ct)
-        => new PermissionAwareReportReadService(definitions, engine, access, cache).ExecuteAsync(reportCode, request, ct);
+        => Reads.ExecuteAsync(reportCode, request, ct);
 
     [HttpPost("~/api/reports/{reportCode}/export/xlsx")]
     [ReportRequestBudget(download: true)]
@@ -52,10 +82,10 @@ public abstract class ReportControllerBase(
         [FromBody] ReportExportRequestDto request,
         CancellationToken ct)
     {
-        var snapshot = await access.GetSnapshotAsync(ct);
+        var snapshot = await _access.GetSnapshotAsync(ct);
         Require(snapshot, NgbResourceKinds.Report, reportCode, NgbPermissionActions.Export);
 
-        var download = await downloads.PrepareAsync(reportCode, request, ct);
+        var download = await _downloads.PrepareAsync(reportCode, request, ct);
 
         // Also release the read session if a later MVC filter replaces or rejects this result.
         HttpContext?.Response.RegisterForDisposeAsync(download);
@@ -94,9 +124,9 @@ public abstract class ReportControllerBase(
     [HttpGet("~/api/reports/{reportCode}/variants")]
     public async Task<IReadOnlyList<ReportVariantDto>> GetVariants([FromRoute] string reportCode, CancellationToken ct)
     {
-        var snapshot = await access.GetSnapshotAsync(ct);
+        var snapshot = await _access.GetSnapshotAsync(ct);
         RequireViewOrExecuteReport(snapshot, reportCode);
-        return await variants.GetAllAsync(reportCode, ct);
+        return await _variants.GetAllAsync(reportCode, ct);
     }
 
     [HttpGet("~/api/reports/{reportCode}/variants/{variantCode}")]
@@ -105,9 +135,9 @@ public abstract class ReportControllerBase(
         [FromRoute] string variantCode,
         CancellationToken ct)
     {
-        var snapshot = await access.GetSnapshotAsync(ct);
+        var snapshot = await _access.GetSnapshotAsync(ct);
         RequireViewOrExecuteReport(snapshot, reportCode);
-        var variant = await variants.GetAsync(reportCode, variantCode, ct);
+        var variant = await _variants.GetAsync(reportCode, variantCode, ct);
 
         return variant ?? throw new ReportVariantNotFoundException(reportCode, variantCode);
     }
@@ -126,8 +156,8 @@ public abstract class ReportControllerBase(
         [FromRoute] string variantCode,
         CancellationToken ct)
     {
-        var existing = await variants.GetAsync(reportCode, variantCode, ct);
-        var snapshot = await access.GetSnapshotAsync(ct);
+        var existing = await _variants.GetAsync(reportCode, variantCode, ct);
+        var snapshot = await _access.GetSnapshotAsync(ct);
 
         if (existing?.IsShared == true)
         {
@@ -141,7 +171,7 @@ public abstract class ReportControllerBase(
                 [NgbPermissionActions.DeleteVariant, NgbPermissionActions.ManageSharedVariants]);
         }
 
-        await variants.DeleteAsync(reportCode, variantCode, ct);
+        await _variants.DeleteAsync(reportCode, variantCode, ct);
         return NoContent();
     }
 
@@ -151,7 +181,7 @@ public abstract class ReportControllerBase(
         ReportVariantDto variant,
         CancellationToken ct)
     {
-        var snapshot = await access.GetSnapshotAsync(ct);
+        var snapshot = await _access.GetSnapshotAsync(ct);
         Require(
             snapshot,
             NgbResourceKinds.Report,
@@ -160,7 +190,7 @@ public abstract class ReportControllerBase(
                 ? NgbPermissionActions.ManageSharedVariants
                 : NgbPermissionActions.SavePrivateVariant);
 
-        return await variants.SaveAsync(variant with { ReportCode = reportCode, VariantCode = variantCode }, ct);
+        return await _variants.SaveAsync(variant with { ReportCode = reportCode, VariantCode = variantCode }, ct);
     }
 
     private static void RequireViewOrExecuteReport(PermissionSnapshot snapshot, string reportCode)

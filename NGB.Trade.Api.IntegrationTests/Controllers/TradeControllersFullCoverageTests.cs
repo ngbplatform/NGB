@@ -42,12 +42,10 @@ public sealed class TradeControllersFullCoverageTests : IDisposable
             Mock.Of<IDocumentActionQueryService>(),
             Mock.Of<IDocumentActionDispatcher>()).Should().NotBeNull();
         new ReportController(
-            Mock.Of<IReportDefinitionProvider>(),
-            Mock.Of<IReportEngine>(),
+            Mock.Of<IAuthorizedReportReadService>(),
             Mock.Of<IReportVariantService>(),
             Mock.Of<IReportDownloadService>(),
-            access,
-            securityCache).Should().NotBeNull();
+            access).Should().NotBeNull();
         new WorkCenterController(Mock.Of<IWorkCenterQueryService>()).Should().NotBeNull();
     }
 

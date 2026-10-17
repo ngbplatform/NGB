@@ -8,23 +8,11 @@ namespace NGB.Runtime.Tests.Search;
 public sealed class NgbSearchPipelineTests
 {
     [Theory]
-    [InlineData(":", "documents")]
-    [InlineData("document", "documents")]
-    [InlineData("documents", "documents")]
-    [InlineData("@", "catalogs")]
-    [InlineData("catalog", "catalogs")]
-    [InlineData("catalogs", "catalogs")]
-    [InlineData("#", "reports")]
-    [InlineData("report", "reports")]
-    [InlineData(" REPORTS ", "reports")]
-    [InlineData("/", null)]
-    [InlineData("page", null)]
-    [InlineData("pages", null)]
-    [InlineData(">", null)]
-    [InlineData("command", null)]
-    [InlineData("commands", null)]
-    [InlineData("unknown", null)]
-    public async Task ScopeAliasesInvokeOnlyTheirMatchingReadSource(string scope, string? expected)
+    [InlineData(NgbSearchScope.Documents, "documents")]
+    [InlineData(NgbSearchScope.Catalogs, "catalogs")]
+    [InlineData(NgbSearchScope.Reports, "reports")]
+    [InlineData(NgbSearchScope.None, null)]
+    public async Task ScopeInvokesOnlyItsMatchingReadSource(NgbSearchScope scope, string? expected)
     {
         var calls = new List<string>();
         Task<string?> Read(string code, string query, int limit)
@@ -48,15 +36,25 @@ public sealed class NgbSearchPipelineTests
     {
         Task<string?> Unexpected(string query, int limit, CancellationToken ct)
             => throw new InvalidOperationException("A rejected input must not query a source.");
-        var empty = await NgbSearchPipeline.ExecuteAsync(" ", 0, null, 50, Unexpected, Unexpected, Unexpected, NullLogger.Instance, default);
+        var empty = await NgbSearchPipeline.ExecuteAsync(" ", 0, NgbSearchScope.All, 50, Unexpected, Unexpected, Unexpected, NullLogger.Instance, default);
         Assert.Empty(empty.Groups);
         await Assert.ThrowsAsync<NgbArgumentOutOfRangeException>(() => NgbSearchPipeline.ExecuteAsync(
-            new string('x', 257), 20, null, 50, Unexpected, Unexpected, Unexpected, NullLogger.Instance, default));
+            new string('x', 257), 20, NgbSearchScope.All, 50, Unexpected, Unexpected, Unexpected, NullLogger.Instance, default));
         foreach (var maximum in new[] { 0, 51 })
         {
             await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => NgbSearchPipeline.ExecuteAsync(
-                "alpha", 20, null, maximum, Unexpected, Unexpected, Unexpected, NullLogger.Instance, default));
+                "alpha", 20, NgbSearchScope.All, maximum, Unexpected, Unexpected, Unexpected, NullLogger.Instance, default));
         }
+    }
+
+    [Fact]
+    public async Task InvalidScopeDoesNotInvokeSources()
+    {
+        Task<string?> Unexpected(string query, int limit, CancellationToken ct)
+            => throw new InvalidOperationException("An invalid scope must not query a source.");
+
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => NgbSearchPipeline.ExecuteAsync(
+            "alpha", 20, (NgbSearchScope)(-1), 50, Unexpected, Unexpected, Unexpected, NullLogger.Instance, default));
     }
 
     [Fact]
@@ -76,7 +74,7 @@ public sealed class NgbSearchPipelineTests
                 throw new IOException("private provider details");
             return source == "reports" ? null : source;
         }
-        var result = await NgbSearchPipeline.ExecuteAsync("alpha", -1, "", 50,
+        var result = await NgbSearchPipeline.ExecuteAsync("alpha", -1, NgbSearchScope.All, 50,
             (_, limit, _) => Read("documents", limit), (_, limit, _) => Read("catalogs", limit),
             (_, limit, _) => Read("reports", limit), NullLogger.Instance, default);
         Assert.Equal(new[] { "documents", "catalogs", "reports" }, order);
@@ -96,6 +94,6 @@ public sealed class NgbSearchPipelineTests
         Task<string?> Unexpected(string query, int limit, CancellationToken ct)
             => throw new InvalidOperationException("Later sources must not run after cancellation.");
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => NgbSearchPipeline.ExecuteAsync(
-            "alpha", 20, null, 50, Cancel, Unexpected, Unexpected, NullLogger.Instance, cancellation.Token));
+            "alpha", 20, NgbSearchScope.All, 50, Cancel, Unexpected, Unexpected, NullLogger.Instance, cancellation.Token));
     }
 }

@@ -148,6 +148,11 @@ public sealed class ProviderContractTests
     [InlineData("http://provider.example/v1")]
     [InlineData("https://user:secret@provider.example/v1")]
     [InlineData("https://provider.example/v1?key=secret")]
+    [InlineData("https://provider.example/v1#fragment")]
+    [InlineData("http://localhost:11434/v1")]
+    [InlineData("http://host.docker.internal:11434/v1")]
+    [InlineData("ftp://provider.example/v1")]
+    [InlineData("relative/path")]
     public void RejectsUnsafeCloudEndpoints(string endpoint)
     {
         var services = new ServiceCollection().AddNgbOpenAiChatClient(options =>
@@ -159,6 +164,33 @@ public sealed class ProviderContractTests
         using var provider = services.BuildServiceProvider();
 
         Assert.Throws<OptionsValidationException>(() => provider.GetRequiredService<IOptions<OpenAiAssistantOptions>>().Value);
+    }
+
+    [Theory]
+    [InlineData("http://localhost:11434", true)]
+    [InlineData("http://127.0.0.1:11434", true)]
+    [InlineData("http://[::1]:11434", true)]
+    [InlineData("http://host.docker.internal:11434", true)]
+    [InlineData("http://HOST.DOCKER.INTERNAL:11434", true)]
+    [InlineData("https://ollama.example/api", true)]
+    [InlineData("http://ollama.example:11434", false)]
+    [InlineData("http://192.168.1.10:11434", false)]
+    [InlineData("http://host.docker.internal.evil.example:11434", false)]
+    [InlineData("http://localhost.evil.example:11434", false)]
+    [InlineData("http://user:secret@localhost:11434", false)]
+    [InlineData("http://host.docker.internal:11434?key=secret", false)]
+    [InlineData("http://localhost:11434#fragment", false)]
+    [InlineData("ftp://localhost:11434", false)]
+    [InlineData("relative/path", false)]
+    public void OllamaEndpointPolicyAllowsOnlySecureOrExplicitLocalConnections(string endpoint, bool valid)
+    {
+        var services = new ServiceCollection().AddNgbOllamaChatClient(options => options.Endpoint = endpoint);
+        using var provider = services.BuildServiceProvider();
+
+        if (valid)
+            Assert.Equal(endpoint, provider.GetRequiredService<IOptions<OllamaAssistantOptions>>().Value.Endpoint);
+        else
+            Assert.Throws<OptionsValidationException>(() => provider.GetRequiredService<IOptions<OllamaAssistantOptions>>().Value);
     }
 
     private static ServiceCollection Register(string provider, RecordingHandler handler)

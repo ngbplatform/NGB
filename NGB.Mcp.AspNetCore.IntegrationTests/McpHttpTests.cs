@@ -35,7 +35,7 @@ using Xunit;
 
 namespace NGB.Mcp.AspNetCore.IntegrationTests;
 
-public sealed class McpHttpTests
+public sealed partial class McpHttpTests
 {
     [Theory]
     [InlineData("2025-11-25")]
@@ -790,7 +790,7 @@ public sealed class McpHttpTests
 
         internal static async Task<TestHost> StartAsync(bool enabled = true, Dictionary<string, string?>? settings = null,
             Action<IServiceCollection>? configure = null, string pattern = "/mcp", bool trustProxy = false, string pathBase = "",
-            bool reloadFeatureAfterRegistration = false)
+            bool reloadFeatureAfterRegistration = false, bool mapReadControllers = false, bool legacyReportController = false)
         {
             var listener = new TcpListener(IPAddress.Loopback, 0);
             listener.Start();
@@ -830,6 +830,14 @@ public sealed class McpHttpTests
             builder.Services.AddScoped<INgbAccessChecker, NgbAccessChecker>();
             McpTestServices.AddReads(builder.Services);
             configure?.Invoke(builder.Services);
+            if (mapReadControllers)
+            {
+                builder.Services.AddControllers().ConfigureApplicationPartManager(manager =>
+                {
+                    manager.FeatureProviders.Clear();
+                    manager.FeatureProviders.Add(new ReadControllersFeatureProvider(legacyReportController));
+                });
+            }
             builder.Services.AddNgbMcp(builder.Configuration);
             if (reloadFeatureAfterRegistration)
             {
@@ -870,6 +878,8 @@ public sealed class McpHttpTests
             app.UseCors();
             app.UseAuthentication();
             app.UseAuthorization();
+            if (mapReadControllers)
+                app.MapControllers();
             app.MapGet("/api/current-user", (ClaimsPrincipal user) => user.FindFirst("sub")!.Value).RequireAuthorization();
             app.MapNgbMcp(pattern);
             await app.StartAsync();

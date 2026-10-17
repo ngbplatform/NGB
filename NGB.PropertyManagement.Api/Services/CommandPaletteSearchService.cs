@@ -1,4 +1,5 @@
 using System.Text;
+using NGB.Api.Search;
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Metadata;
 using NGB.Contracts.Reporting;
@@ -33,7 +34,7 @@ public sealed class CommandPaletteSearchService(
         var result = await NgbSearchPipeline.ExecuteAsync(
             request.Query,
             request.Limit,
-            request.Scope,
+            CommandPaletteSearchScope.Parse(request.Scope),
             30,
             (query, limit, token) => SearchDocumentsAsync(query, limit, request.Context, token),
             (query, limit, token) => SearchCatalogsAsync(query, limit, request.Context, token),

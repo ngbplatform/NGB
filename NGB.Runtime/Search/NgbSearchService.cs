@@ -35,10 +35,10 @@ public sealed class NgbSearchService(
 
         var scope = kind switch
         {
-            NgbSearchKind.Catalog => "catalogs",
-            NgbSearchKind.Document or NgbSearchKind.GeneralJournalEntry => "documents",
-            NgbSearchKind.Report => "reports",
-            _ => null
+            NgbSearchKind.Catalog => NgbSearchScope.Catalogs,
+            NgbSearchKind.Document or NgbSearchKind.GeneralJournalEntry => NgbSearchScope.Documents,
+            NgbSearchKind.Report => NgbSearchScope.Reports,
+            _ => NgbSearchScope.All
         };
 
         var result = await NgbSearchPipeline.ExecuteAsync(

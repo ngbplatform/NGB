@@ -43,12 +43,10 @@ public sealed class CrmControllersFullCoverageTests : IDisposable
             Mock.Of<IDocumentActionDispatcher>()).Should().NotBeNull();
         new DashboardController(Mock.Of<ICrmDashboardService>(), access).Should().NotBeNull();
         new ReportController(
-            Mock.Of<IReportDefinitionProvider>(),
-            Mock.Of<IReportEngine>(),
+            Mock.Of<IAuthorizedReportReadService>(),
             Mock.Of<IReportVariantService>(),
             Mock.Of<IReportDownloadService>(),
-            access,
-            securityCache).Should().NotBeNull();
+            access).Should().NotBeNull();
         new SecurityController(
             Mock.Of<ICurrentAccessService>(),
             permissionDefinitions,
