@@ -1,6 +1,8 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.BusinessObjects;
+using NGB.Contracts.Common;
 using NGB.Contracts.Reporting;
 using NGB.Contracts.WorkCenter;
 using NGB.Core.AuditLog;
@@ -11,9 +13,13 @@ public sealed record EmptyReadRequest;
 
 public enum McpSourceKind
 {
+    [JsonStringEnumMemberName(NgbSourceKinds.Catalog)]
     Catalog,
+    [JsonStringEnumMemberName(NgbSourceKinds.Document)]
     Document,
+    [JsonStringEnumMemberName(NgbSourceKinds.GeneralJournalEntry)]
     GeneralJournalEntry,
+    [JsonStringEnumMemberName(NgbSourceKinds.Report)]
     Report
 }
 

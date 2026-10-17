@@ -87,7 +87,7 @@ public sealed class NgbSearchService(
 
         return new SearchGroup(
             records.Select(item => new NgbSearchHit(
-                    "catalog",
+                    NgbSourceKinds.Catalog,
                     item.CatalogType,
                     item.Id,
                     item.Display ?? item.Id.ToString()))
@@ -124,8 +124,8 @@ public sealed class NgbSearchService(
 
         return new SearchGroup(records.Select(item => new NgbSearchHit(
                 item.DocumentType == AccountingDocumentTypeCodes.GeneralJournalEntry
-                    ? "generalJournalEntry"
-                    : "document",
+                    ? NgbSourceKinds.GeneralJournalEntry
+                    : NgbSourceKinds.Document,
                 item.DocumentType,
                 item.Id,
                 item.Number ?? item.Display ?? item.Id.ToString())).ToArray(),
@@ -138,7 +138,7 @@ public sealed class NgbSearchService(
         var hits = definitions.Where(item => typeCode is null || item.ReportCode == typeCode)
             .Where(item => item.Name.Contains(query, StringComparison.OrdinalIgnoreCase)
                 || item.ReportCode.Contains(query, StringComparison.OrdinalIgnoreCase))
-            .Select(item => new NgbSearchHit("report", item.ReportCode, null, item.Name))
+            .Select(item => new NgbSearchHit(NgbSourceKinds.Report, item.ReportCode, null, item.Name))
             .OrderByDescending(item => Score(item.Title, query))
             .ThenBy(item => item.Title, StringComparer.OrdinalIgnoreCase)
             .ThenBy(item => item.TypeCode, StringComparer.Ordinal)

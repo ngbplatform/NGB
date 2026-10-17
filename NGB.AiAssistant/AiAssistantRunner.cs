@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Options;
+using NGB.Contracts.Common;
 
 namespace NGB.AiAssistant;
 
@@ -68,7 +69,7 @@ public sealed class AiAssistantRunner(
         }
 
         if (request.Context is { } context
-            && (context.Kind is not ("catalog" or "document" or "generalJournalEntry" or "report")
+            && (!NgbSourceKinds.IsSupported(context.Kind)
                 || string.IsNullOrWhiteSpace(context.TypeCode)
                 || context.TypeCode.Length > 128
                 || context.TypeCode.Any(c => !char.IsAsciiLetterOrDigit(c) && c is not ('.' or '_' or '-'))

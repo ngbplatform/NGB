@@ -106,6 +106,9 @@ public sealed class AiAssistantRunnerTests
     [InlineData("generalJournalEntry", "general_journal_entry", true)]
     [InlineData("catalog", "../../secrets", false)]
     [InlineData("system", "pm.property", false)]
+    [InlineData("Catalog", "pm.property", false)]
+    [InlineData("0", "pm.property", false)]
+    [InlineData("report ", "pm.aging", false)]
     public void PageIdentifiersAreValidated(string kind, string typeCode, bool valid)
     {
         var request = Question with { Context = new(kind, typeCode) };
@@ -161,6 +164,32 @@ public sealed class AiAssistantRunnerTests
 
         Assert.Equal(id, Assert.Single(events, item => item.Type == "source").Source!.Id);
         Assert.DoesNotContain("private reasoning", JsonSerializer.Serialize(events));
+    }
+
+    [Theory]
+    [InlineData("catalog", true, true)]
+    [InlineData("catalog", false, false)]
+    [InlineData("document", true, true)]
+    [InlineData("document", false, false)]
+    [InlineData("generalJournalEntry", true, true)]
+    [InlineData("generalJournalEntry", false, false)]
+    [InlineData("report", false, true)]
+    [InlineData("Document", true, false)]
+    [InlineData("0", true, false)]
+    [InlineData("register", true, false)]
+    public async Task SourceKindsAndRecordIdentitiesAreValidatedBeforePublishing(string kind, bool hasId, bool valid)
+    {
+        Guid? id = hasId ? Guid.NewGuid() : null;
+        var tool = new SourceTool(new AiAssistantToolResult(new { id }, [new(kind, "test.source", id, "Result")]));
+        var model = new ScriptedClient(
+            [new(ChatRole.Assistant, [new FunctionCallContent("call", "read", null)])],
+            [new(ChatRole.Assistant, "Answer.")]);
+        var events = new List<AiAssistantEvent>();
+
+        await Runner(model, new Sessions(tool)).RunAsync(Question, Capture(events), default);
+
+        Assert.Equal(valid, events.Any(item => item.Type == "source"));
+        Assert.Contains(events, item => item.Type == "done");
     }
 
     [Fact]

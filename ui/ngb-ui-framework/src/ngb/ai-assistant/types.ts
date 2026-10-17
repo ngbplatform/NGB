@@ -1,5 +1,7 @@
+import type { NgbSourceKind } from '../api/sourceKinds'
+
 export type AssistantPageContext = {
-  kind: 'catalog' | 'document' | 'generalJournalEntry' | 'report'
+  kind: NgbSourceKind
   typeCode: string
   id?: string | null
 }

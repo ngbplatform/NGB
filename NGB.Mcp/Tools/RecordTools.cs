@@ -170,7 +170,7 @@ internal static class ReadValidation
         if (kind == McpSourceKind.Document && typeCode == AccountingDocumentTypeCodes.GeneralJournalEntry)
             kind = McpSourceKind.GeneralJournalEntry;
 
-        var code = System.Text.Json.JsonNamingPolicy.CamelCase.ConvertName(kind.ToString());
+        var code = kind.ToCode();
 
         return new McpRecordSource(kind, typeCode, id, links.Resolve(code, typeCode, id)?.AbsoluteUri);
     }

@@ -105,8 +105,10 @@ internal sealed class CapabilitiesTool(MetadataReader reader, McpReadDispatcher 
     public async Task<CapabilitiesResult> ExecuteAsync(EmptyReadRequest request, CancellationToken ct)
     {
         var definitions = await reader.ListAsync(null, ct);
-        var categories = definitions.Select(item => System.Text.Json.JsonNamingPolicy.CamelCase.ConvertName(item.Kind.ToString()))
-            .Distinct(StringComparer.Ordinal).ToArray();
+        var categories = definitions
+            .Select(item => item.Kind.ToCode())
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
         var tools = await dispatcher.ListAsync(ct);
 
         return new CapabilitiesResult(McpVersion.Value, true, categories, tools.Select(tool => tool.Name).ToArray());

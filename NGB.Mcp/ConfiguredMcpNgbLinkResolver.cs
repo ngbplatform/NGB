@@ -1,5 +1,6 @@
 using System.Collections.Frozen;
 using System.Text.RegularExpressions;
+using NGB.Contracts.Common;
 using NGB.Tools.Http;
 
 namespace NGB.Mcp;
@@ -30,13 +31,16 @@ public sealed class ConfiguredMcpNgbLinkResolver : IMcpNgbLinkResolver
 
         foreach (var (kind, route) in routes)
         {
-            if (kind is not ("catalog" or "document" or "generalJournalEntry" or "report")
+            if (!NgbSourceKinds.IsSupported(kind)
                 || string.IsNullOrWhiteSpace(route)
                 || !Regex.IsMatch(route, "^/[a-zA-Z0-9_./{}-]+$", RegexOptions.CultureInvariant)
-                || route.StartsWith("//", StringComparison.Ordinal) || route.Contains("..", StringComparison.Ordinal)
+                || route.StartsWith("//", StringComparison.Ordinal)
+                || route.Contains("..", StringComparison.Ordinal)
                 || route.Replace("{typeCode}", string.Empty, StringComparison.Ordinal)
                     .Replace("{id}", string.Empty, StringComparison.Ordinal).IndexOfAny(['{', '}']) >= 0
-                || (kind == "report" ? route.Contains("{id}", StringComparison.Ordinal) : !route.Contains("{id}", StringComparison.Ordinal)))
+                || (kind == NgbSourceKinds.Report
+                    ? route.Contains("{id}", StringComparison.Ordinal)
+                    : !route.Contains("{id}", StringComparison.Ordinal)))
             {
                 throw new ArgumentException("MCP routes must be local paths with supported source placeholders.", nameof(routes));
             }
@@ -49,9 +53,11 @@ public sealed class ConfiguredMcpNgbLinkResolver : IMcpNgbLinkResolver
     public Uri? Resolve(string kind, string typeCode, Guid? id)
     {
         if (!_routes.TryGetValue(kind, out var route)
-            || string.IsNullOrWhiteSpace(typeCode) || typeCode.Length > 128
+            || string.IsNullOrWhiteSpace(typeCode)
+            || typeCode.Length > 128
             || !Regex.IsMatch(typeCode, "^[a-zA-Z0-9_][a-zA-Z0-9_.-]*$", RegexOptions.CultureInvariant)
-            || kind != "report" && (!id.HasValue || id.Value == Guid.Empty))
+            || NgbSourceKinds.IsRecord(kind)
+            && (!id.HasValue || id.Value == Guid.Empty))
         {
             return null;
         }

@@ -8,6 +8,7 @@ using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using NGB.Mcp;
 using NGB.Mcp.AspNetCore;
+using NGB.Mcp.Tools;
 
 namespace NGB.AiAssistant.AspNetCore;
 
@@ -98,7 +99,7 @@ internal sealed class McpToolSessionFactory(
 
             var response = content.Deserialize<McpReadResponse<JsonElement>>(Json);
             var sources = response?.Sources.Select(source => new AiAssistantSource(
-                JsonNamingPolicy.CamelCase.ConvertName(source.Kind.ToString()),
+                source.Kind.ToCode(),
                 source.TypeCode,
                 source.Id,
                 source.Title)).ToArray() ?? [];

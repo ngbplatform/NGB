@@ -1,5 +1,6 @@
 using System.Text.Json;
 using NGB.Application.Abstractions.Services;
+using NGB.Contracts.Common;
 
 namespace NGB.Mcp.Tools;
 
@@ -12,7 +13,7 @@ internal sealed class SearchTool(INgbSearchService search, IMcpNgbLinkResolver l
         CancellationToken ct)
     {
         var sources = result.Items
-            .Select(item => Enum.TryParse<McpSourceKind>(item.Kind, ignoreCase: true, out var kind) && Enum.IsDefined(kind)
+            .Select(item => McpSourceKindExtensions.TryFromCode(item.Kind, out var kind)
                 ? ReadSources.Create(kind, item.TypeCode, item.RecordId, item.Title, item.Url)
                 : null)
             .OfType<McpReadSource>()
@@ -61,7 +62,7 @@ internal sealed class FetchTool(GetRecordTool records, IAuthorizedReportReadServ
     public async Task<FetchResult> ExecuteAsync(FetchRequest request, CancellationToken ct)
     {
         var parts = request.Id.Split(':');
-        if (parts is ["report", _])
+        if (parts is [NgbSourceKinds.Report, _])
         {
             var report = await reports.GetDefinitionAsync(parts[1], ct);
 
@@ -69,21 +70,16 @@ internal sealed class FetchTool(GetRecordTool records, IAuthorizedReportReadServ
                 request.Id,
                 report.Name,
                 JsonSerializer.Serialize(report, McpJson.Options),
-                links.Resolve("report", parts[1], null)?.AbsoluteUri);
+                links.Resolve(NgbSourceKinds.Report, parts[1], null)?.AbsoluteUri);
         }
 
-        if (parts.Length != 3 || !Guid.TryParseExact(parts[2], "D", out var id)
-            || parts[0] is not ("catalog" or "document" or "generalJournalEntry"))
+        if (parts.Length != 3
+            || !Guid.TryParseExact(parts[2], "D", out var id)
+            || !NgbSourceKinds.IsRecord(parts[0])
+            || !McpSourceKindExtensions.TryFromCode(parts[0], out var kind))
         {
             throw new McpReadException("invalid_input", "Use a canonical source ID returned by search.");
         }
-
-        var kind = parts[0] switch
-        {
-            "catalog" => McpSourceKind.Catalog,
-            "generalJournalEntry" => McpSourceKind.GeneralJournalEntry,
-            _ => McpSourceKind.Document
-        };
 
         var record = await records.ExecuteAsync(new RecordRequest(kind, parts[1], id), ct);
         var title = record.Catalog?.Display
