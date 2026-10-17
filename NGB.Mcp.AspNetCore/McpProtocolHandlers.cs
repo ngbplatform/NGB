@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -32,6 +33,7 @@ internal static class McpProtocolHandlers
                     Description = tool.Description,
                     InputSchema = tool.InputSchema,
                     OutputSchema = tool.OutputSchema,
+                    Meta = new JsonObject { [NgbMcpToolMetadata.CompatibilityOnly] = tool.CompatibilityOnly },
                     Annotations = new ToolAnnotations
                     {
                         ReadOnlyHint = true,

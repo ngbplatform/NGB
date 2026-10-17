@@ -1,9 +1,8 @@
 <template>
   <div class="flex h-full min-h-0 flex-col" data-testid="ai-assistant-content">
-    <header class="flex items-center gap-2 border-b border-ngb-border px-4 py-3">
+    <header class="flex h-14 shrink-0 items-center gap-2 border-b border-ngb-border px-4" data-testid="ai-assistant-header">
       <div class="min-w-0 flex-1">
         <h2 id="ai-assistant-title" class="font-semibold">AI Assistant</h2>
-        <p class="truncate text-xs text-ngb-muted">{{ assistant.settings?.model ?? 'Ask about your application data' }}</p>
       </div>
       <button type="button" class="ngb-iconbtn" title="New chat" aria-label="New chat" @click="newChat">
         <NgbIcon name="plus" />
@@ -34,12 +33,12 @@
           <div v-else class="assistant-markdown break-words text-sm leading-6" v-html="renderMessage(message)" @click="navigateLink" />
           <ul v-if="message.sources.length" class="mt-3 flex flex-wrap gap-2" aria-label="Sources">
             <li v-for="(source, index) in message.sources" :key="index">
-              <button
+              <a
                   v-if="assistantSourcePath(source)"
-                  type="button"
-                  class="max-w-full rounded-[var(--ngb-radius)] border border-ngb-border px-2 py-1 text-left text-xs text-ngb-blue ngb-focus hover:bg-ngb-bg"
-                  @click="openSource(source)"
-              >{{ source.title }}</button>
+                  :href="assistantSourcePath(source)!"
+                  class="inline-block max-w-full rounded-[var(--ngb-radius)] border border-ngb-border px-2 py-1 text-left text-xs text-ngb-blue underline ngb-focus hover:bg-ngb-bg"
+                  @click="navigateLink"
+              >{{ source.title }}</a>
             </li>
           </ul>
           <p v-if="message.state === 'stopped'" class="mt-2 text-xs text-ngb-muted">Response stopped.</p>
@@ -56,7 +55,7 @@
       </div>
       <label v-if="context" class="mb-3 flex items-center gap-2 text-xs text-ngb-muted">
         <input v-model="useContext" type="checkbox" />
-        Use current page: {{ context.typeCode }}
+        Focus on {{ pageTitle || 'this section' }}
       </label>
       <form @submit.prevent="submit">
         <label for="ai-assistant-question" class="sr-only">Ask a question</label>
@@ -89,8 +88,9 @@ import NgbButton from '../primitives/NgbButton.vue'
 import { useAiAssistant } from './useAiAssistant'
 import { assistantPageContext, assistantSourcePath } from './navigation'
 import { renderAssistantMarkdown } from './markdown'
-import type { AssistantMessage, AssistantSource } from './types'
+import type { AssistantMessage } from './types'
 
+defineProps<{ pageTitle?: string }>()
 const emit = defineEmits<{ (event: 'close'): void; (event: 'navigate', path: string): void }>()
 const assistant = useAiAssistant()
 const route = inject(routeLocationKey, null)
@@ -104,21 +104,15 @@ const canRetry = computed(() => !assistant.busy && assistant.messages.at(-1)?.st
 const suggestions = ['What reports can I run?', 'Help me find a record.', 'What data can I explore here?']
 
 function renderMessage(message: AssistantMessage): string {
-  const paths = message.sources.map(assistantSourcePath).filter((path): path is string => !!path)
-  return renderAssistantMarkdown(message.text, paths)
+  return renderAssistantMarkdown(message.text, message.sources)
 }
 
 function navigateLink(event: MouseEvent): void {
   const anchor = (event.target as HTMLElement).closest('a')
-  if (!anchor) return
+  if (!anchor || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return
   event.preventDefault()
   const url = new URL(anchor.href)
   if (url.origin === window.location.origin) emit('navigate', url.pathname + url.search + url.hash)
-}
-
-function openSource(source: AssistantSource): void {
-  const path = assistantSourcePath(source)
-  if (path) emit('navigate', path)
 }
 
 async function ask(question: string): Promise<void> {

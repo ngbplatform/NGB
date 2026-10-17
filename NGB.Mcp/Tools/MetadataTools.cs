@@ -43,8 +43,18 @@ internal sealed class MetadataReader(
     }
 }
 
-internal sealed class ListMetadataTool(MetadataReader reader) : IMcpReadToolHandler<MetadataListRequest, MetadataPage>
+internal sealed class ListMetadataTool(MetadataReader reader)
+    : IMcpReadToolHandler<MetadataListRequest, MetadataPage>, IMcpReadSourceProvider<MetadataListRequest, MetadataPage>
 {
+    public ValueTask<IReadOnlyList<McpReadSource>> GetSourcesAsync(
+        MetadataListRequest request,
+        MetadataPage result,
+        CancellationToken ct)
+        => ValueTask.FromResult<IReadOnlyList<McpReadSource>>(result.Items
+            .Where(item => item.Kind == McpSourceKind.Report)
+            .Select(item => new McpReadSource(item.Kind, item.TypeCode, null, item.Name))
+            .ToArray());
+
     public async Task<MetadataPage> ExecuteAsync(MetadataListRequest request, CancellationToken ct)
     {
         var items = await reader.ListAsync(request.Kind, ct);
@@ -64,8 +74,14 @@ internal sealed class GetMetadataTool(
     IAuthorizedCatalogReadService catalogs,
     IAuthorizedDocumentReadService documents,
     IAuthorizedReportReadService reports)
-    : IMcpReadToolHandler<MetadataRequest, MetadataResult>
+    : IMcpReadToolHandler<MetadataRequest, MetadataResult>, IMcpReadSourceProvider<MetadataRequest, MetadataResult>
 {
+    public ValueTask<IReadOnlyList<McpReadSource>> GetSourcesAsync(
+        MetadataRequest request,
+        MetadataResult result,
+        CancellationToken ct)
+        => ValueTask.FromResult(ReadSources.Report(result.Report));
+
     public async Task<MetadataResult> ExecuteAsync(MetadataRequest request, CancellationToken ct)
     {
         ReadValidation.RequireRecordKind(request.Kind, request.TypeCode);

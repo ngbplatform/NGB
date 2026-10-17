@@ -9,7 +9,7 @@ it('renders useful formatting while refusing HTML, remote images and invented li
   const result = renderAssistantMarkdown(
     '**Seven** records. <script>alert(1)</script> ![tracking](https://evil.example/pixel) '
     + '[bad](javascript:alert(1)) [remote](https://evil.example/) [invented](/catalogs/fake) '
-    + '[source](/reports/pm.aging)', ['/reports/pm.aging'])
+    + '[source](/reports/pm.aging)', [{ kind: 'report', typeCode: 'pm.aging', title: 'Aging' }])
 
   expect(result).toContain('<strong>Seven</strong>')
   expect(result).not.toContain('<script>')
@@ -18,6 +18,35 @@ it('renders useful formatting while refusing HTML, remote images and invented li
   expect(result).not.toContain('href="javascript:')
   expect(result).not.toContain('href="/catalogs/fake')
   expect(result).toContain('href="/reports/pm.aging"')
+  expect(result).toContain('>Aging</a>')
+})
+
+it('resolves verified record references and replaces model labels with the actual Display', () => {
+  vi.stubGlobal('window', { location: { origin: 'https://app.example' } })
+  const id = '11111111-1111-4111-8111-111111111111'
+  const display = 'Receivable Payment RP-2026-000014 8/24/2025'
+  const path = `/documents/pm.receivable_payment/${id}`
+  const sources = [{ kind: 'document' as const, typeCode: 'pm.receivable_payment', id, title: display }]
+  const result = renderAssistantMarkdown(
+    `[wrong title](ngb-source:document:pm.receivable_payment:${id}) https://app.example${path}`, sources)
+
+  expect(result.match(new RegExp(`href="${path}"`, 'g'))).toHaveLength(2)
+  expect(result.match(new RegExp(`>${display}</a>`, 'g'))).toHaveLength(2)
+  expect(result).not.toContain('wrong title')
+  expect(result).not.toContain('https://')
+})
+
+it('never displays invented URLs or accepts references supplied only by the model', () => {
+  vi.stubGlobal('window', { location: { origin: 'https://app.example' } })
+  const result = renderAssistantMarkdown(
+    'https://app.noble-gateway.com/pm.receivable_payment/RP-2026-000014 '
+    + '[Payment](ngb-source:document:pm.receivable_payment:11111111-1111-4111-8111-111111111111) '
+    + '`https://invented.example/document`\n\n```text\nhttps://invented.example/document\n```', [])
+
+  expect(result).not.toContain('href=')
+  expect(result).not.toContain('https://')
+  expect(result).not.toContain('ngb-source:')
+  expect(result).toContain('Link unavailable')
 })
 
 it('uses only validated page identifiers and existing navigation targets', () => {

@@ -11,7 +11,13 @@ public sealed record AiAssistantRequest(
     IReadOnlyList<AiAssistantMessage> Messages,
     AiAssistantPageContext? Context = null);
 
-public sealed record AiAssistantSource(string Kind, string TypeCode, Guid? Id, string Title);
+public sealed record AiAssistantSource(string Kind, string TypeCode, Guid? Id, string Title)
+{
+    public string Reference => $"ngb-source:{Kind}:{TypeCode}" + (Id is null ? "" : $":{Id:D}");
+}
+
+/// <summary>Application data and explicit sources supplied by the trusted tool adapter.</summary>
+public sealed record AiAssistantToolResult(object? Data, IReadOnlyList<AiAssistantSource> Sources);
 
 public sealed record AiAssistantEvent(
     string Type,

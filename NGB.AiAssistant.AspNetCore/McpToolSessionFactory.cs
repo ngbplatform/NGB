@@ -1,8 +1,12 @@
+using System.Reflection;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.AI;
+using Microsoft.Net.Http.Headers;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
+using NGB.Mcp;
 using NGB.Mcp.AspNetCore;
 
 namespace NGB.AiAssistant.AspNetCore;
@@ -15,6 +19,16 @@ internal sealed class McpToolSessionFactory(
 {
     internal const string ClientName = "NGB.AiAssistant.Mcp";
 
+    private static readonly string ClientVersion = typeof(McpToolSessionFactory)
+        .Assembly
+        .GetCustomAttribute<AssemblyInformationalVersionAttribute>()!
+        .InformationalVersion.Split('+')[0];
+
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
+    {
+        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase, allowIntegerValues: false) }
+    };
+
     public async Task<IAiAssistantToolSession> OpenAsync(CancellationToken ct)
     {
         var authorization = context.HttpContext?.Request.Headers.Authorization.ToString();
@@ -26,7 +40,7 @@ internal sealed class McpToolSessionFactory(
         {
             Endpoint = services.GetNgbMcpEndpoint(),
             TransportMode = HttpTransportMode.StreamableHttp,
-            AdditionalHeaders = new Dictionary<string, string> { ["Authorization"] = authorization }
+            AdditionalHeaders = new Dictionary<string, string> { [HeaderNames.Authorization] = authorization }
         }, http, ownsHttpClient: true);
 
         McpClient? client = null;
@@ -34,13 +48,14 @@ internal sealed class McpToolSessionFactory(
         {
             client = await McpClient.CreateAsync(transport, new McpClientOptions
             {
-                ClientInfo = new Implementation { Name = "NGB AI Assistant", Version = "3.3.0" }
+                ClientInfo = new Implementation { Name = "NGB AI Assistant", Version = ClientVersion }
             }, cancellationToken: ct);
 
             var tools = await client.ListToolsAsync(cancellationToken: ct);
 
             return new Session(client, tools
-                .Where(tool => tool.ProtocolTool.Annotations?.ReadOnlyHint == true)
+                .Where(tool => tool.ProtocolTool.Annotations?.ReadOnlyHint == true
+                    && tool.ProtocolTool.Meta?[NgbMcpToolMetadata.CompatibilityOnly]?.GetValue<bool>() != true)
                 .Select(tool => (AIFunction)new ReadTool(tool))
                 .ToArray());
         }
@@ -73,29 +88,22 @@ internal sealed class McpToolSessionFactory(
             CancellationToken cancellationToken)
         {
             var result = await tool.CallAsync(arguments, cancellationToken: cancellationToken);
-            if (result.IsError == true)
-                return new { error = true, content = result.Content.OfType<TextContentBlock>().Select(content => content.Text).ToArray() };
-
-            var content = result.StructuredContent
-                ?? JsonSerializer.SerializeToElement(result.Content.OfType<TextContentBlock>()
-                    .Select(content => content.Text)
-                    .ToArray());
+            var text = result.Content.OfType<TextContentBlock>().Select(с => с.Text).ToArray();
             
-            if (tool.Name == "ngb_execute_report")
-            {
-                var request = JsonSerializer.SerializeToElement(arguments);
-                if (request.TryGetProperty("reportCode", out var code) && code.ValueKind == JsonValueKind.String)
-                {
-                    // Execution results contain a sheet, but no report identifier. Add the source only after a successful authorized read.
-                    return new
-                    {
-                        data = content,
-                        source = new AiAssistantSource("report", code.GetString()!, null, code.GetString()!)
-                    };
-                }
-            }
+            if (result.IsError == true)
+                return new AiAssistantToolResult(new { error = true, content = text }, []);
 
-            return content;
+            if (result.StructuredContent is not { } content)
+                return new AiAssistantToolResult(text, []);
+
+            var response = content.Deserialize<McpReadResponse<JsonElement>>(Json);
+            var sources = response?.Sources.Select(source => new AiAssistantSource(
+                JsonNamingPolicy.CamelCase.ConvertName(source.Kind.ToString()),
+                source.TypeCode,
+                source.Id,
+                source.Title)).ToArray() ?? [];
+
+            return new AiAssistantToolResult(content, sources);
         }
     }
 }

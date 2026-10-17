@@ -13,8 +13,21 @@ internal sealed class GetRecordTool(
     IRecordReadScopeFactory readScopes,
     IOptions<McpReadOptions> options,
     IMcpNgbLinkResolver links)
-    : IMcpReadToolHandler<RecordRequest, RecordResult>
+    : IMcpReadToolHandler<RecordRequest, RecordResult>, IMcpReadSourceProvider<RecordRequest, RecordResult>
 {
+    public ValueTask<IReadOnlyList<McpReadSource>> GetSourcesAsync(
+        RecordRequest request,
+        RecordResult result,
+        CancellationToken ct)
+    {
+        var title = result.Catalog?.Display ?? result.Document?.Display ?? result.GeneralJournalEntry?.Document.Display;
+        var source = result.Source is { } record
+            ? ReadSources.Create(record.Kind, record.TypeCode, record.Id, title, record.OpenInNgb)
+            : null;
+
+        return ValueTask.FromResult<IReadOnlyList<McpReadSource>>(source is null ? [] : [source]);
+    }
+
     public async Task<RecordResult> ExecuteAsync(RecordRequest request, CancellationToken ct)
     {
         ReadValidation.RequireId(request.Id);
@@ -60,8 +73,29 @@ internal sealed class ListRecordsTool(
     IAuthorizedCatalogReadService catalogs,
     IAuthorizedDocumentReadService documents,
     IAuthorizedGeneralJournalEntryReadService journal)
-    : IMcpReadToolHandler<RecordsRequest, RecordsResult>
+    : IMcpReadToolHandler<RecordsRequest, RecordsResult>, IMcpReadSourceProvider<RecordsRequest, RecordsResult>
 {
+    public ValueTask<IReadOnlyList<McpReadSource>> GetSourcesAsync(
+        RecordsRequest request,
+        RecordsResult result,
+        CancellationToken ct)
+    {
+        var records = request.Kind switch
+        {
+            McpSourceKind.Catalog => result.Catalogs?.Items.Select(item => (item.Id, item.Display)),
+            McpSourceKind.Document => result.Documents?.Items.Select(item => (item.Id, item.Display)),
+            McpSourceKind.GeneralJournalEntry => result.GeneralJournalEntries?.Items.Select(item => (item.Id, item.Display)),
+            _ => null
+        };
+
+        var sources = records?
+            .Select(item => ReadSources.Create(request.Kind, request.TypeCode, item.Id, item.Display))
+            .OfType<McpReadSource>()
+            .ToArray() ?? [];
+
+        return ValueTask.FromResult<IReadOnlyList<McpReadSource>>(sources);
+    }
+
     public async Task<RecordsResult> ExecuteAsync(RecordsRequest request, CancellationToken ct)
     {
         ReadValidation.RequireRecordKind(request.Kind, request.TypeCode);

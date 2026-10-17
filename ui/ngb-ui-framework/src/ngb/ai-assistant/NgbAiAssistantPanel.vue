@@ -9,7 +9,7 @@
       @update:open="$emit('update:open', $event)"
       @after-leave="restoreFocus"
   >
-    <NgbAiAssistantContent @close="close" @navigate="$emit('navigate', $event)" />
+    <NgbAiAssistantContent :page-title="pageTitle" @close="close" @navigate="$emit('navigate', $event)" />
   </NgbDrawer>
   <aside
       v-else
@@ -19,7 +19,7 @@
       data-testid="ai-assistant-panel"
       @keydown.esc.stop="close"
   >
-    <NgbAiAssistantContent @close="close" @navigate="$emit('navigate', $event)" />
+    <NgbAiAssistantContent :page-title="pageTitle" @close="close" @navigate="$emit('navigate', $event)" />
   </aside>
 </template>
 
@@ -29,7 +29,7 @@ import NgbDrawer from '../components/NgbDrawer.vue'
 import NgbAiAssistantContent from './NgbAiAssistantContent.vue'
 import { useAiAssistant } from './useAiAssistant'
 
-const props = defineProps<{ open: boolean }>()
+const props = defineProps<{ open: boolean; pageTitle?: string }>()
 const emit = defineEmits<{ (event: 'update:open', value: boolean): void; (event: 'navigate', path: string): void }>()
 const assistant = useAiAssistant()
 const media = window.matchMedia('(max-width: 1023px)')

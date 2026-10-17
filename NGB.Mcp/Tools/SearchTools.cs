@@ -4,8 +4,23 @@ using NGB.Application.Abstractions.Services;
 namespace NGB.Mcp.Tools;
 
 internal sealed class SearchTool(INgbSearchService search, IMcpNgbLinkResolver links)
-    : IMcpReadToolHandler<SearchRequest, SearchResult>
+    : IMcpReadToolHandler<SearchRequest, SearchResult>, IMcpReadSourceProvider<SearchRequest, SearchResult>
 {
+    public ValueTask<IReadOnlyList<McpReadSource>> GetSourcesAsync(
+        SearchRequest request,
+        SearchResult result,
+        CancellationToken ct)
+    {
+        var sources = result.Items
+            .Select(item => Enum.TryParse<McpSourceKind>(item.Kind, ignoreCase: true, out var kind) && Enum.IsDefined(kind)
+                ? ReadSources.Create(kind, item.TypeCode, item.RecordId, item.Title, item.Url)
+                : null)
+            .OfType<McpReadSource>()
+            .ToArray();
+
+        return ValueTask.FromResult<IReadOnlyList<McpReadSource>>(sources);
+    }
+
     public async Task<SearchResult> ExecuteAsync(SearchRequest request, CancellationToken ct)
     {
         var result = await search.SearchAsync(request.Query, request.Limit, request.Kind, request.TypeCode, ct);

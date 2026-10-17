@@ -298,8 +298,13 @@ posting or administrative write tools. Accounting, Operational Register and
 Reference Register data are available through installed reports and document
 Effects. Custom registered definitions automatically appear in generic tools.
 
-The normal result envelope contains `schemaVersion`, typed `data`, and
-`generatedAtUtc`. The compatibility tools return their specified root objects.
+The normal result envelope contains `schemaVersion`, typed `data`,
+`generatedAtUtc`, and `sources`. Each source identifies an authorized object with
+`kind`, `typeCode`, `id`, its display `title`, and an optional `url`. Sources are
+explicit result metadata; clients must not infer them from arbitrary payload fields.
+The compatibility tools return their specified root objects and are marked with
+`ngb/compatibilityOnly` in the tool definition's `_meta` field. Clients using the
+normal tool catalog can exclude them without inspecting tool names.
 Both structured content and equivalent JSON text are included. Missing source
 URLs remain `null`; citation-oriented clients may require a configured UI route.
 
@@ -332,7 +337,8 @@ An empty metadata page has this `structuredContent` shape:
     "limit": 10,
     "hasMore": false
   },
-  "generatedAtUtc": "2026-10-16T12:00:00Z"
+  "generatedAtUtc": "2026-10-16T12:00:00Z",
+  "sources": []
 }
 ```
 
@@ -458,6 +464,14 @@ Handlers resolve in the current request scope. Registration permissions control
 discovery and invocation; the handler must also enforce parent/resource access
 through secured application services. Feature availability can be supplied by
 `IsAvailableAsync` and is rechecked for every request.
+
+A handler that returns linkable objects can also implement
+`IMcpReadSourceProvider<TRequest, TResult>`. Its `GetSourcesAsync` method receives
+the typed request and successful result and returns `McpReadSource` entries.
+Use the authorized object's Display (or report name) as the title. The registry
+includes these sources in the result envelope within the same response budget.
+Failures do not produce sources. The built-in Assistant consumes this contract
+for both platform and custom tools without tool-specific adapters.
 
 A contributor is trusted installed .NET code. A read-only annotation cannot
 sandbox arbitrary code or prevent it from invoking an injected writer. Keep

@@ -4,8 +4,14 @@ using NGB.Contracts.Reporting;
 namespace NGB.Mcp.Tools;
 
 internal sealed class ListReportsTool(IAuthorizedReportReadService reports)
-    : IMcpReadToolHandler<ReportsRequest, ReportsResult>
+    : IMcpReadToolHandler<ReportsRequest, ReportsResult>, IMcpReadSourceProvider<ReportsRequest, ReportsResult>
 {
+    public ValueTask<IReadOnlyList<McpReadSource>> GetSourcesAsync(
+        ReportsRequest request,
+        ReportsResult result,
+        CancellationToken ct)
+        => ValueTask.FromResult<IReadOnlyList<McpReadSource>>(result.Items.SelectMany(ReadSources.Report).ToArray());
+
     public async Task<ReportsResult> ExecuteAsync(ReportsRequest request, CancellationToken ct)
     {
         var definitions = (await reports.GetAllDefinitionsAsync(ct))
@@ -24,15 +30,27 @@ internal sealed class ListReportsTool(IAuthorizedReportReadService reports)
 }
 
 internal sealed class ReportDefinitionTool(IAuthorizedReportReadService reports)
-    : IMcpReadToolHandler<ReportDefinitionRequest, ReportDefinitionDto>
+    : IMcpReadToolHandler<ReportDefinitionRequest, ReportDefinitionDto>, IMcpReadSourceProvider<ReportDefinitionRequest, ReportDefinitionDto>
 {
+    public ValueTask<IReadOnlyList<McpReadSource>> GetSourcesAsync(
+        ReportDefinitionRequest request,
+        ReportDefinitionDto result,
+        CancellationToken ct)
+        => ValueTask.FromResult(ReadSources.Report(result));
+
     public Task<ReportDefinitionDto> ExecuteAsync(ReportDefinitionRequest request, CancellationToken ct)
         => reports.GetDefinitionAsync(request.ReportCode, ct);
 }
 
 internal sealed class ExecuteReportTool(IAuthorizedReportReadService reports, IReportRequestAdmission budget)
-    : IMcpReadToolHandler<ReportReadRequest, ReportExecutionResponseDto>
+    : IMcpReadToolHandler<ReportReadRequest, ReportExecutionResponseDto>, IMcpReadSourceProvider<ReportReadRequest, ReportExecutionResponseDto>
 {
+    public async ValueTask<IReadOnlyList<McpReadSource>> GetSourcesAsync(
+        ReportReadRequest request,
+        ReportExecutionResponseDto result,
+        CancellationToken ct)
+        => ReadSources.Report(await reports.GetDefinitionAsync(request.ReportCode, ct));
+
     public async Task<ReportExecutionResponseDto> ExecuteAsync(ReportReadRequest request, CancellationToken ct)
     {
         if (request.Request.Limit is < 1 or > 200)

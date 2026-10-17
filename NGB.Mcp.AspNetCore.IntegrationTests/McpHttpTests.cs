@@ -51,6 +51,8 @@ public sealed class McpHttpTests
         }), new McpClientOptions { ProtocolVersion = protocolVersion });
         var tools = await client.ListToolsAsync();
         Assert.Contains(tools, tool => tool.Name == "ngb_get_capabilities");
+        var compatibility = tools.Where(tool => tool.ProtocolTool.Meta?[NgbMcpToolMetadata.CompatibilityOnly]?.GetValue<bool>() == true);
+        Assert.Equal(["fetch", "search"], compatibility.Select(tool => tool.Name).OrderBy(name => name));
         foreach (var name in new[] { "ngb_search_platform_knowledge", "ngb_get_platform_knowledge" })
         {
             Assert.DoesNotContain(tools, tool => tool.Name == name);
@@ -62,6 +64,7 @@ public sealed class McpHttpTests
         var result = await client.CallToolAsync("ngb_list_metadata");
         Assert.NotEqual(true, result.IsError);
         Assert.Empty(result.StructuredContent!.Value.GetProperty("data").GetProperty("items").EnumerateArray());
+        Assert.Empty(result.StructuredContent.Value.GetProperty("sources").EnumerateArray());
         var error = await client.CallToolAsync("fetch", new Dictionary<string, object?> { ["id"] = "https://internal.invalid/secrets" });
         Assert.True(error.IsError);
         var text = Assert.IsType<TextContentBlock>(Assert.Single(error.Content)).Text;

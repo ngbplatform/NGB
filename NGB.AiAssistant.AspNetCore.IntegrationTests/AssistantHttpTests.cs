@@ -24,11 +24,16 @@ using Moq;
 using NGB.Api.CurrentUser;
 using NGB.AiAssistant.Ollama;
 using NGB.Application.Abstractions.Services;
+using NGB.Contracts.BusinessObjects;
+using NGB.Contracts.Common;
+using NGB.Contracts.Metadata;
 using NGB.Contracts.Reporting;
+using NGB.Contracts.Services;
 using NGB.Core.Security;
 using NGB.Hosting.AspNetCore.Identity;
 using NGB.Mcp;
 using NGB.Mcp.AspNetCore;
+using NGB.Mcp.Tools;
 using NGB.Runtime.CurrentActor;
 using NGB.Runtime.Security;
 using NGB.Testing.Mcp;
@@ -38,7 +43,72 @@ namespace NGB.AiAssistant.AspNetCore.IntegrationTests;
 
 public sealed class AssistantHttpTests
 {
+    private const string PaymentDisplay = "Receivable Payment RP-2026-000014 8/24/2025";
     private static readonly AiAssistantRequest Question = new([new("user", "Who am I?")]);
+
+    [NativeOllamaFact]
+    public async Task NativeOllamaFindsPaymentByNumberAndUsesTheVerifiedDisplayAndReference()
+    {
+        await using var host = await Host.StartAsync(mode: "ollama-search");
+        using var client = host.Client("alex");
+        client.Timeout = TimeSpan.FromMinutes(4);
+        var question = new AiAssistantRequest([new("user", "give the link of RP-2026-000014")],
+            new("document", "pm.receivable_payment"));
+
+        using var response = await client.PostAsJsonAsync("/api/ai-assistant/chat", question);
+        var body = await response.Content.ReadAsStringAsync();
+        var events = ReadEvents(body);
+        Assert.True(events.All(item => item.Type != "error") && events.Any(item => item.Type == "source"),
+            string.Join('\n', host.State.ModelInputs));
+        var source = Assert.Single(events, item => item.Type == "source").Source!;
+        var answer = string.Concat(events.Where(item => item.Type == "text").Select(item => item.Text));
+
+        Assert.NotEmpty(host.State.Searches);
+        Assert.Equal(host.State.PaymentId, source.Id);
+        Assert.Equal(PaymentDisplay, source.Title);
+        Assert.Contains($"[{PaymentDisplay}]({source.Reference})", answer);
+        Assert.DoesNotContain("http", answer, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("canonical", answer, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("untrusted", answer, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(events, item => item.Type == "done");
+    }
+
+    private static AiAssistantEvent[] ReadEvents(string body)
+        => body.Split('\n').Where(line => line.StartsWith("data: ", StringComparison.Ordinal))
+            .Select(line => System.Text.Json.JsonSerializer.Deserialize<AiAssistantEvent>(line[6..],
+                new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web))!)
+            .ToArray();
+
+    [Theory]
+    [InlineData("record-search", true)]
+    [InlineData("record-list", true)]
+    [InlineData("record-detail", true)]
+    [InlineData("record-denied", false)]
+    [InlineData("custom-record", true)]
+    public async Task RecordLinksUseDisplaysFromSuccessfulAuthorizedMcpReads(string mode, bool hasSource)
+    {
+        await using var host = await Host.StartAsync(mode: mode);
+        using var client = host.Client("alex");
+
+        using var response = await client.PostAsJsonAsync("/api/ai-assistant/chat", Question);
+        var body = await response.Content.ReadAsStringAsync();
+        var events = ReadEvents(body);
+        var sources = events.Where(item => item.Type == "source").Select(item => item.Source!).ToArray();
+
+        Assert.Contains(events, item => item.Type == "done");
+        if (hasSource)
+        {
+            var source = Assert.Single(sources);
+            Assert.Equal("document", source.Kind);
+            Assert.Equal("pm.receivable_payment", source.TypeCode);
+            Assert.Equal(host.State.PaymentId, source.Id);
+            Assert.Equal(PaymentDisplay, source.Title);
+        }
+        else
+        {
+            Assert.Empty(sources);
+        }
+    }
 
     [NativeOllamaFact]
     public async Task NativeOllamaUsesTheRealMcpTransportAndReturnsAnUnknownUserIdentifier()
@@ -93,6 +163,7 @@ public sealed class AssistantHttpTests
             var source = Assert.Single(sources);
             Assert.Equal("report", source.Kind);
             Assert.Equal("pm.aging", source.TypeCode);
+            Assert.Equal("Aging", source.Title);
         }
         else
         {
@@ -333,12 +404,32 @@ public sealed class AssistantHttpTests
             => builder.Add<EmptyRequest, UserResult, CurrentUserTool>("current_user", "Read current user", [NgbSystemPermissions.AuditView]);
     }
 
+    public sealed class CustomRecordContributor : IMcpReadToolContributor
+    {
+        public void Contribute(IMcpReadToolRegistryBuilder builder)
+            => builder.Add<EmptyRequest, UserResult, CustomRecordTool>("payment_lookup", "Find an authorized payment.", [NgbSystemPermissions.AuditView]);
+    }
+
+    public sealed class CustomRecordTool(State state)
+        : IMcpReadToolHandler<EmptyRequest, UserResult>, IMcpReadSourceProvider<EmptyRequest, UserResult>
+    {
+        public Task<UserResult> ExecuteAsync(EmptyRequest request, CancellationToken ct)
+            => Task.FromResult(new UserResult("alex"));
+
+        public ValueTask<IReadOnlyList<McpReadSource>> GetSourcesAsync(EmptyRequest request, UserResult result, CancellationToken ct)
+            => ValueTask.FromResult<IReadOnlyList<McpReadSource>>([
+                new(McpSourceKind.Document, "pm.receivable_payment", state.PaymentId, PaymentDisplay)
+            ]);
+    }
+
     public sealed class State
     {
         public string Mode { get; set; } = "normal";
         public bool ProviderRegistered { get; set; }
         public ConcurrentBag<string> ToolUsers { get; } = [];
         public ConcurrentBag<string> ModelInputs { get; } = [];
+        public ConcurrentBag<string> Searches { get; } = [];
+        public Guid PaymentId { get; } = Guid.NewGuid();
         public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource Cancelled { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     }
@@ -349,6 +440,9 @@ public sealed class AssistantHttpTests
             ChatOptions? options = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
             var input = messages.ToArray();
+            Assert.DoesNotContain(options!.Tools!, tool => tool.Name is "search" or "fetch");
+            if (state.Mode == "custom-record")
+                Assert.Equal("Find an authorized payment.", options.Tools!.Single(tool => tool.Name == "payment_lookup").Description);
             state.ModelInputs.Add(System.Text.Json.JsonSerializer.Serialize(input));
             state.Started.TrySetResult();
             if (state.Mode == "error")
@@ -371,6 +465,10 @@ public sealed class AssistantHttpTests
                 "report-list" => "ngb_list_reports",
                 "report-definition" => "ngb_get_report_definition",
                 "report-execute" or "report-denied" => "ngb_execute_report",
+                "record-search" => "ngb_search",
+                "record-list" or "record-denied" => "ngb_list_records",
+                "record-detail" => "ngb_get_record",
+                "custom-record" => "payment_lookup",
                 _ => "current_user"
             };
             Dictionary<string, object?>? arguments = state.Mode is "report-definition" or "report-execute" or "report-denied"
@@ -378,6 +476,14 @@ public sealed class AssistantHttpTests
                 : null;
             if (state.Mode is "report-execute" or "report-denied")
                 arguments!["request"] = new ReportExecutionRequestDto(Limit: 10);
+            if (state.Mode.StartsWith("record-", StringComparison.Ordinal))
+            {
+                arguments = new() { ["kind"] = "document", ["typeCode"] = "pm.receivable_payment" };
+                if (state.Mode == "record-search")
+                    arguments["query"] = "RP-2026-000014";
+                if (state.Mode == "record-detail")
+                    arguments["id"] = state.PaymentId;
+            }
 
             yield return tool is null
                 ? new(ChatRole.Assistant, [new FunctionCallContent("call-1", toolName, arguments)]) { FinishReason = ChatFinishReason.ToolCalls }
@@ -391,6 +497,28 @@ public sealed class AssistantHttpTests
             => throw new NotSupportedException();
         public object? GetService(Type serviceType, object? serviceKey = null) => null;
         public void Dispose() { }
+    }
+
+    private sealed class ObservedModel(IChatClient inner, State state) : DelegatingChatClient(inner)
+    {
+        public override async IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
+            IEnumerable<ChatMessage> messages,
+            ChatOptions? options = null,
+            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            var updates = new List<ChatResponseUpdate>();
+            await foreach (var update in base.GetStreamingResponseAsync(messages, options, cancellationToken))
+            {
+                updates.Add(update);
+                yield return update;
+            }
+
+            state.ModelInputs.Add(System.Text.Json.JsonSerializer.Serialize(new
+            {
+                request = messages.Where(message => message.Role != ChatRole.System),
+                response = updates.ToChatResponse()
+            }));
+        }
     }
 
     private sealed class SnapshotProvider(IHttpContextAccessor accessor) : IPermissionSnapshotProvider
@@ -482,15 +610,61 @@ public sealed class AssistantHttpTests
                 builder.Services.AddScoped(_ => budget.Object);
             }
             var state = new State { Mode = mode };
+            if (mode is "ollama-search" or "record-search")
+            {
+                var search = new Mock<INgbSearchService>(MockBehavior.Strict);
+                search.Setup(value => value.SearchAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<NgbSearchKind?>(),
+                        It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+                    .ReturnsAsync((string query, int _, NgbSearchKind? kind, string? typeCode, CancellationToken _) =>
+                    {
+                        state.Searches.Add(query);
+                        Assert.Contains("RP-2026-000014", query);
+                        Assert.True(kind is null or NgbSearchKind.Document);
+                        Assert.True(typeCode is null or "pm.receivable_payment");
+                        return new NgbSearchResult([new("document", "pm.receivable_payment", state.PaymentId, PaymentDisplay)], false, []);
+                    });
+                builder.Services.AddScoped(_ => search.Object);
+            }
+            if (mode is "record-list" or "record-detail" or "record-denied")
+            {
+                var documents = new Mock<IAuthorizedDocumentReadService>(MockBehavior.Strict);
+                var payment = new DocumentDto(state.PaymentId, PaymentDisplay, new RecordPayload(), DocumentStatus.Posted, false);
+                documents.Setup(value => value.GetTypeMetadataAsync("pm.receivable_payment", It.IsAny<CancellationToken>()))
+                    .ReturnsAsync(new DocumentTypeMetadataDto("pm.receivable_payment", "Receivable Payment", EntityKind.Document));
+                documents.Setup(value => value.GetByIdAsync("pm.receivable_payment", state.PaymentId, It.IsAny<CancellationToken>()))
+                    .ReturnsAsync(payment);
+                var page = documents.Setup(value => value.GetPageAsync("pm.receivable_payment", It.IsAny<PageRequestDto>(), It.IsAny<CancellationToken>()));
+                if (mode == "record-denied")
+                    page.ThrowsAsync(new UnauthorizedAccessException());
+                else
+                    page.ReturnsAsync(new PageResponseDto<DocumentDto>([payment], 0, 50, null));
+
+                var scopes = new Mock<IRecordReadScopeFactory>();
+                scopes.Setup(value => value.OpenAsync(It.IsAny<BusinessObjectRef>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+                    .ReturnsAsync(Mock.Of<IAsyncDisposable>());
+                builder.Services.AddScoped(_ => documents.Object);
+                builder.Services.AddScoped(_ => scopes.Object);
+            }
             builder.Services.AddSingleton(state);
             builder.Services.AddNgbMcpContributor<Contributor>();
             builder.Services.AddScoped<CurrentUserTool>();
+            if (mode == "custom-record")
+            {
+                builder.Services.AddNgbMcpContributor<CustomRecordContributor>();
+                builder.Services.AddScoped<CustomRecordTool>();
+            }
             builder.Services.AddNgbMcp(builder.Configuration);
             builder.Services.AddNgbAiAssistant(builder.Configuration, services =>
             {
                 state.ProviderRegistered = true;
-                if (mode == "ollama")
+                if (mode.StartsWith("ollama", StringComparison.Ordinal))
+                {
                     services.AddNgbOllamaChatClient(_ => { });
+                    var registration = services.Single(item => item.ServiceType == typeof(IChatClient));
+                    services.Remove(registration);
+                    services.AddScoped<IChatClient>(provider => new ObservedModel(
+                        (IChatClient)registration.ImplementationFactory!(provider), state));
+                }
                 else
                     services.AddScoped<IChatClient, Model>();
             });

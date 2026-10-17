@@ -86,6 +86,7 @@
     <NgbAiAssistantPanel
       v-if="assistantEnabled && assistantOpened"
       :open="helpOpen"
+      :page-title="resolvedPageTitle"
       @update:open="helpOpen = $event"
       @navigate="$emit('navigate', $event)"
     />

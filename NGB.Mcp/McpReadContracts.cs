@@ -1,5 +1,6 @@
 using System.Text.Json;
 using NGB.Core.Security;
+using NGB.Mcp.Tools;
 
 namespace NGB.Mcp;
 
@@ -29,13 +30,27 @@ public interface IMcpReadToolHandler<in TRequest, TResult>
     Task<TResult> ExecuteAsync(TRequest request, CancellationToken ct);
 }
 
-public sealed record McpReadResponse<T>(int SchemaVersion, T Data, DateTime GeneratedAtUtc);
+/// <summary>Explicit sources from an authorized result. Payload fields are never interpreted as sources.</summary>
+public interface IMcpReadSourceProvider<in TRequest, in TResult>
+{
+    ValueTask<IReadOnlyList<McpReadSource>> GetSourcesAsync(TRequest request, TResult result, CancellationToken ct);
+}
+
+public sealed record McpReadSource(McpSourceKind Kind, string TypeCode, Guid? Id, string Title, string? Url = null);
+
+public sealed record McpReadResponse<T>(int SchemaVersion, T Data, DateTime GeneratedAtUtc)
+{
+    public IReadOnlyList<McpReadSource> Sources { get; init; } = [];
+}
 
 public sealed record McpReadToolDescription(
     string Name,
     string Description,
     JsonElement InputSchema,
-    JsonElement OutputSchema);
+    JsonElement OutputSchema)
+{
+    public bool CompatibilityOnly { get; init; }
+}
 
 public sealed record McpReadError(string Code, string Message);
 

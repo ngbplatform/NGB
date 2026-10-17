@@ -42,7 +42,8 @@
         "url"
       ],
       "additionalProperties": false
-    }
+    },
+    "compatibilityOnly": true
   },
   {
     "name": "ngb_execute_report",
@@ -727,6 +728,49 @@
         "generatedAtUtc": {
           "type": "string",
           "format": "date-time"
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "enum": [
+                  "catalog",
+                  "document",
+                  "generalJournalEntry",
+                  "report"
+                ]
+              },
+              "typeCode": {
+                "type": "string"
+              },
+              "id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid"
+              },
+              "title": {
+                "type": "string"
+              },
+              "url": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "default": null
+              }
+            },
+            "required": [
+              "kind",
+              "typeCode",
+              "id",
+              "title"
+            ],
+            "additionalProperties": false
+          }
         }
       },
       "required": [
@@ -735,7 +779,8 @@
         "generatedAtUtc"
       ],
       "additionalProperties": false
-    }
+    },
+    "compatibilityOnly": false
   },
   {
     "name": "ngb_get_audit_history",
@@ -968,6 +1013,49 @@
         "generatedAtUtc": {
           "type": "string",
           "format": "date-time"
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "enum": [
+                  "catalog",
+                  "document",
+                  "generalJournalEntry",
+                  "report"
+                ]
+              },
+              "typeCode": {
+                "type": "string"
+              },
+              "id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid"
+              },
+              "title": {
+                "type": "string"
+              },
+              "url": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "default": null
+              }
+            },
+            "required": [
+              "kind",
+              "typeCode",
+              "id",
+              "title"
+            ],
+            "additionalProperties": false
+          }
         }
       },
       "required": [
@@ -976,7 +1064,8 @@
         "generatedAtUtc"
       ],
       "additionalProperties": false
-    }
+    },
+    "compatibilityOnly": false
   },
   {
     "name": "ngb_get_capabilities",
@@ -1031,6 +1120,49 @@
         "generatedAtUtc": {
           "type": "string",
           "format": "date-time"
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "enum": [
+                  "catalog",
+                  "document",
+                  "generalJournalEntry",
+                  "report"
+                ]
+              },
+              "typeCode": {
+                "type": "string"
+              },
+              "id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid"
+              },
+              "title": {
+                "type": "string"
+              },
+              "url": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "default": null
+              }
+            },
+            "required": [
+              "kind",
+              "typeCode",
+              "id",
+              "title"
+            ],
+            "additionalProperties": false
+          }
         }
       },
       "required": [
@@ -1039,7 +1171,8 @@
         "generatedAtUtc"
       ],
       "additionalProperties": false
-    }
+    },
+    "compatibilityOnly": false
   },
   {
     "name": "ngb_get_content_summary",
@@ -1115,6 +1248,49 @@
         "generatedAtUtc": {
           "type": "string",
           "format": "date-time"
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "enum": [
+                  "catalog",
+                  "document",
+                  "generalJournalEntry",
+                  "report"
+                ]
+              },
+              "typeCode": {
+                "type": "string"
+              },
+              "id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid"
+              },
+              "title": {
+                "type": "string"
+              },
+              "url": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "default": null
+              }
+            },
+            "required": [
+              "kind",
+              "typeCode",
+              "id",
+              "title"
+            ],
+            "additionalProperties": false
+          }
         }
       },
       "required": [
@@ -1123,7 +1299,8 @@
         "generatedAtUtc"
       ],
       "additionalProperties": false
-    }
+    },
+    "compatibilityOnly": false
   },
   {
     "name": "ngb_get_document_effects",
@@ -1539,6 +1716,49 @@
         "generatedAtUtc": {
           "type": "string",
           "format": "date-time"
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "enum": [
+                  "catalog",
+                  "document",
+                  "generalJournalEntry",
+                  "report"
+                ]
+              },
+              "typeCode": {
+                "type": "string"
+              },
+              "id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid"
+              },
+              "title": {
+                "type": "string"
+              },
+              "url": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "default": null
+              }
+            },
+            "required": [
+              "kind",
+              "typeCode",
+              "id",
+              "title"
+            ],
+            "additionalProperties": false
+          }
         }
       },
       "required": [
@@ -1547,7 +1767,8 @@
         "generatedAtUtc"
       ],
       "additionalProperties": false
-    }
+    },
+    "compatibilityOnly": false
   },
   {
     "name": "ngb_get_document_flow",
@@ -1767,6 +1988,49 @@
         "generatedAtUtc": {
           "type": "string",
           "format": "date-time"
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "enum": [
+                  "catalog",
+                  "document",
+                  "generalJournalEntry",
+                  "report"
+                ]
+              },
+              "typeCode": {
+                "type": "string"
+              },
+              "id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid"
+              },
+              "title": {
+                "type": "string"
+              },
+              "url": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "default": null
+              }
+            },
+            "required": [
+              "kind",
+              "typeCode",
+              "id",
+              "title"
+            ],
+            "additionalProperties": false
+          }
         }
       },
       "required": [
@@ -1775,7 +2039,8 @@
         "generatedAtUtc"
       ],
       "additionalProperties": false
-    }
+    },
+    "compatibilityOnly": false
   },
   {
     "name": "ngb_get_metadata",
@@ -3440,6 +3705,49 @@
         "generatedAtUtc": {
           "type": "string",
           "format": "date-time"
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "enum": [
+                  "catalog",
+                  "document",
+                  "generalJournalEntry",
+                  "report"
+                ]
+              },
+              "typeCode": {
+                "type": "string"
+              },
+              "id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid"
+              },
+              "title": {
+                "type": "string"
+              },
+              "url": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "default": null
+              }
+            },
+            "required": [
+              "kind",
+              "typeCode",
+              "id",
+              "title"
+            ],
+            "additionalProperties": false
+          }
         }
       },
       "required": [
@@ -3448,11 +3756,12 @@
         "generatedAtUtc"
       ],
       "additionalProperties": false
-    }
+    },
+    "compatibilityOnly": false
   },
   {
     "name": "ngb_get_record",
-    "description": "Read a permitted catalog item, document or canonical general journal entry.",
+    "description": "Read details of an authorized catalog item, document or general journal entry using a record UUID returned by search or a record list. Document numbers and display names are not record IDs. Search for them first.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -4148,6 +4457,49 @@
         "generatedAtUtc": {
           "type": "string",
           "format": "date-time"
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "enum": [
+                  "catalog",
+                  "document",
+                  "generalJournalEntry",
+                  "report"
+                ]
+              },
+              "typeCode": {
+                "type": "string"
+              },
+              "id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid"
+              },
+              "title": {
+                "type": "string"
+              },
+              "url": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "default": null
+              }
+            },
+            "required": [
+              "kind",
+              "typeCode",
+              "id",
+              "title"
+            ],
+            "additionalProperties": false
+          }
         }
       },
       "required": [
@@ -4156,7 +4508,8 @@
         "generatedAtUtc"
       ],
       "additionalProperties": false
-    }
+    },
+    "compatibilityOnly": false
   },
   {
     "name": "ngb_get_report_definition",
@@ -4968,6 +5321,49 @@
         "generatedAtUtc": {
           "type": "string",
           "format": "date-time"
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "enum": [
+                  "catalog",
+                  "document",
+                  "generalJournalEntry",
+                  "report"
+                ]
+              },
+              "typeCode": {
+                "type": "string"
+              },
+              "id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid"
+              },
+              "title": {
+                "type": "string"
+              },
+              "url": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "default": null
+              }
+            },
+            "required": [
+              "kind",
+              "typeCode",
+              "id",
+              "title"
+            ],
+            "additionalProperties": false
+          }
         }
       },
       "required": [
@@ -4976,7 +5372,8 @@
         "generatedAtUtc"
       ],
       "additionalProperties": false
-    }
+    },
+    "compatibilityOnly": false
   },
   {
     "name": "ngb_get_work_items",
@@ -5384,6 +5781,49 @@
         "generatedAtUtc": {
           "type": "string",
           "format": "date-time"
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "enum": [
+                  "catalog",
+                  "document",
+                  "generalJournalEntry",
+                  "report"
+                ]
+              },
+              "typeCode": {
+                "type": "string"
+              },
+              "id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid"
+              },
+              "title": {
+                "type": "string"
+              },
+              "url": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "default": null
+              }
+            },
+            "required": [
+              "kind",
+              "typeCode",
+              "id",
+              "title"
+            ],
+            "additionalProperties": false
+          }
         }
       },
       "required": [
@@ -5392,7 +5832,8 @@
         "generatedAtUtc"
       ],
       "additionalProperties": false
-    }
+    },
+    "compatibilityOnly": false
   },
   {
     "name": "ngb_list_attachments",
@@ -5526,6 +5967,49 @@
         "generatedAtUtc": {
           "type": "string",
           "format": "date-time"
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "enum": [
+                  "catalog",
+                  "document",
+                  "generalJournalEntry",
+                  "report"
+                ]
+              },
+              "typeCode": {
+                "type": "string"
+              },
+              "id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid"
+              },
+              "title": {
+                "type": "string"
+              },
+              "url": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "default": null
+              }
+            },
+            "required": [
+              "kind",
+              "typeCode",
+              "id",
+              "title"
+            ],
+            "additionalProperties": false
+          }
         }
       },
       "required": [
@@ -5534,7 +6018,8 @@
         "generatedAtUtc"
       ],
       "additionalProperties": false
-    }
+    },
+    "compatibilityOnly": false
   },
   {
     "name": "ngb_list_metadata",
@@ -5648,6 +6133,49 @@
         "generatedAtUtc": {
           "type": "string",
           "format": "date-time"
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "enum": [
+                  "catalog",
+                  "document",
+                  "generalJournalEntry",
+                  "report"
+                ]
+              },
+              "typeCode": {
+                "type": "string"
+              },
+              "id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid"
+              },
+              "title": {
+                "type": "string"
+              },
+              "url": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "default": null
+              }
+            },
+            "required": [
+              "kind",
+              "typeCode",
+              "id",
+              "title"
+            ],
+            "additionalProperties": false
+          }
         }
       },
       "required": [
@@ -5656,7 +6184,8 @@
         "generatedAtUtc"
       ],
       "additionalProperties": false
-    }
+    },
+    "compatibilityOnly": false
   },
   {
     "name": "ngb_list_notes",
@@ -5802,6 +6331,49 @@
         "generatedAtUtc": {
           "type": "string",
           "format": "date-time"
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "enum": [
+                  "catalog",
+                  "document",
+                  "generalJournalEntry",
+                  "report"
+                ]
+              },
+              "typeCode": {
+                "type": "string"
+              },
+              "id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid"
+              },
+              "title": {
+                "type": "string"
+              },
+              "url": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "default": null
+              }
+            },
+            "required": [
+              "kind",
+              "typeCode",
+              "id",
+              "title"
+            ],
+            "additionalProperties": false
+          }
         }
       },
       "required": [
@@ -5810,7 +6382,8 @@
         "generatedAtUtc"
       ],
       "additionalProperties": false
-    }
+    },
+    "compatibilityOnly": false
   },
   {
     "name": "ngb_list_records",
@@ -6292,6 +6865,49 @@
         "generatedAtUtc": {
           "type": "string",
           "format": "date-time"
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "enum": [
+                  "catalog",
+                  "document",
+                  "generalJournalEntry",
+                  "report"
+                ]
+              },
+              "typeCode": {
+                "type": "string"
+              },
+              "id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid"
+              },
+              "title": {
+                "type": "string"
+              },
+              "url": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "default": null
+              }
+            },
+            "required": [
+              "kind",
+              "typeCode",
+              "id",
+              "title"
+            ],
+            "additionalProperties": false
+          }
         }
       },
       "required": [
@@ -6300,7 +6916,8 @@
         "generatedAtUtc"
       ],
       "additionalProperties": false
-    }
+    },
+    "compatibilityOnly": false
   },
   {
     "name": "ngb_list_reports",
@@ -7156,6 +7773,49 @@
         "generatedAtUtc": {
           "type": "string",
           "format": "date-time"
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "enum": [
+                  "catalog",
+                  "document",
+                  "generalJournalEntry",
+                  "report"
+                ]
+              },
+              "typeCode": {
+                "type": "string"
+              },
+              "id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid"
+              },
+              "title": {
+                "type": "string"
+              },
+              "url": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "default": null
+              }
+            },
+            "required": [
+              "kind",
+              "typeCode",
+              "id",
+              "title"
+            ],
+            "additionalProperties": false
+          }
         }
       },
       "required": [
@@ -7164,11 +7824,12 @@
         "generatedAtUtc"
       ],
       "additionalProperties": false
-    }
+    },
+    "compatibilityOnly": false
   },
   {
     "name": "ngb_search",
-    "description": "Search installed authorized records and reports, optionally by kind and canonical typeCode. Truncated includes capped type fan-out.",
+    "description": "Find authorized records and reports by document number, name or display text. Use this first when the user asks for a record or link. Optionally scope by kind and typeCode. Results provide real record IDs and display titles; truncated includes capped type fan-out.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -7290,6 +7951,49 @@
         "generatedAtUtc": {
           "type": "string",
           "format": "date-time"
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "enum": [
+                  "catalog",
+                  "document",
+                  "generalJournalEntry",
+                  "report"
+                ]
+              },
+              "typeCode": {
+                "type": "string"
+              },
+              "id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid"
+              },
+              "title": {
+                "type": "string"
+              },
+              "url": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "default": null
+              }
+            },
+            "required": [
+              "kind",
+              "typeCode",
+              "id",
+              "title"
+            ],
+            "additionalProperties": false
+          }
         }
       },
       "required": [
@@ -7298,7 +8002,8 @@
         "generatedAtUtc"
       ],
       "additionalProperties": false
-    }
+    },
+    "compatibilityOnly": false
   },
   {
     "name": "search",
@@ -7351,6 +8056,7 @@
         "results"
       ],
       "additionalProperties": false
-    }
+    },
+    "compatibilityOnly": true
   }
 ]

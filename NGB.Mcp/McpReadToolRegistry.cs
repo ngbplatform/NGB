@@ -37,6 +37,23 @@ public sealed class McpReadToolRegistry : IMcpReadToolRegistryBuilder
         IReadOnlyList<NgbPermissionKey> permissions)
         where TRequest : class
         where THandler : class, IMcpReadToolHandler<TRequest, TResult>
+        => Register<TRequest, TResult, THandler>(name, description, permissions, compatibilityOnly: false);
+
+    internal void AddCompatibility<TRequest, TResult, THandler>(
+        string name,
+        string description,
+        IReadOnlyList<NgbPermissionKey> permissions)
+        where TRequest : class
+        where THandler : class, IMcpReadToolHandler<TRequest, TResult>
+        => Register<TRequest, TResult, THandler>(name, description, permissions, compatibilityOnly: true);
+
+    private void Register<TRequest, TResult, THandler>(
+        string name,
+        string description,
+        IReadOnlyList<NgbPermissionKey> permissions,
+        bool compatibilityOnly)
+        where TRequest : class
+        where THandler : class, IMcpReadToolHandler<TRequest, TResult>
     {
         if (_tools is not null)
             throw new InvalidOperationException("The MCP tool catalog is immutable after startup.");
@@ -47,8 +64,10 @@ public sealed class McpReadToolRegistry : IMcpReadToolRegistryBuilder
             throw new ArgumentException("MCP tools require a stable name and a bounded description.");
         }
 
-        if (!_registeringBuiltIns && (name.StartsWith("ngb_", StringComparison.Ordinal)
-            || name is "search" or "fetch" || permissions.Count == 0))
+        if (!_registeringBuiltIns
+            && (name.StartsWith("ngb_", StringComparison.Ordinal)
+            || name is McpToolNames.CompatibilitySearch or McpToolNames.CompatibilityFetch
+            || permissions.Count == 0))
         {
             throw new ArgumentException("Custom read tools require explicit existing permissions and a non-reserved name.");
         }
@@ -59,7 +78,7 @@ public sealed class McpReadToolRegistry : IMcpReadToolRegistryBuilder
                 + $"{nameof(McpReadOptions)}.{nameof(McpReadOptions.MaxTools)} ({_maxTools}).");
         }
 
-        var tool = new RegisteredTool<TRequest, TResult, THandler>(name, description, permissions.ToArray());
+        var tool = new RegisteredTool<TRequest, TResult, THandler>(name, description, permissions.ToArray(), compatibilityOnly);
         if (!_registrations.TryAdd(name, tool))
             throw new InvalidOperationException($"Duplicate MCP tool name '{name}'.");
     }
@@ -116,22 +135,26 @@ public sealed class McpReadToolRegistry : IMcpReadToolRegistryBuilder
     private sealed class RegisteredTool<TRequest, TResult, THandler>(
         string name,
         string description,
-        IReadOnlyList<NgbPermissionKey> permissions)
-        : RegisteredTool(CreateDescription(name, description), permissions)
+        IReadOnlyList<NgbPermissionKey> permissions,
+        bool compatibilityOnly)
+        : RegisteredTool(CreateDescription(name, description, compatibilityOnly), permissions)
         where TRequest : class
         where THandler : class, IMcpReadToolHandler<TRequest, TResult>
     {
-        private static McpReadToolDescription CreateDescription(string name, string description)
+        private static McpReadToolDescription CreateDescription(string name, string description, bool compatibilityOnly)
         {
             var input = McpJson.Schema<TRequest>();
             if (!McpJson.IsObjectSchema(input))
                 throw new ArgumentException("MCP input schemas must describe typed request objects.");
 
-            var output = name is "search" or "fetch"
+            var output = compatibilityOnly
                 ? McpJson.Schema<TResult>()
                 : McpJson.Schema<McpReadResponse<TResult>>();
 
-            return new McpReadToolDescription(name, description, input, output);
+            return new McpReadToolDescription(name, description, input, output)
+            {
+                CompatibilityOnly = compatibilityOnly
+            };
         }
 
         internal override Type HandlerType => typeof(THandler);
@@ -159,16 +182,22 @@ public sealed class McpReadToolRegistry : IMcpReadToolRegistryBuilder
                 throw new McpReadException("invalid_input", "The request does not match the tool schema or limits.");
             }
 
-            var result = await services.GetRequiredService<THandler>().ExecuteAsync(request, ct);
+            var handler = services.GetRequiredService<THandler>();
+            var result = await handler.ExecuteAsync(request, ct);
 
-            return name is "search" or "fetch"
-                ? await McpResultWriter.SerializeAsync(result, maxBytes, ct)
-                : await McpResultWriter.SerializeAsync(new McpReadResponse<TResult>(
-                    1,
-                    result,
-                    clock.GetUtcNow().UtcDateTime),
-                    maxBytes,
-                    ct);
+            if (compatibilityOnly)
+                return await McpResultWriter.SerializeAsync(result, maxBytes, ct);
+
+            var sources = handler is IMcpReadSourceProvider<TRequest, TResult> provider
+                ? await provider.GetSourcesAsync(request, result, ct)
+                : [];
+
+            var response = new McpReadResponse<TResult>(1, result, clock.GetUtcNow().UtcDateTime)
+            {
+                Sources = sources
+            };
+
+            return await McpResultWriter.SerializeAsync(response, maxBytes, ct);
         }
     }
 }
