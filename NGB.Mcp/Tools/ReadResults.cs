@@ -43,7 +43,9 @@ public sealed record FlowResult(
     McpRecordSource Source,
     IReadOnlyDictionary<string, string?> Links);
 
-public sealed record ReportsResult(IReadOnlyList<ReportDefinitionDto> Items, int Offset, int Limit, bool HasMore);
+public sealed record ReportSummary(string ReportCode, string Name, string? Group, string? Description);
+
+public sealed record ReportsResult(IReadOnlyList<ReportSummary> Items, int Offset, int Limit, bool HasMore);
 
 public sealed record WorkItemsResult(WorkCenterSummaryDto? Summary = null, WorkCenterPageDto? Page = null);
 

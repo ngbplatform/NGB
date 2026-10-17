@@ -1,10 +1,11 @@
 import { DEFAULT_GENERAL_JOURNAL_ENTRIES_BASE_PATH } from '../accounting/navigation'
-import { NgbSourceKinds, type NgbSourceIdentity } from '../api/sourceKinds'
+import { NgbSourceKinds } from '../api/sourceKinds'
 import { normalizeSingleQueryValue } from '../router/queryParams'
-import type { NgbNavigationLocation } from './types'
+import { decodeReportRouteContextParam } from '../reporting/navigation'
+import type { NgbNavigationLocation, NgbPageContext } from './types'
 
 /** Adapter for the standard platform routes; applications may supply their own resolver. */
-export function resolveDefaultPageContext(location: NgbNavigationLocation): NgbSourceIdentity | null {
+export function resolveDefaultPageContext(location: NgbNavigationLocation): NgbPageContext | null {
   const path = location.path.replace(/\/$/, '')
   const journalBase = DEFAULT_GENERAL_JOURNAL_ENTRIES_BASE_PATH
   if (path === journalBase || path.startsWith(`${journalBase}/`)) {
@@ -12,7 +13,7 @@ export function resolveDefaultPageContext(location: NgbNavigationLocation): NgbS
     return { kind: NgbSourceKinds.GeneralJournalEntry, typeCode: 'general_journal_entry', ...(id ? { id } : {}) }
   }
 
-  const match = /^\/(catalogs|documents|reports)\/([^/]+)(?:\/([^/]+))?$/.exec(path)
+  const match = /^\/(catalogs|documents|reports)\/([^/]+)(?:\/([^/]+))?(?:\/(flow|effects|print))?$/.exec(path)
   if (!match) return null
 
   let typeCode: string
@@ -26,8 +27,13 @@ export function resolveDefaultPageContext(location: NgbNavigationLocation): NgbS
     ? NgbSourceKinds.Catalog
     : match[1] === 'documents' ? NgbSourceKinds.Document : NgbSourceKinds.Report
   const pathId = match[3]
+  if (match[4] && kind !== NgbSourceKinds.Document) return null
   if (kind === NgbSourceKinds.Report) {
-    return pathId ? null : { kind, typeCode }
+    if (pathId) return null
+    const context = decodeReportRouteContextParam(location.query.ctx)
+    return context?.reportCode === typeCode
+      ? { kind, typeCode, parameters: context.request.parameters, filters: context.request.filters }
+      : { kind, typeCode }
   }
 
   if (pathId) return { kind, typeCode, id: pathId }

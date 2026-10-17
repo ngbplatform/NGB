@@ -211,7 +211,7 @@ permission checks, optional contributors, OAuth and client compatibility.
 
 The shared UI and API include AI Assistant, disabled by default. Enable both
 `FEATURE_MCP=true` and `FEATURE_AI_ASSISTANT=true` and run native Ollama on the
-host with the `qwen3.5:4b` model. Compose uses
+host with the `qwen3.5:9b` model. Compose uses
 `AI_OLLAMA_ENDPOINT=http://host.docker.internal:11434`; explicitly set
 `AI_OLLAMA_ALLOW_INSECURE_HTTP=true` for this local API-to-host connection. An API
 running directly on the host uses `http://localhost:11434` without the opt-in.

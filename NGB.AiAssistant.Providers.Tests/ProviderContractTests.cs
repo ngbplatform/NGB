@@ -13,12 +13,72 @@ using NGB.AiAssistant.Anthropic;
 using NGB.AiAssistant.Bedrock;
 using NGB.AiAssistant.Ollama;
 using NGB.AiAssistant.OpenAI;
+using OllamaSharp.Models.Chat;
 using Xunit;
+using ChatRole = Microsoft.Extensions.AI.ChatRole;
 
 namespace NGB.AiAssistant.Providers.Tests;
 
 public sealed class ProviderContractTests
 {
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task OllamaPreservesReasoningAndMatchesEachToolResultToItsName(bool streaming)
+    {
+        var handler = new RecordingHandler([
+            """
+            {"model":"contract-model","message":{"role":"assistant","content":"Done."},"done":true,"done_reason":"stop"}
+
+            """]);
+        await using var services = Register("Ollama", handler).BuildServiceProvider();
+        await using var scope = services.CreateAsyncScope();
+        var client = scope.ServiceProvider.GetRequiredService<IChatClient>();
+        var options = new ChatOptions
+        {
+            Instructions = "Keep the requested scope.",
+            Temperature = 0.25f,
+            RawRepresentationFactory = _ => new ChatRequest { Think = false, KeepAlive = "5m" }
+        };
+        ChatMessage[] messages =
+        [
+            new(ChatRole.User, "Read these records."),
+            new(ChatRole.Assistant,
+            [
+                new TextReasoningContent("Use the two selected records."),
+                new FunctionCallContent("first", "read_record", new Dictionary<string, object?> { ["id"] = "one" }),
+                new FunctionCallContent("second", "read_notes", new Dictionary<string, object?> { ["id"] = "two" })
+            ]),
+            new(ChatRole.Tool,
+            [
+                new FunctionResultContent("second", new { count = 3 }),
+                new FunctionResultContent("first", new { count = 1 })
+            ])
+        ];
+
+        var response = streaming
+            ? await client.GetStreamingResponseAsync(messages, options).ToChatResponseAsync()
+            : await client.GetResponseAsync(messages, options);
+
+        Assert.Equal("Done.", response.Text);
+        using var body = JsonDocument.Parse(Assert.Single(handler.Requests).Body);
+        var root = body.RootElement;
+        Assert.False(root.GetProperty("think").GetBoolean());
+        Assert.Equal("5m", root.GetProperty("keep_alive").GetString());
+        Assert.Equal(0.25f, root.GetProperty("options").GetProperty("temperature").GetSingle());
+        var sent = root.GetProperty("messages");
+        Assert.Equal(5, sent.GetArrayLength());
+        Assert.Equal("system", sent[0].GetProperty("role").GetString());
+        Assert.Equal(options.Instructions, sent[0].GetProperty("content").GetString());
+        Assert.Equal("Use the two selected records.", sent[2].GetProperty("thinking").GetString());
+        Assert.Equal(2, sent[2].GetProperty("tool_calls").GetArrayLength());
+        Assert.Equal("read_notes", sent[3].GetProperty("tool_name").GetString());
+        Assert.Equal("read_record", sent[4].GetProperty("tool_name").GetString());
+        using var result = JsonDocument.Parse(sent[3].GetProperty("content").GetString()!);
+        Assert.Equal(3, result.RootElement.GetProperty("count").GetInt32());
+        Assert.Equal("Keep the requested scope.", options.Instructions);
+    }
+
     [Theory]
     [InlineData("Ollama")]
     [InlineData("OpenAI")]
@@ -108,7 +168,7 @@ public sealed class ProviderContractTests
         if (provider == "Ollama")
         {
             Assert.Null(handler.Requests[0].Authorization);
-            Assert.False(firstBody.RootElement.GetProperty("think").GetBoolean());
+            Assert.False(firstBody.RootElement.TryGetProperty("think", out _));
             Assert.Equal(0, firstBody.RootElement.GetProperty("options").GetProperty("temperature").GetSingle());
             Assert.Equal(32768, firstBody.RootElement.GetProperty("options").GetProperty("num_ctx").GetInt32());
         }

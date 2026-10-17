@@ -66,7 +66,8 @@ public sealed partial class AssistantHttpTests
         Assert.NotEmpty(host.State.Searches);
         Assert.Equal(host.State.PaymentId, source.Id);
         Assert.Equal(PaymentDisplay, source.Title);
-        Assert.Contains($"[{PaymentDisplay}]({source.Reference})", answer);
+        Assert.True(answer.Contains($"[{PaymentDisplay}]({source.Reference})", StringComparison.Ordinal),
+            answer + "\n" + string.Join('\n', host.State.ModelInputs));
         Assert.DoesNotContain("http", answer, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("canonical", answer, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("untrusted", answer, StringComparison.OrdinalIgnoreCase);
@@ -136,7 +137,7 @@ public sealed partial class AssistantHttpTests
         public NativeOllamaFactAttribute()
         {
             if (Environment.GetEnvironmentVariable("NGB_RUN_OLLAMA_TESTS") != "1")
-                Skip = "Requires native Ollama with qwen3.5:4b; set NGB_RUN_OLLAMA_TESTS=1 to run.";
+                Skip = "Requires native Ollama with qwen3.5:9b; set NGB_RUN_OLLAMA_TESTS=1 to run.";
         }
     }
 

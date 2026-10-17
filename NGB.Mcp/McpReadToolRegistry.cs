@@ -177,7 +177,12 @@ public sealed class McpReadToolRegistry : IMcpReadToolRegistryBuilder
 
                 McpJson.Validate(request);
             }
-            catch (Exception exception) when (exception is JsonException or ValidationException)
+            catch (JsonException exception)
+            {
+                var path = exception.Path is { Length: <= 256 } value ? value : "$";
+                throw new McpReadException("invalid_input", $"Invalid value at {path}. Follow the input schema, including nested objects and property names.");
+            }
+            catch (ValidationException)
             {
                 throw new McpReadException("invalid_input", "The request does not match the tool schema or limits.");
             }

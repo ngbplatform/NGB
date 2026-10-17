@@ -35,6 +35,7 @@ it('sends bounded conversational context and retains only text from previous tur
   expect(vi.mocked(streamAssistant).mock.calls[2]![0]).toEqual({
     messages: [{ role: 'user', text: 'Second' }, { role: 'assistant', text: 'Seven records.' }, { role: 'user', text: 'Third' }],
     context: { kind: 'report', typeCode: 'pm.aging' },
+    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
   })
   expect(assistant.messages).toHaveLength(6)
   expect(assistant.busy).toBe(false)

@@ -8,6 +8,7 @@ using Microsoft.Extensions.Options;
 using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using NGB.Core.Reporting.Exceptions;
 using NGB.Tools.Exceptions;
 
 namespace NGB.Mcp.AspNetCore;
@@ -86,6 +87,9 @@ internal static class McpProtocolHandlers
                 McpReadException { Code.Length: <= 64, Message.Length: <= 512 } known => new McpReadError(known.Code, known.Message),
                 NgbForbiddenException or NgbNotFoundException => new McpReadError("unavailable", "The requested resource is unavailable."),
                 NgbArgumentInvalidException { ParamName: "cursor" } => new McpReadError("invalid_cursor", "The continuation cursor is invalid for this query."),
+                ReportLayoutValidationException validation when validation.Context.TryGetValue("fieldPath", out var path)
+                    && path is string { Length: <= 256 } fieldPath => new McpReadError("invalid_input",
+                        $"Invalid or missing report input at {fieldPath}. Read this report's definition. Put declared parameters in request.parameters as strings and declared filters in request.filters as objects containing value."),
                 NgbValidationException or ArgumentException => new McpReadError("invalid_input", "The request does not match the supported query contract."),
                 _ => new McpReadError("internal_error", "The read operation could not be completed.")
             };

@@ -59,22 +59,24 @@ public static class DependencyInjection
             IEnumerable<ChatMessage> messages,
             ChatOptions? options = null,
             CancellationToken cancellationToken = default)
-            => base.GetResponseAsync(messages, Configure(options), cancellationToken);
+            => base.GetResponseAsync([], Configure(messages, options), cancellationToken);
 
         public override IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
             IEnumerable<ChatMessage> messages,
             ChatOptions? options = null,
             CancellationToken cancellationToken = default)
-            => base.GetStreamingResponseAsync(messages, Configure(options), cancellationToken);
+            => base.GetStreamingResponseAsync([], Configure(messages, options), cancellationToken);
 
-        private ChatOptions Configure(ChatOptions? options)
+        private ChatOptions Configure(IEnumerable<ChatMessage> messages, ChatOptions? options)
         {
             var configured = options?.Clone() ?? new ChatOptions();
             configured.ModelId = settings.Model;
             // Prefer stable tool arguments while preserving explicit caller settings.
             configured.Temperature ??= 0;
             configured.AddOllamaOption(OllamaOption.NumCtx, settings.ContextLength);
-            configured.AddOllamaOption(OllamaOption.Think, false);
+            // Use the native transcript because OllamaSharp's abstraction mapper drops
+            // thinking and tool_name. Keep its request options and response streaming.
+            OllamaConversation.Configure(configured, messages);
             return configured;
         }
     }

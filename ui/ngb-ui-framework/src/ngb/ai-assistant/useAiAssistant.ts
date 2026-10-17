@@ -75,7 +75,11 @@ export const useAiAssistant = defineStore('ai-assistant', () => {
           previous.push({ role: 'user', text: user.text }, { role: 'assistant', text: answer.text })
         }
       }
-      const request: AssistantRequest = { messages: [...previous, { role: 'user', text }], context: lastContext }
+      const request: AssistantRequest = {
+        messages: [...previous, { role: 'user', text }],
+        context: lastContext,
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      }
       const encoder = new TextEncoder()
       while (request.messages.length > 1 && (request.messages.length > limits.maxMessages
         || encoder.encode(JSON.stringify(request)).length > limits.maxInputBytes)) {

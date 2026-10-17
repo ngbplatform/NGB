@@ -4,6 +4,34 @@ import { assistantSourcePath } from '../../../../src/ngb/ai-assistant/navigation
 
 afterEach(() => vi.unstubAllGlobals())
 
+it('formats timestamps in the user time zone without shifting date-only values', () => {
+  const result = renderAssistantMarkdown(
+    '2026-05-10T20:43:34.293462Z; 2026-01-10T20:43:34Z; 2026-05-10; 2026-05-11T01:00:00+02:00',
+    [], 'America/New_York')
+
+  expect(result).toContain('05/10/2026, 04:43:34 PM')
+  expect(result).toContain('01/10/2026, 03:43:34 PM')
+  expect(result).toContain('05/10/2026;')
+  expect(result).toContain('05/10/2026, 07:00:00 PM')
+  expect(result).not.toContain('293462')
+})
+
+it('preserves invalid dates and timestamps without a known offset', () => {
+  const result = renderAssistantMarkdown('2026-02-30; 2026-05-10T20:43:34', [], 'UTC')
+  expect(result).toContain('2026-02-30')
+  expect(result).toContain('2026-05-10T20:43:34')
+})
+
+it('renders Markdown tables in a keyboard-accessible scroll region and does not append discovered sources', () => {
+  vi.stubGlobal('window', { location: { origin: 'https://app.example' } })
+  const result = renderAssistantMarkdown('| Name | Amount |\n| --- | ---: |\n| Rent | 20 |',
+    [{ kind: 'report', typeCode: 'example.summary', title: 'Unrequested report' }])
+  expect(result).toContain('class="assistant-table" role="region"')
+  expect(result).toContain('<table>')
+  expect(result).toContain('<th style="text-align:right">Amount</th>')
+  expect(result).not.toContain('Unrequested report')
+})
+
 it('renders useful formatting while refusing HTML, remote images and invented links', () => {
   vi.stubGlobal('window', { location: { origin: 'https://app.example' } })
   const result = renderAssistantMarkdown(

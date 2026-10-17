@@ -1,8 +1,9 @@
 import type { NgbSourceIdentity } from '../api/sourceKinds'
+import type { NgbPageContext } from '../navigation/types'
 
-export type AssistantPageContext = NgbSourceIdentity
+export type AssistantPageContext = NgbPageContext
 
-export type AssistantSource = AssistantPageContext & { title: string }
+export type AssistantSource = NgbSourceIdentity & { title: string }
 
 export type AssistantMessage = {
   id: string
@@ -15,6 +16,7 @@ export type AssistantMessage = {
 export type AssistantRequest = {
   messages: { role: 'user' | 'assistant'; text: string }[]
   context?: AssistantPageContext | null
+  timeZone?: string
 }
 
 export type AssistantEvent = {

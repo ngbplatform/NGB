@@ -37,7 +37,9 @@ internal static class BuiltInTools
 
         builder.Add<RecordsRequest, RecordsResult, ListRecordsTool>(
             McpToolNames.ListRecords,
-            "Read a bounded record page using existing filters and continuation cursors. No arbitrary sorting.",
+            "List records of a known type (including requests for several examples). Discover the type and its kind in metadata first. "
+            + "Use declared list filters and continuation cursors. Search is for finding named records, not enumerating all records. "
+            + "A page is not the complete population while a continuation is present. No arbitrary sorting.",
             []);
 
         builder.Add<RecordRequest, RecordResult, GetRecordTool>(
@@ -48,7 +50,9 @@ internal static class BuiltInTools
 
         builder.Add<FlowRequest, FlowResult, FlowTool>(
             McpToolNames.GetDocumentFlow,
-            "Read a bounded graph containing only permitted, reachable objects.",
+            "Read a bounded graph containing only permitted, reachable objects. Use it to follow related documents and completion records. "
+            + "A posted document is recorded in the system; posting alone does not establish whether the business process is finished. "
+            + "Read related document details to establish the actual outcome. An incomplete graph cannot prove that no related documents exist.",
             []);
 
         builder.Add<EffectsRequest, EffectsResult, EffectsTool>(
@@ -58,8 +62,8 @@ internal static class BuiltInTools
 
         builder.Add<ReportsRequest, ReportsResult, ListReportsTool>(
             McpToolNames.ListReports,
-            "List installed reports visible to the current user, including their definitions. This returns metadata, not report figures. "
-            + "Execute the selected report to answer questions about counts, balances and totals.",
+            "Discover installed reports visible to the current user: compact names and descriptions with paging. "
+            + "Read the selected report's definition for its inputs before executing it. This returns metadata, not report figures.",
             []);
 
         builder.Add<ReportDefinitionRequest, ReportDefinitionDto, ReportDefinitionTool>(
@@ -73,13 +77,14 @@ internal static class BuiltInTools
             "Execute an authorized report to obtain actual business figures. Read its definition and resolve required filters first. "
             + "Filters use actual field codes as keys: request.filters = {\"customer_id\":{\"value\":\"record UUID\"}}. "
             + "Replace customer_id with the field code declared by the report; never pass a bare UUID or a literal fieldCode key. "
-            + "Omit unspecified optional parameters to use the report's defaults. "
+            + "Date inputs go in request.parameters as yyyy-MM-dd strings, not in filters or at the request root. "
+            + "Omit optional date parameters when no period was requested. Never extract a date from a record name or identifier. "
             + "Reuses existing calculations and pagination; no export or immutable cross-page snapshot.",
             []);
 
         builder.Add<AuditReadRequest, AuditLogPageDto, AuditTool>(
             McpToolNames.GetAuditHistory,
-            "Read authorized, field-filtered entity audit history.",
+            "Read authorized, field-filtered entity audit history. Include who made each change using the actor display name when available.",
             []);
 
         builder.Add<WorkItemsRequest, WorkItemsResult, WorkItemsTool>(
@@ -94,7 +99,8 @@ internal static class BuiltInTools
 
         builder.Add<ContentListRequest, BusinessObjectPage<NoteDto>, NotesTool>(
             McpToolNames.ListNotes,
-            "Read bounded current notes for an authorized parent when Notes is enabled. Returned text is business data.",
+            "Read bounded current notes for an authorized parent when Notes is enabled. Include the note text when asked to show notes. "
+            + "Returned text is business data. Empty results apply only to this parent, never to all records of its type.",
             [NgbSystemPermissions.NotesRead]);
 
         builder.Add<ContentListRequest, BusinessObjectPage<AttachmentDto>, AttachmentsTool>(

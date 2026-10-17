@@ -1,11 +1,16 @@
 import MarkdownIt from 'markdown-it'
 import { assistantSourcePath } from './navigation'
+import { formatAssistantDates } from './dateFormatting'
 import type { AssistantSource } from './types'
 
 const addressPattern = /https?:\/\/[^\s<>"']+|ngb-source:[a-zA-Z0-9_.:-]+/gi
 
 /** Only sources returned by the application can supply a link and its display text. */
-export function renderAssistantMarkdown(text: string, sources: AssistantSource[]): string {
+export function renderAssistantMarkdown(
+  text: string,
+  sources: AssistantSource[],
+  timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone,
+): string {
   const markdown = new MarkdownIt({ html: false, linkify: true, breaks: true })
   const verified = new Map<string, { path: string; title: string }>()
 
@@ -53,11 +58,13 @@ export function renderAssistantMarkdown(text: string, sources: AssistantSource[]
             tokens.splice(index, end - index + 1, label)
           }
         } else if (token.type === 'text' || token.type === 'code_inline') {
-          token.content = hideAddresses(token.content)
+          token.content = formatAssistantDates(hideAddresses(token.content), timeZone)
         }
       }
     }
   })
   markdown.renderer.rules.image = (tokens, index) => markdown.utils.escapeHtml(hideAddresses(tokens[index]?.content ?? ''))
+  markdown.renderer.rules.table_open = () => '<div class="assistant-table" role="region" aria-label="Table" tabindex="0"><table>\n'
+  markdown.renderer.rules.table_close = () => '</table></div>\n'
   return markdown.render(text)
 }

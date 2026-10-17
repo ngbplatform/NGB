@@ -25,6 +25,7 @@ using ModelContextProtocol.Protocol;
 using NGB.Api.CurrentUser;
 using NGB.Application.Abstractions.Features;
 using NGB.Core.Features;
+using NGB.Core.Reporting.Exceptions;
 using NGB.Core.Security;
 using NGB.Hosting.AspNetCore.Identity;
 using NGB.Runtime.CurrentActor;
@@ -322,6 +323,8 @@ public sealed partial class McpHttpTests
     [Theory]
     [InlineData("cursor", "invalid_cursor")]
     [InlineData("argument", "invalid_input")]
+    [InlineData("report-input", "invalid_input")]
+    [InlineData("report-large-path", "invalid_input")]
     [InlineData("forbidden", "unavailable")]
     [InlineData("json", "internal_error")]
     [InlineData("large-error", "internal_error")]
@@ -346,6 +349,12 @@ public sealed partial class McpHttpTests
         Assert.Equal(code, error.RootElement.GetProperty("code").GetString());
         Assert.DoesNotContain("secret-database", text);
         Assert.InRange(text.Length, 1, 600);
+
+        if (mode == "report-input")
+        {
+            Assert.Contains("parameters.from_utc", text);
+            Assert.Contains("request.parameters", text);
+        }
     }
 
     [Fact]
@@ -765,6 +774,8 @@ public sealed partial class McpHttpTests
             {
                 "cursor" => new NgbArgumentInvalidException("cursor", "secret-database"),
                 "argument" => new NgbArgumentInvalidException("field", "secret-database"),
+                "report-input" => new ReportLayoutValidationException("secret-database", "parameters.from_utc"),
+                "report-large-path" => new ReportLayoutValidationException("secret-database", new string('x', 300)),
                 "forbidden" => new NgbPermissionDeniedException(NgbSystemPermissions.AuditView),
                 "json" => new JsonException("secret-database"),
                 _ => new McpReadException("custom_error", new string('x', 1000) + "secret-database")

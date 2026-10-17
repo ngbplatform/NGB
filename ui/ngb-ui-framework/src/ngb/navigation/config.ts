@@ -4,9 +4,10 @@ import type {
   NgbNavigationLocation,
   NgbNavigationRoutes,
   NgbNavigationTarget,
+  NgbPageContext,
 } from './types'
 import { buildGeneralJournalEntriesPath } from '../accounting/navigation'
-import { isNgbSourceIdentity, type NgbSourceIdentity } from '../api/sourceKinds'
+import { isNgbSourceIdentity, NgbSourceKinds } from '../api/sourceKinds'
 import { resolveDefaultPageContext } from './pageContext'
 import { resolveNgbRecordRouting } from './recordRouting'
 
@@ -42,16 +43,18 @@ export function resolveNgbNavigationRoutes(): NgbNavigationRoutes {
   }
 }
 
-export function resolveNgbPageContext(location: NgbNavigationLocation): NgbSourceIdentity | null {
+export function resolveNgbPageContext(location: NgbNavigationLocation): NgbPageContext | null {
   const configured = navigationConfig.resolvePageContext?.(location)
   const context = configured === undefined ? resolveDefaultPageContext(location) : configured
   if (!isNgbSourceIdentity(context)) return null
 
-  // Only identifiers cross the boundary; page state and loaded business data stay in the UI.
+  // Query criteria help reproduce the selected report; loaded results never cross this boundary.
   return {
     kind: context.kind,
     typeCode: context.typeCode,
     ...(context.id ? { id: context.id } : {}),
+    ...(context.kind === NgbSourceKinds.Report && context.parameters ? { parameters: context.parameters } : {}),
+    ...(context.kind === NgbSourceKinds.Report && context.filters ? { filters: context.filters } : {}),
   }
 }
 

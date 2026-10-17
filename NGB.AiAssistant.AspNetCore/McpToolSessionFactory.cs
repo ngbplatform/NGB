@@ -104,7 +104,9 @@ internal sealed class McpToolSessionFactory(
                 source.Id,
                 source.Title)).ToArray() ?? [];
 
-            return new AiAssistantToolResult(content, sources);
+            // The envelope is transport metadata. Pass business data once; sources are handled
+            // separately by the runner and are never inferred from arbitrary payload fields.
+            return new AiAssistantToolResult(response?.Data ?? content, sources);
         }
     }
 }

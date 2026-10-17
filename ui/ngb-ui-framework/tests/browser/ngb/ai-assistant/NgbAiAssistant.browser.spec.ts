@@ -35,7 +35,7 @@ beforeEach(() => {
   configureEditorRouting()
   vi.mocked(getFeatures).mockResolvedValue(['Mcp', 'AiAssistant'].map(code => ({ code, displayName: code, group: 'Integrations', enabled: true })))
   vi.mocked(getAssistantSettings).mockResolvedValue({
-    provider: 'Ollama', model: 'qwen3.5:4b', maxMessages: 20, maxMessageCharacters: 8000,
+    provider: 'Ollama', model: 'qwen3.5:9b', maxMessages: 20, maxMessageCharacters: 8000,
     maxInputBytes: 32768, maxOutputCharacters: 16384,
   })
   vi.mocked(streamAssistant).mockImplementation(async (_, event) => {
@@ -68,6 +68,11 @@ async function mountShell(initialPath = '/catalogs/pm.property') {
 }
 
 test('desktop panel preserves application interaction, streams safe Markdown and follows real sources', async () => {
+  vi.mocked(streamAssistant).mockImplementation(async (_, event) => {
+    event({ type: 'source', source: { kind: 'report', typeCode: 'pm.aging', title: 'Aging report' } })
+    event({ type: 'text', text: '**Seven** records. <script>alert(1)</script>\n\n[Aging](ngb-source:report:pm.aging)' })
+    event({ type: 'done' })
+  })
   await page.viewport(1440, 900)
   const { view, navigate } = await mountShell()
   expect(document.querySelector('[role="dialog"]')).toBeNull()
@@ -80,7 +85,7 @@ test('desktop panel preserves application interaction, streams safe Markdown and
   await view.getByRole('button', { name: 'Send', exact: true }).click()
 
   await expect.element(view.getByRole('link', { name: 'Aging report' })).toBeVisible()
-  await expect.element(view.getByText('qwen3.5:4b')).not.toBeInTheDocument()
+  await expect.element(view.getByText('qwen3.5:9b')).not.toBeInTheDocument()
   expect(document.querySelector('.assistant-markdown strong')?.textContent).toBe('Seven')
   expect(document.querySelector('.assistant-markdown script')).toBeNull()
   expect(vi.mocked(streamAssistant).mock.calls[0]![0].context).toEqual({ kind: 'catalog', typeCode: 'pm.property' })
@@ -94,6 +99,27 @@ test('desktop panel preserves application interaction, streams safe Markdown and
   await expect.element(view.getByRole('textbox', { name: 'Ask a question' })).toHaveFocus()
   await view.getByRole('button', { name: 'New chat' }).click()
   await expect.element(view.getByText('How can I help?')).toBeVisible()
+})
+
+test('does not display discovered sources for a numeric answer and renders a scrollable Markdown table', async () => {
+  await page.viewport(1440, 900)
+  vi.mocked(streamAssistant).mockImplementation(async (_, event) => {
+    event({ type: 'source', source: { kind: 'report', typeCode: 'pm.aging', title: 'Aging report' } })
+    event({ type: 'text', text: '| Item | Date | Amount |\n| --- | --- | ---: |\n| Balance | 2026-05-10T20:43:34.293462Z | 331 |' })
+    event({ type: 'done' })
+  })
+  const { view } = await mountShell()
+  await view.getByRole('textbox', { name: 'Ask a question' }).fill('Show the balance')
+  await view.getByRole('button', { name: 'Send', exact: true }).click()
+
+  await expect.element(view.getByRole('link', { name: 'Aging report' })).not.toBeInTheDocument()
+  expect(document.querySelector('[aria-label="Sources"]')).toBeNull()
+  const table = document.querySelector<HTMLDivElement>('.assistant-table')!
+  expect(table.getAttribute('tabindex')).toBe('0')
+  expect(table.querySelectorAll('th')).toHaveLength(3)
+  expect(table.textContent).not.toContain('293462Z')
+  expect(table.getBoundingClientRect().width).toBeLessThanOrEqual(480)
+  expect(getComputedStyle(table).overflowX).toBe('auto')
 })
 
 test('mobile panel fills the viewport and Stop cancels the active request', async () => {
@@ -154,7 +180,8 @@ test('failed turns show a retry action and never look complete', async () => {
 
   await view.getByRole('button', { name: 'Retry', exact: true }).click()
 
-  await expect.element(view.getByRole('link', { name: 'Aging report' })).toBeVisible()
+  await expect.element(view.getByText('Seven', { exact: true })).toBeVisible()
+  await expect.element(view.getByRole('link', { name: 'Aging report' })).not.toBeInTheDocument()
   expect(streamAssistant).toHaveBeenCalledTimes(2)
 })
 

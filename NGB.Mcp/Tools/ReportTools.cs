@@ -10,7 +10,9 @@ internal sealed class ListReportsTool(IAuthorizedReportReadService reports)
         ReportsRequest request,
         ReportsResult result,
         CancellationToken ct)
-        => ValueTask.FromResult<IReadOnlyList<McpReadSource>>(result.Items.SelectMany(ReadSources.Report).ToArray());
+        => ValueTask.FromResult<IReadOnlyList<McpReadSource>>(result.Items
+            .Select(report => new McpReadSource(McpSourceKind.Report, report.ReportCode, null, report.Name))
+            .ToArray());
 
     public async Task<ReportsResult> ExecuteAsync(ReportsRequest request, CancellationToken ct)
     {
@@ -22,6 +24,7 @@ internal sealed class ListReportsTool(IAuthorizedReportReadService reports)
             definitions
                 .Skip(request.Offset)
                 .Take(request.Limit)
+                .Select(report => new ReportSummary(report.ReportCode, report.Name, report.Group, report.Description))
                 .ToArray(),
             request.Offset,
             request.Limit,

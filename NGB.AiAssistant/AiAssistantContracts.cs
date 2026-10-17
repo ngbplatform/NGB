@@ -1,15 +1,22 @@
 using Microsoft.Extensions.AI;
+using NGB.Contracts.Reporting;
 
 namespace NGB.AiAssistant;
 
 public sealed record AiAssistantMessage(string Role, string Text);
 
 /// <summary>Untrusted page identifiers. Business data is always read through authorized MCP tools.</summary>
-public sealed record AiAssistantPageContext(string Kind, string TypeCode, Guid? Id = null);
+public sealed record AiAssistantPageContext(
+    string Kind,
+    string TypeCode,
+    Guid? Id = null,
+    IReadOnlyDictionary<string, string>? Parameters = null,
+    IReadOnlyDictionary<string, ReportFilterValueDto>? Filters = null);
 
 public sealed record AiAssistantRequest(
     IReadOnlyList<AiAssistantMessage> Messages,
-    AiAssistantPageContext? Context = null);
+    AiAssistantPageContext? Context = null,
+    string? TimeZone = null);
 
 public sealed record AiAssistantSource(string Kind, string TypeCode, Guid? Id, string Title)
 {

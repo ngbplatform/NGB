@@ -10,6 +10,7 @@ import {
 import { configureNgbEditor, type EditorRoutingConfig } from '../../../../src/ngb/editor/config'
 import { buildCatalogFullPageUrl } from '../../../../src/ngb/editor/catalogNavigation'
 import { assistantSourcePath } from '../../../../src/ngb/ai-assistant/navigation'
+import { encodeReportRouteContextParam } from '../../../../src/ngb/reporting/navigation'
 
 const id = '11111111-1111-4111-8111-111111111111'
 
@@ -43,6 +44,8 @@ describe('semantic page context', () => {
     ['/catalogs/example.customer', { kind: 'catalog', typeCode: 'example.customer' }],
     [`/catalogs/example.customer/${id}`, { kind: 'catalog', typeCode: 'example.customer', id }],
     [`/documents/example.invoice/${id}/`, { kind: 'document', typeCode: 'example.invoice', id }],
+    [`/documents/example.invoice/${id}/flow`, { kind: 'document', typeCode: 'example.invoice', id }],
+    [`/documents/example.invoice/${id}/effects`, { kind: 'document', typeCode: 'example.invoice', id }],
     ['/reports/example.summary', { kind: 'report', typeCode: 'example.summary' }],
     ['/accounting/general-journal-entries', { kind: 'generalJournalEntry', typeCode: 'general_journal_entry' }],
     [`/accounting/general-journal-entries/${id}`, { kind: 'generalJournalEntry', typeCode: 'general_journal_entry', id }],
@@ -105,6 +108,17 @@ describe('semantic page context', () => {
 })
 
 describe('shared record routing', () => {
+  it('copies only selected report criteria and rejects criteria for a different report', () => {
+    const request = { parameters: { as_of_utc: '2026-10-17' }, filters: { building_id: { value: id } }, limit: 500 }
+    const ctx = encodeReportRouteContextParam({ reportCode: 'example.summary', request })!
+    expect(resolveNgbPageContext(location('/reports/example.summary', { ctx }))).toEqual({
+      kind: 'report', typeCode: 'example.summary', parameters: request.parameters,
+      filters: { building_id: { value: id, includeDescendants: false } },
+    })
+    expect(resolveNgbPageContext(location('/reports/example.other', { ctx })))
+      .toEqual({ kind: 'report', typeCode: 'example.other' })
+  })
+
   it('uses the same configured catalog route for the editor and Assistant', () => {
     const path = `/records/example.customer/${id}`
     configureEditor({ buildCatalogFullPageUrl: (typeCode, recordId) => `/records/${typeCode}/${recordId}` })

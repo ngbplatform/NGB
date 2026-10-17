@@ -41,6 +41,7 @@ export type {
   NgbNavigationLocation,
   NgbNavigationRoutes,
   NgbNavigationTarget,
+  NgbPageContext,
 } from './ngb/navigation/types';
 export { NgbSourceKinds } from './ngb/api/sourceKinds';
 export type { NgbSourceIdentity, NgbSourceKind } from './ngb/api/sourceKinds';

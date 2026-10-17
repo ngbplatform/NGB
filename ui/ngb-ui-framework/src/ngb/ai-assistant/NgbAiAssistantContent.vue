@@ -31,16 +31,6 @@
           <div class="mb-1 text-xs font-semibold text-ngb-muted">{{ message.role === 'user' ? 'You' : 'Assistant' }}</div>
           <div v-if="message.role === 'user'" class="whitespace-pre-wrap break-words rounded-[var(--ngb-radius)] bg-ngb-bg px-3 py-2 text-sm">{{ message.text }}</div>
           <div v-else class="assistant-markdown break-words text-sm leading-6" v-html="renderMessage(message)" @click="navigateLink" />
-          <ul v-if="message.sources.length" class="mt-3 flex flex-wrap gap-2" aria-label="Sources">
-            <li v-for="(source, index) in message.sources" :key="index">
-              <a
-                  v-if="assistantSourcePath(source)"
-                  :href="assistantSourcePath(source)!"
-                  class="inline-block max-w-full rounded-[var(--ngb-radius)] border border-ngb-border px-2 py-1 text-left text-xs text-ngb-blue underline ngb-focus hover:bg-ngb-bg"
-                  @click="navigateLink"
-              >{{ source.title }}</a>
-            </li>
-          </ul>
           <p v-if="message.state === 'stopped'" class="mt-2 text-xs text-ngb-muted">Response stopped.</p>
           <p v-if="message.state === 'error' && message.text" class="mt-2 text-xs text-ngb-muted">This answer is incomplete.</p>
         </li>
@@ -87,7 +77,6 @@ import NgbIcon from '../primitives/NgbIcon.vue'
 import NgbButton from '../primitives/NgbButton.vue'
 import { useAiAssistant } from './useAiAssistant'
 import { resolveNgbPageContext } from '../navigation/config'
-import { assistantSourcePath } from './navigation'
 import { renderAssistantMarkdown } from './markdown'
 import type { AssistantMessage } from './types'
 
@@ -177,15 +166,42 @@ onMounted(() => input.value?.focus())
 }
 
 .assistant-markdown :deep(pre),
-.assistant-markdown :deep(table) {
+.assistant-markdown :deep(.assistant-table) {
   display: block;
   overflow-x: auto;
   max-width: 100%;
 }
 
+.assistant-markdown :deep(.assistant-table) {
+  margin-top: 0.75rem;
+  border: 1px solid var(--ngb-border);
+  border-radius: var(--ngb-radius);
+}
+
+.assistant-markdown :deep(table) {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
 .assistant-markdown :deep(th),
 .assistant-markdown :deep(td) {
-  padding: 0.25rem 0.5rem;
+  min-width: 7rem;
+  padding: 0.5rem 0.75rem;
   text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--ngb-border);
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+.assistant-markdown :deep(th) {
+  background: var(--ngb-bg);
+  font-weight: 600;
+}
+
+.assistant-markdown :deep(tr:last-child td) {
+  border-bottom: 0;
 }
 </style>
