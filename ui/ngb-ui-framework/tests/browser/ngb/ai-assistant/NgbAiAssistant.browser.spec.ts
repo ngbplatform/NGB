@@ -1,5 +1,5 @@
 import { page } from 'vitest/browser'
-import { beforeEach, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { render } from 'vitest-browser-vue'
 import { createPinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
@@ -7,12 +7,32 @@ import { defineComponent, h } from 'vue'
 import NgbSiteShell from '../../../../src/ngb/site/NgbSiteShell.vue'
 import { getAssistantSettings, streamAssistant } from '../../../../src/ngb/ai-assistant/api'
 import { getFeatures } from '../../../../src/ngb/features/api'
+import { configureNgbNavigation, NgbSourceKinds } from '../../../../src/navigation'
+import { configureNgbEditor, type EditorRoutingConfig } from '../../../../src/index'
 
 vi.mock('../../../../src/ngb/ai-assistant/api', () => ({ getAssistantSettings: vi.fn(), streamAssistant: vi.fn() }))
 vi.mock('../../../../src/ngb/features/api', () => ({ getFeatures: vi.fn() }))
 
+function configureEditorRouting(routing: EditorRoutingConfig = {}): void {
+  configureNgbEditor({
+    routing,
+    loadDocumentById: vi.fn(),
+    loadDocumentEffects: vi.fn(),
+    loadDocumentGraph: vi.fn(),
+    loadEntityAuditLog: vi.fn(),
+    documentActions: { loadEditorState: vi.fn(), execute: vi.fn() },
+  })
+}
+
+afterEach(() => {
+  configureNgbNavigation()
+  configureEditorRouting()
+})
+
 beforeEach(() => {
   vi.resetAllMocks()
+  configureNgbNavigation()
+  configureEditorRouting()
   vi.mocked(getFeatures).mockResolvedValue(['Mcp', 'AiAssistant'].map(code => ({ code, displayName: code, group: 'Integrations', enabled: true })))
   vi.mocked(getAssistantSettings).mockResolvedValue({
     provider: 'Ollama', model: 'qwen3.5:4b', maxMessages: 20, maxMessageCharacters: 8000,
@@ -25,10 +45,17 @@ beforeEach(() => {
   })
 })
 
-async function mountShell() {
+async function mountShell(initialPath = '/catalogs/pm.property') {
   const navigate = vi.fn()
-  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/:pathMatch(.*)*', component: defineComponent(() => () => h('div')) }] })
-  await router.push('/catalogs/pm.property')
+  const component = defineComponent(() => () => h('div'))
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      { path: '/customers/:customerId', name: 'customer', component },
+      { path: '/:pathMatch(.*)*', component },
+    ],
+  })
+  await router.push(initialPath)
   await router.isReady()
   const view = await render(NgbSiteShell, {
     props: { moduleTitle: 'Property Management', productTitle: 'NGB', pageTitle: 'Properties & Units', pinned: [], recent: [], nodes: [], selectedId: null, onNavigate: navigate },
@@ -37,7 +64,7 @@ async function mountShell() {
   })
   await view.getByRole('button', { name: 'AI Assistant', exact: true }).click()
   await expect.element(view.getByRole('textbox', { name: 'Ask a question' })).toBeVisible()
-  return { view, navigate }
+  return { view, navigate, router }
 }
 
 test('desktop panel preserves application interaction, streams safe Markdown and follows real sources', async () => {
@@ -129,4 +156,67 @@ test('failed turns show a retry action and never look complete', async () => {
 
   await expect.element(view.getByRole('link', { name: 'Aging report' })).toBeVisible()
   expect(streamAssistant).toHaveBeenCalledTimes(2)
+})
+
+test('uses host page semantics and editor routing for Assistant sources on custom routes', async () => {
+  await page.viewport(1440, 900)
+  const firstId = '11111111-1111-4111-8111-111111111111'
+  const secondId = '22222222-2222-4222-8222-222222222222'
+  configureEditorRouting({ buildCatalogFullPageUrl: (_, id) => `/customers/${id}` })
+  configureNgbNavigation({
+    resolvePageContext: route => route.name === 'customer'
+      ? { kind: NgbSourceKinds.Catalog, typeCode: 'example.customer', id: String(route.params.customerId) }
+      : undefined,
+  })
+  vi.mocked(streamAssistant).mockImplementation(async (request, event) => {
+    const source = { kind: NgbSourceKinds.Catalog, typeCode: 'example.customer', id: request.context!.id!, title: 'Customer Display' }
+    event({ type: 'source', source })
+    event({ type: 'text', text: `[Record](ngb-source:catalog:example.customer:${source.id})` })
+    event({ type: 'done' })
+  })
+  const { view, navigate, router } = await mountShell(`/customers/${firstId}`)
+  await view.getByRole('textbox', { name: 'Ask a question' }).fill('Show this customer')
+  await view.getByRole('button', { name: 'Send', exact: true }).click()
+
+  expect(vi.mocked(streamAssistant).mock.calls[0]![0].context)
+    .toEqual({ kind: 'catalog', typeCode: 'example.customer', id: firstId })
+  const link = document.querySelector<HTMLAnchorElement>('.assistant-markdown a')!
+  expect(link.textContent).toBe('Customer Display')
+  expect(link.getAttribute('href')).toBe(`/customers/${firstId}`)
+  link.click()
+  expect(navigate).toHaveBeenCalledWith(`/customers/${firstId}`)
+
+  await router.push(`/customers/${secondId}`)
+  await view.getByRole('textbox', { name: 'Ask a question' }).fill('Show the next customer')
+  await view.getByRole('button', { name: 'Send', exact: true }).click()
+  expect(vi.mocked(streamAssistant).mock.calls[1]![0].context)
+    .toEqual({ kind: 'catalog', typeCode: 'example.customer', id: secondId })
+})
+
+test('updates compact editor context when only the selected record query changes', async () => {
+  await page.viewport(1440, 900)
+  const firstId = '11111111-1111-4111-8111-111111111111'
+  const secondId = '22222222-2222-4222-8222-222222222222'
+  const { view, router } = await mountShell(`/catalogs/example.customer?panel=edit&id=${firstId}`)
+  await view.getByRole('textbox', { name: 'Ask a question' }).fill('Show this record')
+  await view.getByRole('button', { name: 'Send', exact: true }).click()
+  expect(vi.mocked(streamAssistant).mock.calls[0]![0].context)
+    .toEqual({ kind: 'catalog', typeCode: 'example.customer', id: firstId })
+
+  await router.push({ query: { panel: 'edit', id: secondId } })
+  await view.getByRole('textbox', { name: 'Ask a question' }).fill('Show the next record')
+  await view.getByRole('button', { name: 'Send', exact: true }).click()
+  expect(vi.mocked(streamAssistant).mock.calls[1]![0].context)
+    .toEqual({ kind: 'catalog', typeCode: 'example.customer', id: secondId })
+})
+
+test('does not fall back to a URL scope when the host explicitly disables page context', async () => {
+  await page.viewport(1440, 900)
+  configureNgbNavigation({ resolvePageContext: () => null })
+  const { view } = await mountShell('/reports/example.summary')
+  await expect.element(view.getByRole('checkbox')).not.toBeInTheDocument()
+  await view.getByRole('textbox', { name: 'Ask a question' }).fill('What reports can I run?')
+  await view.getByRole('button', { name: 'Send', exact: true }).click()
+
+  expect(vi.mocked(streamAssistant).mock.calls[0]![0].context).toBeNull()
 })

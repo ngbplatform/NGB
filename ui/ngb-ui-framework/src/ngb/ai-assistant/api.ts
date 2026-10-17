@@ -1,4 +1,4 @@
-import { httpGet, httpPostStream } from '../api/http'
+import { httpGet, httpPostStream, InvalidStreamResponseError } from '../api/http'
 import type { AssistantEvent, AssistantRequest, AssistantSettings } from './types'
 
 const maximumEventCharacters = 64 * 1024
@@ -12,7 +12,16 @@ export async function streamAssistant(
   onEvent: (event: AssistantEvent) => void,
   signal: AbortSignal,
 ): Promise<void> {
-  const response = await httpPostStream('/api/ai-assistant/chat', request, { signal })
+  let response: Response
+  try {
+    response = await httpPostStream('/api/ai-assistant/chat', request, { signal })
+  } catch (cause) {
+    if (cause instanceof InvalidStreamResponseError) {
+      throw new Error('The assistant returned an invalid response.', { cause })
+    }
+    throw cause
+  }
+
   const reader = response.body!.getReader()
   const decoder = new TextDecoder()
   let pending = ''

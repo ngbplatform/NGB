@@ -86,7 +86,8 @@ import { routeLocationKey } from 'vue-router'
 import NgbIcon from '../primitives/NgbIcon.vue'
 import NgbButton from '../primitives/NgbButton.vue'
 import { useAiAssistant } from './useAiAssistant'
-import { assistantPageContext, assistantSourcePath } from './navigation'
+import { resolveNgbPageContext } from '../navigation/config'
+import { assistantSourcePath } from './navigation'
 import { renderAssistantMarkdown } from './markdown'
 import type { AssistantMessage } from './types'
 
@@ -94,7 +95,7 @@ defineProps<{ pageTitle?: string }>()
 const emit = defineEmits<{ (event: 'close'): void; (event: 'navigate', path: string): void }>()
 const assistant = useAiAssistant()
 const route = inject(routeLocationKey, null)
-const context = computed(() => assistantPageContext(route?.path ?? ''))
+const context = computed(() => route ? resolveNgbPageContext(route) : null)
 const useContext = ref(true)
 const draft = ref('')
 const conversation = ref<HTMLElement | null>(null)

@@ -79,6 +79,37 @@ Supported package entry points are the root, `contracts`, `editor`, `layout`,
 `lazy`, `navigation`, `work-center`, `styles`, `vite-public-assets` and
 `tailwind-preset`. Other source paths are implementation details.
 
+## Navigation and page context
+
+AI Assistant uses the shared navigation configuration for page identity and
+source links. Standard catalog, document, report and general journal routes work
+without additional configuration, including saved records in compact editors.
+Applications with custom routes supply their semantic context at bootstrap:
+
+```ts
+import { configureNgbNavigation, NgbSourceKinds } from '@ngbplatform/ui/navigation'
+
+configureNgbNavigation({
+  resolvePageContext(route) {
+    if (route.name !== 'customer') return undefined
+    return {
+      kind: NgbSourceKinds.Catalog,
+      typeCode: 'example.customer',
+      id: String(route.params.customerId),
+    }
+  },
+})
+```
+
+Return `undefined` to use the standard route adapter, or `null` to disable page
+context for a route. Only validated `kind`, `typeCode` and `id` are sent; loaded
+rows and other page state are excluded. This context does not grant access to data.
+
+Source links use the record builders already registered through
+`configureNgbEditor({ routing: ... })`. A `configureNgbNavigation.resolveTarget`
+override takes precedence. Add `resolvePageContext` to the application's existing
+navigation configuration; calling `configureNgbNavigation` replaces that configuration.
+
 ## License
 
 Apache-2.0.

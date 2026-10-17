@@ -1,3 +1,8 @@
+import {
+  configureNgbRecordRouting,
+  resolveNgbRecordRouting,
+  type NgbRecordRouting,
+} from '../navigation/recordRouting';
 import type { EntityFormModel, LookupStoreApi } from '../metadata/types';
 import type {
   AuditLogPage,
@@ -27,16 +32,7 @@ export type DocumentActionsGateway = {
   ) => Promise<ExecuteDocumentActionResultDto>;
 };
 
-export type EditorRoutingConfig = {
-  buildCatalogListUrl?: (catalogType: string) => string;
-  buildCatalogFullPageUrl?: (catalogType: string, id?: string | null) => string;
-  buildCatalogCompactPageUrl?: (catalogType: string, id?: string | null) => string;
-  buildDocumentFullPageUrl?: (documentType: string, id?: string | null) => string;
-  buildDocumentCompactPageUrl?: (documentType: string, id?: string | null) => string;
-  buildDocumentEffectsPageUrl?: (documentType: string, id: string) => string;
-  buildDocumentFlowPageUrl?: (documentType: string, id: string) => string;
-  buildDocumentPrintPageUrl?: (documentType: string, id: string, options?: { autoPrint?: boolean }) => string;
-};
+export type EditorRoutingConfig = NgbRecordRouting;
 
 export type EditorEntityBehaviorArgs = {
   context: EntityEditorContext;
@@ -74,67 +70,9 @@ export type EditorFrameworkConfig = {
 
 let editorFrameworkConfig: EditorFrameworkConfig | null = null;
 
-function normalizePathSegment(value: string | null | undefined): string {
-  return String(value ?? '').trim();
-}
-
-function appendQuery(path: string, query: Record<string, string>): string {
-  return `${path}?${new URLSearchParams(query).toString()}`;
-}
-
-function defaultBuildCatalogListUrl(catalogType: string): string {
-  const type = encodeURIComponent(normalizePathSegment(catalogType));
-  return `/catalogs/${type}`;
-}
-
-function defaultBuildCatalogFullPageUrl(catalogType: string, id?: string | null): string {
-  const normalizedId = normalizePathSegment(id);
-  if (!normalizedId) return `${defaultBuildCatalogListUrl(catalogType)}/new`;
-  return `${defaultBuildCatalogListUrl(catalogType)}/${encodeURIComponent(normalizedId)}`;
-}
-
-function defaultBuildCatalogCompactPageUrl(catalogType: string, id?: string | null): string {
-  const normalizedId = normalizePathSegment(id);
-  if (!normalizedId) return appendQuery(defaultBuildCatalogListUrl(catalogType), { panel: 'new' });
-  return appendQuery(defaultBuildCatalogListUrl(catalogType), { panel: 'edit', id: normalizedId });
-}
-
-function defaultBuildDocumentFullPageUrl(documentType: string, id?: string | null): string {
-  const type = encodeURIComponent(normalizePathSegment(documentType));
-  const normalizedId = normalizePathSegment(id);
-  if (!normalizedId) return `/documents/${type}/new`;
-  return `/documents/${type}/${encodeURIComponent(normalizedId)}`;
-}
-
-function defaultBuildDocumentCompactPageUrl(documentType: string, id?: string | null): string {
-  const type = encodeURIComponent(normalizePathSegment(documentType));
-  const normalizedId = normalizePathSegment(id);
-  if (!normalizedId) return `/documents/${type}?panel=new`;
-  return appendQuery(`/documents/${type}`, { panel: 'edit', id: normalizedId });
-}
-
-function defaultBuildDocumentEffectsPageUrl(documentType: string, id: string): string {
-  const type = encodeURIComponent(normalizePathSegment(documentType));
-  return `/documents/${type}/${encodeURIComponent(normalizePathSegment(id))}/effects`;
-}
-
-function defaultBuildDocumentFlowPageUrl(documentType: string, id: string): string {
-  const type = encodeURIComponent(normalizePathSegment(documentType));
-  return `/documents/${type}/${encodeURIComponent(normalizePathSegment(id))}/flow`;
-}
-
-function defaultBuildDocumentPrintPageUrl(
-  documentType: string,
-  id: string,
-  options?: { autoPrint?: boolean },
-): string {
-  const type = encodeURIComponent(normalizePathSegment(documentType));
-  const base = `/documents/${type}/${encodeURIComponent(normalizePathSegment(id))}/print`;
-  return options?.autoPrint ? `${base}?autoprint=1` : base;
-}
-
 export function configureNgbEditor(config: EditorFrameworkConfig): void {
   editorFrameworkConfig = config;
+  configureNgbRecordRouting(() => config.routing);
 }
 
 export function getConfiguredNgbEditor(): EditorFrameworkConfig {
@@ -150,24 +88,7 @@ export function maybeGetConfiguredNgbEditor(): EditorFrameworkConfig | null {
 }
 
 export function resolveNgbEditorRouting(): Required<EditorRoutingConfig> {
-  return {
-    buildCatalogListUrl:
-      editorFrameworkConfig?.routing?.buildCatalogListUrl ?? defaultBuildCatalogListUrl,
-    buildCatalogFullPageUrl:
-      editorFrameworkConfig?.routing?.buildCatalogFullPageUrl ?? defaultBuildCatalogFullPageUrl,
-    buildCatalogCompactPageUrl:
-      editorFrameworkConfig?.routing?.buildCatalogCompactPageUrl ?? defaultBuildCatalogCompactPageUrl,
-    buildDocumentFullPageUrl:
-      editorFrameworkConfig?.routing?.buildDocumentFullPageUrl ?? defaultBuildDocumentFullPageUrl,
-    buildDocumentCompactPageUrl:
-      editorFrameworkConfig?.routing?.buildDocumentCompactPageUrl ?? defaultBuildDocumentCompactPageUrl,
-    buildDocumentEffectsPageUrl:
-      editorFrameworkConfig?.routing?.buildDocumentEffectsPageUrl ?? defaultBuildDocumentEffectsPageUrl,
-    buildDocumentFlowPageUrl:
-      editorFrameworkConfig?.routing?.buildDocumentFlowPageUrl ?? defaultBuildDocumentFlowPageUrl,
-    buildDocumentPrintPageUrl:
-      editorFrameworkConfig?.routing?.buildDocumentPrintPageUrl ?? defaultBuildDocumentPrintPageUrl,
-  };
+  return resolveNgbRecordRouting();
 }
 
 export function resolveNgbEditorEntityProfile(context: EntityEditorContext): EditorEntityProfile {

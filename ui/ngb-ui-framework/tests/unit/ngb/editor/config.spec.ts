@@ -181,7 +181,7 @@ describe('editor config', () => {
     expect(config.resolveNgbEditorPrintBehavior()).toEqual({})
   })
 
-  it('keeps server action target navigation independent from editor configuration', async () => {
+  it('resolves default server action targets without requiring editor bootstrap', async () => {
     vi.resetModules()
     const navigation = await import('../../../../src/ngb/navigation/config')
     const context = { resourceCode: 'pm.invoice', entityId: 'doc/1' }

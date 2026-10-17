@@ -1,10 +1,6 @@
-import type { NgbSourceKind } from '../api/sourceKinds'
+import type { NgbSourceIdentity } from '../api/sourceKinds'
 
-export type AssistantPageContext = {
-  kind: NgbSourceKind
-  typeCode: string
-  id?: string | null
-}
+export type AssistantPageContext = NgbSourceIdentity
 
 export type AssistantSource = AssistantPageContext & { title: string }
 

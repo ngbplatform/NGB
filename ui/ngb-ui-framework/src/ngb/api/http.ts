@@ -370,6 +370,13 @@ export async function httpPost<TResponse, TBody = unknown>(
   return httpRequest<TResponse>('POST', url, body, options)
 }
 
+export class InvalidStreamResponseError extends Error {
+  constructor() {
+    super('Expected a non-empty text/event-stream response.')
+    this.name = 'InvalidStreamResponseError'
+  }
+}
+
 /** Returns an authenticated stream. A 401 can be retried only before a response body is consumed. */
 export async function httpPostStream(url: string, body: unknown, options: HttpRequestOptions = {}): Promise<Response> {
   const resolvedUrl = resolveUrl(url)
@@ -392,7 +399,7 @@ export async function httpPostStream(url: string, body: unknown, options: HttpRe
   if (!response.ok) await buildResponse(response, resolvedUrl)
   if (!response.body || !response.headers.get('content-type')?.startsWith('text/event-stream')) {
     await response.body?.cancel()
-    throw new Error('The assistant returned an invalid response.')
+    throw new InvalidStreamResponseError()
   }
   return response
 }

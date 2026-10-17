@@ -41,7 +41,7 @@
 
 ## NGB Platform Intro
 
-[![NGB Platform Intro — Accounting-First Industry Solutions](https://img.youtube.com/vi/jeZZZaD8OoM/maxresdefault.jpg)](https://youtu.be/jeZZZaD8OoM)
+[![NGB Platform Intro](https://img.youtube.com/vi/jeZZZaD8OoM/maxresdefault.jpg)](https://youtu.be/jeZZZaD8OoM)
 
 ▶️ [Watch the intro video on YouTube](https://youtu.be/jeZZZaD8OoM)
 

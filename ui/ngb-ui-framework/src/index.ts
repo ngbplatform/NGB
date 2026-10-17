@@ -33,13 +33,17 @@ export {
   configureNgbNavigation,
   resolveNgbNavigationRoutes,
   resolveNgbNavigationTarget,
+  resolveNgbPageContext,
 } from './ngb/navigation/config';
 export type {
   NgbNavigationConfig,
   NgbNavigationContext,
+  NgbNavigationLocation,
   NgbNavigationRoutes,
   NgbNavigationTarget,
 } from './ngb/navigation/types';
+export { NgbSourceKinds } from './ngb/api/sourceKinds';
+export type { NgbSourceIdentity, NgbSourceKind } from './ngb/api/sourceKinds';
 export type {
   NotificationChannel,
   NotificationPreference,

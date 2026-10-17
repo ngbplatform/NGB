@@ -1,9 +1,17 @@
 import { beforeEach, expect, it, vi } from 'vitest'
-import { httpPostStream } from '../../../../src/ngb/api/http'
+import { ApiError, httpPostStream, InvalidStreamResponseError } from '../../../../src/ngb/api/http'
 import { streamAssistant } from '../../../../src/ngb/ai-assistant/api'
 import type { AssistantEvent } from '../../../../src/ngb/ai-assistant/types'
 
-vi.mock('../../../../src/ngb/api/http', () => ({ httpGet: vi.fn(), httpPostStream: vi.fn() }))
+vi.mock('../../../../src/ngb/auth/keycloak', () => ({
+  getAccessToken: vi.fn(),
+  forceRefreshAccessToken: vi.fn(),
+}))
+vi.mock('../../../../src/ngb/api/http', async importOriginal => ({
+  ...await importOriginal<typeof import('../../../../src/ngb/api/http')>(),
+  httpGet: vi.fn(),
+  httpPostStream: vi.fn(),
+}))
 
 beforeEach(() => vi.resetAllMocks())
 
@@ -55,4 +63,23 @@ it('cancels the reader when the consumer rejects output', async () => {
   }, new AbortController().signal)).rejects.toThrow('limit')
 
   expect(cancel).toHaveBeenCalledOnce()
+})
+
+it('maps only the transport format error to an assistant message', async () => {
+  const cause = new InvalidStreamResponseError()
+  vi.mocked(httpPostStream).mockRejectedValue(cause)
+
+  await expect(streamAssistant({ messages: [{ role: 'user', text: 'Hi' }] }, vi.fn(), new AbortController().signal))
+    .rejects.toMatchObject({ message: 'The assistant returned an invalid response.', cause })
+})
+
+it.each([
+  new ApiError({ message: 'Access denied', status: 403, url: '/api/ai-assistant/chat' }),
+  new DOMException('Cancelled', 'AbortError'),
+  new TypeError('Network unavailable'),
+])('preserves other transport failures: %s', async cause => {
+  vi.mocked(httpPostStream).mockRejectedValue(cause)
+
+  await expect(streamAssistant({ messages: [{ role: 'user', text: 'Hi' }] }, vi.fn(), new AbortController().signal))
+    .rejects.toBe(cause)
 })
