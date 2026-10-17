@@ -212,8 +212,12 @@ permission checks, optional contributors, OAuth and client compatibility.
 The shared UI and API include AI Assistant, disabled by default. Enable both
 `FEATURE_MCP=true` and `FEATURE_AI_ASSISTANT=true` and run native Ollama on the
 host with the `qwen3.5:4b` model. Compose uses
-`AI_OLLAMA_ENDPOINT=http://host.docker.internal:11434`; an API running directly
-on the host uses `http://localhost:11434`.
+`AI_OLLAMA_ENDPOINT=http://host.docker.internal:11434`; explicitly set
+`AI_OLLAMA_ALLOW_INSECURE_HTTP=true` for this local API-to-host connection. An API
+running directly on the host uses `http://localhost:11434` without the opt-in.
+`AiAssistant:Ollama:AllowInsecureHttp` defaults to `false`; other HTTP endpoints
+also require explicit permission. Use HTTPS and leave the option disabled for
+production network connections.
 
 The assistant uses the existing user's MCP permissions. Conversations remain in
 browser memory. The developer can replace `AddNgbOllamaChatClient` with another

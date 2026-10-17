@@ -92,6 +92,7 @@ The same keys are used by all four API hosts. Environment-variable equivalents u
 | `FeatureManagement:Attachments` | `FEATURE_ATTACHMENTS` | Enable attachment operations; defaults to `false` |
 | `FeatureManagement:Notes` | `FEATURE_NOTES` | Enable notes independently of storage; defaults to `false` |
 | `FeatureManagement:Mcp` | `FEATURE_MCP` | Enable the MCP endpoint and OAuth metadata at API startup; defaults to `false` |
+| `AiAssistant:Ollama:AllowInsecureHttp` | `AI_OLLAMA_ALLOW_INSECURE_HTTP` | Permit HTTP beyond loopback for the configured Ollama endpoint; defaults to `false`. Local Compose `.env` files explicitly enable it for the API-to-host connection |
 | `Mcp:AllowLocalhostHttp` | `MCP_ALLOW_LOCALHOST_HTTP` | Permit HTTP for loopback and reserved `*.localhost` hosts during local development; defaults to `false` |
 | `Ngb:Hosting:PublicApiUrl` | `PM_API_PUBLIC_URL` (optional) | Shared public API base URL; local Compose derives it from `PM_API_HTTPS_PORT` when absent. MCP appends its mapped route |
 | `Attachments:UploadExpirationEnabled` | `ATTACHMENTS_UPLOAD_EXPIRATION_ENABLED` | Keep pending upload expiration active when Attachments is disabled; defaults to `false` |

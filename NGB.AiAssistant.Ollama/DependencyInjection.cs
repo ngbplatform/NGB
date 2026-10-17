@@ -1,6 +1,7 @@
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using NGB.Tools.Http;
 using OllamaSharp;
 using OllamaSharp.Models;
 
@@ -14,11 +15,13 @@ public static class DependencyInjection
         Action<OllamaAssistantOptions> configure)
     {
         services.AddOptions<OllamaAssistantOptions>().Configure(configure)
-            .Validate(options => AiProviderEndpoint.IsValid(options.Endpoint, allowLocalHttp: true)
-                && !string.IsNullOrWhiteSpace(options.Model)
+            .Validate(options => IsValidEndpoint(options.Endpoint, options.AllowInsecureHttp),
+                "Configure an HTTPS or loopback HTTP Ollama endpoint, or explicitly enable AiAssistant:Ollama:AllowInsecureHttp. "
+                + "The endpoint must not contain credentials, a query or a fragment.")
+            .Validate(options => !string.IsNullOrWhiteSpace(options.Model)
                 && !options.Model.Contains("cloud", StringComparison.OrdinalIgnoreCase)
                 && options.ContextLength is > 0 and <= OllamaAssistantOptions.MaximumContextLength,
-                "Configure a local Ollama model, valid endpoint and context length.")
+                "Configure a local Ollama model and valid context length.")
             .ValidateOnStart();
 
         services.AddHttpClient(HttpClientName, (provider, client) =>
@@ -39,6 +42,13 @@ public static class DependencyInjection
 
         return services;
     }
+
+    private static bool IsValidEndpoint(string value, bool allowInsecureHttp)
+        => Uri.TryCreate(value, UriKind.Absolute, out var uri)
+            && HttpEndpointUri.IsAbsoluteHttp(uri)
+            && (uri.Scheme == Uri.UriSchemeHttps
+                || uri.IsLoopback
+                || allowInsecureHttp);
 
     private sealed class ConfiguredOllamaClient(
         IChatClient inner,

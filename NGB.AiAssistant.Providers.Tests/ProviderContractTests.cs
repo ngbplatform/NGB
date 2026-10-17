@@ -5,6 +5,7 @@ using Amazon.BedrockRuntime;
 using Amazon.BedrockRuntime.Model;
 using Amazon.Runtime.EventStreams;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -170,8 +171,8 @@ public sealed class ProviderContractTests
     [InlineData("http://localhost:11434", true)]
     [InlineData("http://127.0.0.1:11434", true)]
     [InlineData("http://[::1]:11434", true)]
-    [InlineData("http://host.docker.internal:11434", true)]
-    [InlineData("http://HOST.DOCKER.INTERNAL:11434", true)]
+    [InlineData("http://host.docker.internal:11434", false)]
+    [InlineData("http://HOST.DOCKER.INTERNAL:11434", false)]
     [InlineData("https://ollama.example/api", true)]
     [InlineData("http://ollama.example:11434", false)]
     [InlineData("http://192.168.1.10:11434", false)]
@@ -182,7 +183,7 @@ public sealed class ProviderContractTests
     [InlineData("http://localhost:11434#fragment", false)]
     [InlineData("ftp://localhost:11434", false)]
     [InlineData("relative/path", false)]
-    public void OllamaEndpointPolicyAllowsOnlySecureOrExplicitLocalConnections(string endpoint, bool valid)
+    public void OllamaEndpointPolicyDefaultsToHttpsOrLoopback(string endpoint, bool valid)
     {
         var services = new ServiceCollection().AddNgbOllamaChatClient(options => options.Endpoint = endpoint);
         using var provider = services.BuildServiceProvider();
@@ -191,6 +192,65 @@ public sealed class ProviderContractTests
             Assert.Equal(endpoint, provider.GetRequiredService<IOptions<OllamaAssistantOptions>>().Value.Endpoint);
         else
             Assert.Throws<OptionsValidationException>(() => provider.GetRequiredService<IOptions<OllamaAssistantOptions>>().Value);
+    }
+
+    [Theory]
+    [InlineData("http://host.docker.internal:11434", true)]
+    [InlineData("http://ollama.internal:11434", true)]
+    [InlineData("http://192.168.1.10:11434", true)]
+    [InlineData("http://localhost:11434", true)]
+    [InlineData("https://ollama.example/api", true)]
+    [InlineData("http://user:secret@ollama.internal:11434", false)]
+    [InlineData("http://ollama.internal:11434?key=secret", false)]
+    [InlineData("http://ollama.internal:11434#fragment", false)]
+    [InlineData("ftp://ollama.internal:11434", false)]
+    [InlineData("file:///etc/passwd", false)]
+    [InlineData("relative/path", false)]
+    [InlineData("", false)]
+    public void OllamaHttpOptInPreservesEndpointValidation(string endpoint, bool valid)
+    {
+        var services = new ServiceCollection().AddNgbOllamaChatClient(options =>
+        {
+            options.Endpoint = endpoint;
+            options.AllowInsecureHttp = true;
+        });
+        using var provider = services.BuildServiceProvider();
+
+        if (valid)
+            Assert.Equal(endpoint, provider.GetRequiredService<IOptions<OllamaAssistantOptions>>().Value.Endpoint);
+        else
+            Assert.Throws<OptionsValidationException>(() => provider.GetRequiredService<IOptions<OllamaAssistantOptions>>().Value);
+    }
+
+    [Theory]
+    [InlineData(null, false)]
+    [InlineData("false", false)]
+    [InlineData("true", true)]
+    public void OllamaBindsHttpOptInAndValidatesItAtStartup(string? configuredValue, bool allowed)
+    {
+        const string endpoint = "http://ollama.internal:11434";
+        var values = new Dictionary<string, string?>
+        {
+            [OllamaAssistantOptions.SectionName + ":Endpoint"] = endpoint
+        };
+        if (configuredValue is not null)
+            values[OllamaAssistantOptions.SectionName + ":AllowInsecureHttp"] = configuredValue;
+
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(values).Build();
+        var services = new ServiceCollection().AddNgbOllamaChatClient(
+            configuration.GetSection(OllamaAssistantOptions.SectionName).Bind);
+        using var provider = services.BuildServiceProvider();
+        var validator = provider.GetRequiredService<IStartupValidator>();
+
+        if (!allowed)
+        {
+            Assert.Throws<OptionsValidationException>(validator.Validate);
+            return;
+        }
+
+        validator.Validate();
+        using var http = provider.GetRequiredService<IHttpClientFactory>().CreateClient(Ollama.DependencyInjection.HttpClientName);
+        Assert.Equal(new Uri(endpoint), http.BaseAddress);
     }
 
     private static ServiceCollection Register(string provider, RecordingHandler handler)
