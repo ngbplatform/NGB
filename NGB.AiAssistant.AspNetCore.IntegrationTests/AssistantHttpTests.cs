@@ -41,7 +41,7 @@ using Xunit;
 
 namespace NGB.AiAssistant.AspNetCore.IntegrationTests;
 
-public sealed class AssistantHttpTests
+public sealed partial class AssistantHttpTests
 {
     private const string PaymentDisplay = "Receivable Payment RP-2026-000014 8/24/2025";
     private static readonly AiAssistantRequest Question = new([new("user", "Who am I?")]);
@@ -542,7 +542,8 @@ public sealed class AssistantHttpTests
             bool mcp = true,
             string mode = "normal",
             Dictionary<string, string?>? overrides = null,
-            X509Certificate2? certificate = null)
+            X509Certificate2? certificate = null,
+            Action<IServiceCollection>? configure = null)
         {
             var listener = new TcpListener(IPAddress.Loopback, 0);
             listener.Start();
@@ -668,6 +669,7 @@ public sealed class AssistantHttpTests
                 else
                     services.AddScoped<IChatClient, Model>();
             });
+            configure?.Invoke(builder.Services);
             var app = builder.Build();
             try
             {

@@ -1,4 +1,5 @@
 using System.Collections;
+using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
 using System.Reflection;
 using System.Text.Json;
@@ -56,6 +57,10 @@ internal static class McpJson
                     {
                         schema["minLength"] = length.MinimumLength;
                         schema["maxLength"] = length.MaximumLength;
+                    }
+                    else if (attribute is DescriptionAttribute description)
+                    {
+                        schema["description"] = description.Description;
                     }
                 }
                 return schema;

@@ -71,6 +71,8 @@ public static class DependencyInjection
         {
             var configured = options?.Clone() ?? new ChatOptions();
             configured.ModelId = settings.Model;
+            // Prefer stable tool arguments while preserving explicit caller settings.
+            configured.Temperature ??= 0;
             configured.AddOllamaOption(OllamaOption.NumCtx, settings.ContextLength);
             configured.AddOllamaOption(OllamaOption.Think, false);
             return configured;

@@ -30,7 +30,9 @@ internal static class BuiltInTools
         builder.Add<SearchRequest, SearchResult, SearchTool>(
             McpToolNames.Search,
             "Find authorized records and reports by document number, name or display text. Use this first when the user asks for a record or link. "
-            + "Optionally scope by kind and typeCode. Results provide real record IDs and display titles; truncated includes capped type fan-out.",
+            + "Scope by kind and typeCode only when known from metadata or context; otherwise omit them. Retry without scope if a scoped search is empty. "
+            + "Results provide real record IDs and display titles; truncated includes capped type fan-out. "
+            + "Search discovers matching records; the number of hits is not an aggregate business count.",
             []);
 
         builder.Add<RecordsRequest, RecordsResult, ListRecordsTool>(
@@ -56,17 +58,23 @@ internal static class BuiltInTools
 
         builder.Add<ReportsRequest, ReportsResult, ListReportsTool>(
             McpToolNames.ListReports,
-            "List installed reports visible to the current user.",
+            "List installed reports visible to the current user, including their definitions. This returns metadata, not report figures. "
+            + "Execute the selected report to answer questions about counts, balances and totals.",
             []);
 
         builder.Add<ReportDefinitionRequest, ReportDefinitionDto, ReportDefinitionTool>(
             McpToolNames.GetReportDefinition,
-            "Read an authorized report definition and supported filters/layout.",
+            "Read an authorized report definition, required filters, optional parameters and lookup sources. "
+            + "Resolve required lookup IDs through search using the declared lookup type. This returns metadata, not report figures.",
             []);
 
         builder.Add<ReportReadRequest, ReportExecutionResponseDto, ExecuteReportTool>(
             McpToolNames.ExecuteReport,
-            "Execute an authorized, paginated interactive report. Reuses existing calculations and cursors; no export or immutable cross-page snapshot.",
+            "Execute an authorized report to obtain actual business figures. Read its definition and resolve required filters first. "
+            + "Filters use actual field codes as keys: request.filters = {\"customer_id\":{\"value\":\"record UUID\"}}. "
+            + "Replace customer_id with the field code declared by the report; never pass a bare UUID or a literal fieldCode key. "
+            + "Omit unspecified optional parameters to use the report's defaults. "
+            + "Reuses existing calculations and pagination; no export or immutable cross-page snapshot.",
             []);
 
         builder.Add<AuditReadRequest, AuditLogPageDto, AuditTool>(

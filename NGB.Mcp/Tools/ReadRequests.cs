@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json.Serialization;
 using NGB.Application.Abstractions.Services;
@@ -64,6 +65,11 @@ public sealed record ReportDefinitionRequest([property: Required, StringLength(1
 
 public sealed record ReportReadRequest(
     [property: Required, StringLength(128)] string ReportCode,
+    [property: Description("Report options. Filters are a map keyed by the actual field codes from the report definition. "
+        + "Example request: {\"filters\":{\"customer_id\":{\"value\":\"UUID returned by search\"}}}. "
+        + "Replace customer_id with the report's filter code. Do not use a literal fieldCode key or an array of filters. "
+        + "For lookup filters, value is a record UUID returned by search. Parameters map declared parameter codes to strings. "
+        + "Omit optional parameters unless the user requested them; the report applies its own defaults.")]
     ReportExecutionRequestDto Request);
 
 public sealed record AuditReadRequest(

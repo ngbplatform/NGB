@@ -47,7 +47,7 @@
   },
   {
     "name": "ngb_execute_report",
-    "description": "Execute an authorized, paginated interactive report. Reuses existing calculations and cursors; no export or immutable cross-page snapshot.",
+    "description": "Execute an authorized report to obtain actual business figures. Read its definition and resolve required filters first. Filters use actual field codes as keys: request.filters = {\u0022customer_id\u0022:{\u0022value\u0022:\u0022record UUID\u0022}}. Replace customer_id with the field code declared by the report; never pass a bare UUID or a literal fieldCode key. Omit unspecified optional parameters to use the report\u0027s defaults. Reuses existing calculations and pagination; no export or immutable cross-page snapshot.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -328,7 +328,8 @@
               "default": null
             }
           },
-          "additionalProperties": false
+          "additionalProperties": false,
+          "description": "Report options. Filters are a map keyed by the actual field codes from the report definition. Example request: {\u0022filters\u0022:{\u0022customer_id\u0022:{\u0022value\u0022:\u0022UUID returned by search\u0022}}}. Replace customer_id with the report\u0027s filter code. Do not use a literal fieldCode key or an array of filters. For lookup filters, value is a record UUID returned by search. Parameters map declared parameter codes to strings. Omit optional parameters unless the user requested them; the report applies its own defaults."
         }
       },
       "required": [
@@ -4513,7 +4514,7 @@
   },
   {
     "name": "ngb_get_report_definition",
-    "description": "Read an authorized report definition and supported filters/layout.",
+    "description": "Read an authorized report definition, required filters, optional parameters and lookup sources. Resolve required lookup IDs through search using the declared lookup type. This returns metadata, not report figures.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -6921,7 +6922,7 @@
   },
   {
     "name": "ngb_list_reports",
-    "description": "List installed reports visible to the current user.",
+    "description": "List installed reports visible to the current user, including their definitions. This returns metadata, not report figures. Execute the selected report to answer questions about counts, balances and totals.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -7829,7 +7830,7 @@
   },
   {
     "name": "ngb_search",
-    "description": "Find authorized records and reports by document number, name or display text. Use this first when the user asks for a record or link. Optionally scope by kind and typeCode. Results provide real record IDs and display titles; truncated includes capped type fan-out.",
+    "description": "Find authorized records and reports by document number, name or display text. Use this first when the user asks for a record or link. Scope by kind and typeCode only when known from metadata or context; otherwise omit them. Retry without scope if a scoped search is empty. Results provide real record IDs and display titles; truncated includes capped type fan-out. Search discovers matching records; the number of hits is not an aggregate business count.",
     "inputSchema": {
       "type": "object",
       "properties": {

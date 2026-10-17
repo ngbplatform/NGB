@@ -23,6 +23,60 @@ public sealed class ProviderContractTests
     [InlineData("Ollama")]
     [InlineData("OpenAI")]
     [InlineData("Anthropic")]
+    public async Task ProviderPreservesNestedDictionaryToolSchemas(string provider)
+    {
+        var schema = JsonSerializer.Deserialize<JsonElement>("""
+            {
+              "type": "object",
+              "properties": {
+                "request": {
+                  "type": "object",
+                  "properties": {
+                    "filters": {
+                      "type": ["object", "null"],
+                      "additionalProperties": {
+                        "type": "object",
+                        "properties": { "value": true },
+                        "required": ["value"],
+                        "additionalProperties": false
+                      }
+                    }
+                  }
+                }
+              },
+              "required": ["request"]
+            }
+            """);
+        var handler = new RecordingHandler(Responses(provider));
+        await using var services = Register(provider, handler).BuildServiceProvider();
+        await using var scope = services.CreateAsyncScope();
+        var client = scope.ServiceProvider.GetRequiredService<IChatClient>();
+
+        await client.GetStreamingResponseAsync([new(ChatRole.User, "Run the report")],
+            new ChatOptions { Tools = [new SchemaTool(schema)] }).ToChatResponseAsync();
+
+        using var body = JsonDocument.Parse(Assert.Single(handler.Requests).Body);
+        var tool = body.RootElement.GetProperty("tools")[0];
+        var actual = provider == "Anthropic"
+            ? tool.GetProperty("input_schema")
+            : tool.GetProperty("function").GetProperty("parameters");
+        var filters = actual.GetProperty("properties").GetProperty("request")
+            .GetProperty("properties").GetProperty("filters");
+        Assert.Equal(["object", "null"], filters.GetProperty("type").EnumerateArray().Select(value => value.GetString()));
+        var entry = filters.GetProperty("additionalProperties");
+        Assert.Equal("object", entry.GetProperty("type").GetString());
+        Assert.Equal(["value"], entry.GetProperty("required").EnumerateArray().Select(value => value.GetString()));
+        Assert.False(entry.GetProperty("additionalProperties").GetBoolean());
+        var valueSchema = entry.GetProperty("properties").GetProperty("value");
+        // Both forms permit any JSON value; SDKs may normalize the boolean schema.
+        Assert.True(valueSchema.ValueKind == JsonValueKind.True
+            || valueSchema.ValueKind == JsonValueKind.Object && !valueSchema.EnumerateObject().Any());
+    }
+
+    [Theory]
+    [InlineData("Ollama")]
+    [InlineData("OpenAI")]
+    [InlineData("Anthropic")]
     public async Task NativeAdapterStreamsToolsAndReturnsTheirResults(string provider)
     {
         var handler = new RecordingHandler(Responses(provider));
@@ -55,6 +109,7 @@ public sealed class ProviderContractTests
         {
             Assert.Null(handler.Requests[0].Authorization);
             Assert.False(firstBody.RootElement.GetProperty("think").GetBoolean());
+            Assert.Equal(0, firstBody.RootElement.GetProperty("options").GetProperty("temperature").GetSingle());
             Assert.Equal(32768, firstBody.RootElement.GetProperty("options").GetProperty("num_ctx").GetInt32());
         }
         else if (provider == "OpenAI")
@@ -384,6 +439,15 @@ public sealed class ProviderContractTests
     }
 
     private sealed record RecordedRequest(Uri Uri, string Body, string? Authorization, string? ApiKey);
+
+    private sealed class SchemaTool(JsonElement schema) : AIFunction
+    {
+        public override string Name => "read_records";
+        public override JsonElement JsonSchema => schema;
+
+        protected override ValueTask<object?> InvokeCoreAsync(AIFunctionArguments arguments, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+    }
 
     private sealed class RecordingHandler(string[] responses) : HttpMessageHandler
     {
