@@ -4,6 +4,7 @@ import type {
   NgbNavigationRoutes,
   NgbNavigationTarget,
 } from './types'
+import { buildGeneralJournalEntriesPath } from '../accounting/navigation'
 
 const defaultRoutes: NgbNavigationRoutes = {
   workCenter: '/work-center',
@@ -52,6 +53,15 @@ export function resolveNgbNavigationTarget(
   if (explicitPath.startsWith('/')) return explicitPath
 
   switch (target.code) {
+    case 'catalog.editor': {
+      const type = context.resourceCode
+      const id = context.entityId
+      return type && id ? `/catalogs/${segment(type)}/${segment(id)}` : null
+    }
+    case 'report.view':
+      return context.resourceCode ? `/reports/${segment(context.resourceCode)}` : null
+    case 'generalJournalEntry.editor':
+      return context.entityId ? buildGeneralJournalEntriesPath(context.entityId) : null
     case 'document.editor':
       return documentPath('', target, context)
     case 'document.effects':

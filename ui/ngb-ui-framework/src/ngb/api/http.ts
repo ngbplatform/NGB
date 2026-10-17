@@ -370,6 +370,33 @@ export async function httpPost<TResponse, TBody = unknown>(
   return httpRequest<TResponse>('POST', url, body, options)
 }
 
+/** Returns an authenticated stream. A 401 can be retried only before a response body is consumed. */
+export async function httpPostStream(url: string, body: unknown, options: HttpRequestOptions = {}): Promise<Response> {
+  const resolvedUrl = resolveUrl(url)
+  const response = await fetch(resolvedUrl, {
+    method: 'POST',
+    credentials: 'omit',
+    headers: await buildJsonHeaders(body, 'text/event-stream'),
+    body: JSON.stringify(body),
+    signal: options.signal,
+  })
+
+  if (response.status === 401 && options.retryOnUnauthorized !== false) {
+    const refreshed = await forceRefreshAccessToken().catch(() => null)
+    if (refreshed) {
+      await response.body?.cancel()
+      return httpPostStream(url, body, { ...options, retryOnUnauthorized: false })
+    }
+  }
+
+  if (!response.ok) await buildResponse(response, resolvedUrl)
+  if (!response.body || !response.headers.get('content-type')?.startsWith('text/event-stream')) {
+    await response.body?.cancel()
+    throw new Error('The assistant returned an invalid response.')
+  }
+  return response
+}
+
 export async function httpPut<TResponse, TBody = unknown>(
   url: string,
   body?: TBody,

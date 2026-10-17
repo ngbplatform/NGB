@@ -25,7 +25,7 @@
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageIcon>icon.png</PackageIcon>
     <PackageTags>NGB;NGB Platform;.NET;PostgreSQL;business applications</PackageTags>
-    <PackageReleaseNotes>Opt-in read-only MCP server using the existing user and permissions, shared authorized reads, public custom-tool contracts and external application upgrade support. Setup: https://docs.ngbplatform.com/guides/mcp-server</PackageReleaseNotes>
+    <PackageReleaseNotes>Opt-in MCP server and AI Assistant using the current user and existing permissions. Includes native Ollama, replaceable cloud adapters, shared UI and external application support. Setup: https://docs.ngbplatform.com/guides/ai-assistant</PackageReleaseNotes>
     <Copyright>Copyright (c) NGB Platform 2026</Copyright>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <EmbedUntrackedSources>true</EmbedUntrackedSources>

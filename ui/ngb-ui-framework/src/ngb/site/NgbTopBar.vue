@@ -34,7 +34,7 @@
             </span>
           </button>
 
-          <button class="ngb-iconbtn" title="Help" aria-label="Help" @click="$emit('openHelp')">
+          <button v-if="hasAssistant" class="ngb-iconbtn" title="AI Assistant" aria-label="AI Assistant" @click="$emit('openHelp')">
             <NgbIcon name="help-circle" />
           </button>
 
@@ -134,7 +134,7 @@
           </span>
         </button>
 
-        <button class="ngb-iconbtn" title="Help" aria-label="Help" @click="$emit('openHelp')">
+        <button v-if="hasAssistant" class="ngb-iconbtn" title="AI Assistant" aria-label="AI Assistant" @click="$emit('openHelp')">
           <NgbIcon name="help-circle" />
         </button>
 
@@ -255,7 +255,7 @@
         </button>
 
         <!-- Help -->
-        <button class="ngb-iconbtn" title="Help" aria-label="Help" @click="$emit('openHelp')">
+        <button v-if="hasAssistant" class="ngb-iconbtn" title="AI Assistant" aria-label="AI Assistant" @click="$emit('openHelp')">
           <NgbIcon name="help-circle" />
         </button>
 
@@ -366,6 +366,7 @@ const props = defineProps<{
   userMetaIcon?: 'shield-check' | 'shield' | 'user';
   userRoles?: string[];
   hasSettings?: boolean;
+  hasAssistant?: boolean;
   showMainMenu?: boolean;
 }>();
 

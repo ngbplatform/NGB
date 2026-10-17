@@ -23,7 +23,12 @@ namespace NGB.Mcp.AspNetCore;
 public static class DependencyInjection
 {
     internal const string Scheme = "NgbMcp";
-    private const string Policy = "NgbMcp.CurrentUser";
+    public const string CurrentUserPolicyName = "NgbMcp.CurrentUser";
+    private const string Policy = CurrentUserPolicyName;
+
+    /// <summary>Gets the canonical endpoint after MapNgbMcp has mapped its route.</summary>
+    public static Uri GetNgbMcpEndpoint(this IServiceProvider services)
+        => services.GetRequiredService<McpEndpointAddress>().Resource;
 
     public static IServiceCollection AddNgbMcp(this IServiceCollection services, IConfiguration configuration)
     {

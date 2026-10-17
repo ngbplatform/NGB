@@ -18,6 +18,8 @@
         <ProjectReference Include="..\NGB.Core\NGB.Core.csproj"/>
         <ProjectReference Include="..\NGB.Hosting.AspNetCore\NGB.Hosting.AspNetCore.csproj"/>
         <ProjectReference Include="..\NGB.Mcp.AspNetCore\NGB.Mcp.AspNetCore.csproj" />
+        <ProjectReference Include="..\NGB.AiAssistant.AspNetCore\NGB.AiAssistant.AspNetCore.csproj" />
+        <ProjectReference Include="..\NGB.AiAssistant.Ollama\NGB.AiAssistant.Ollama.csproj" />
         <ProjectReference Include="..\NGB.Metadata\NGB.Metadata.csproj"/>
         <ProjectReference Include="..\NGB.PostgreSql\NGB.PostgreSql.csproj"/>
         <ProjectReference Include="..\NGB.PostgreSql.AspNetCore\NGB.PostgreSql.AspNetCore.csproj"/>

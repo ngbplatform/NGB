@@ -1,0 +1,328 @@
+using System.Net;
+using System.Text;
+using System.Text.Json;
+using Amazon.BedrockRuntime;
+using Amazon.BedrockRuntime.Model;
+using Amazon.Runtime.EventStreams;
+using Microsoft.Extensions.AI;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
+using Moq;
+using NGB.AiAssistant.Anthropic;
+using NGB.AiAssistant.Bedrock;
+using NGB.AiAssistant.Ollama;
+using NGB.AiAssistant.OpenAI;
+using Xunit;
+
+namespace NGB.AiAssistant.Providers.Tests;
+
+public sealed class ProviderContractTests
+{
+    [Theory]
+    [InlineData("Ollama")]
+    [InlineData("OpenAI")]
+    [InlineData("Anthropic")]
+    public async Task NativeAdapterStreamsToolsAndReturnsTheirResults(string provider)
+    {
+        var handler = new RecordingHandler(Responses(provider));
+        await using var services = Register(provider, handler).BuildServiceProvider();
+        await using var scope = services.CreateAsyncScope();
+        var client = scope.ServiceProvider.GetRequiredService<IChatClient>();
+        var tool = AIFunctionFactory.Create((string typeCode) => typeCode, "read_records");
+        var options = new ChatOptions { Tools = [tool], MaxOutputTokens = 128, AllowMultipleToolCalls = false };
+        var messages = new List<ChatMessage> { new(ChatRole.System, "Read business records."), new(ChatRole.User, "Show records") };
+
+        var first = await client.GetStreamingResponseAsync(messages, options).ToChatResponseAsync();
+        var call = Assert.Single(first.Messages.SelectMany(message => message.Contents).OfType<FunctionCallContent>());
+        Assert.Equal("read_records", call.Name);
+        Assert.Equal("pm.property", call.Arguments!["typeCode"]!.ToString());
+        messages.AddRange(first.Messages);
+        messages.Add(new(ChatRole.Tool, [new FunctionResultContent(call.CallId, new { count = 7 })]));
+
+        var second = await client.GetStreamingResponseAsync(messages, options).ToChatResponseAsync();
+
+        Assert.Equal("Seven records.", second.Text);
+        Assert.Equal(2, handler.Requests.Count);
+        using var firstBody = JsonDocument.Parse(handler.Requests[0].Body);
+        Assert.Equal("contract-model", firstBody.RootElement.GetProperty("model").GetString());
+        Assert.True(firstBody.RootElement.GetProperty("stream").GetBoolean());
+        Assert.Contains("read_records", handler.Requests[0].Body);
+        Assert.Contains("pm.property", handler.Requests[1].Body);
+        Assert.Contains("7", handler.Requests[1].Body);
+        Assert.DoesNotContain("Bearer user-token", string.Join(' ', handler.Requests.Select(request => request.Authorization)));
+        if (provider == "Ollama")
+        {
+            Assert.Null(handler.Requests[0].Authorization);
+            Assert.False(firstBody.RootElement.GetProperty("think").GetBoolean());
+            Assert.Equal(32768, firstBody.RootElement.GetProperty("options").GetProperty("num_ctx").GetInt32());
+        }
+        else if (provider == "OpenAI")
+        {
+            Assert.Equal("Bearer provider-key", handler.Requests[0].Authorization);
+            Assert.Equal("/v1/chat/completions", handler.Requests[0].Uri.AbsolutePath);
+        }
+        else
+        {
+            Assert.Equal("provider-key", handler.Requests[0].ApiKey);
+            Assert.Equal("/v1/messages", handler.Requests[0].Uri.AbsolutePath);
+        }
+    }
+
+    [Fact]
+    public async Task BedrockStreamsNativeConverseEventsAndTransmitsToolResults()
+    {
+        var runtime = new Mock<IAmazonBedrockRuntime>();
+        var requests = new List<ConverseStreamRequest>();
+        runtime.Setup(client => client.ConverseStreamAsync(It.IsAny<ConverseStreamRequest>(), It.IsAny<CancellationToken>()))
+            .Returns((ConverseStreamRequest request, CancellationToken _) =>
+            {
+                requests.Add(request);
+                var events = requests.Count == 1
+                    ? new (string, string)[]
+                    {
+                        ("messageStart", "{\"role\":\"assistant\"}"),
+                        ("contentBlockStart", "{\"contentBlockIndex\":0,\"start\":{\"toolUse\":{\"toolUseId\":\"call-1\",\"name\":\"read_records\"}}}"),
+                        ("contentBlockDelta", "{\"contentBlockIndex\":0,\"delta\":{\"toolUse\":{\"input\":\"{\\\"typeCode\\\":\\\"pm.property\\\"}\"}}}"),
+                        ("contentBlockStop", "{\"contentBlockIndex\":0}"),
+                        ("messageStop", "{\"stopReason\":\"tool_use\"}")
+                    }
+                    : [
+                        ("messageStart", "{\"role\":\"assistant\"}"),
+                        ("contentBlockDelta", "{\"contentBlockIndex\":0,\"delta\":{\"text\":\"Seven records.\"}}"),
+                        ("contentBlockStop", "{\"contentBlockIndex\":0}"),
+                        ("messageStop", "{\"stopReason\":\"end_turn\"}")
+                    ];
+                var bytes = events.SelectMany(item => BedrockEvent(item.Item1, item.Item2)).ToArray();
+                return Task.FromResult(new ConverseStreamResponse { Stream = new ConverseStreamOutput(new MemoryStream(bytes)) });
+            });
+        var services = new ServiceCollection();
+        services.AddSingleton(runtime.Object);
+        services.AddNgbBedrockChatClient(options =>
+        {
+            options.Region = "us-east-1";
+            options.Model = "contract-model";
+        });
+        await using var provider = services.BuildServiceProvider();
+        await using var scope = provider.CreateAsyncScope();
+        var client = scope.ServiceProvider.GetRequiredService<IChatClient>();
+        var options = new ChatOptions { Tools = [AIFunctionFactory.Create((string typeCode) => typeCode, "read_records")], MaxOutputTokens = 128 };
+        var messages = new List<ChatMessage> { new(ChatRole.User, "Show records") };
+
+        var first = await client.GetStreamingResponseAsync(messages, options).ToChatResponseAsync();
+        var call = Assert.Single(first.Messages.SelectMany(message => message.Contents).OfType<FunctionCallContent>());
+        Assert.Equal("read_records", call.Name);
+        messages.AddRange(first.Messages);
+        messages.Add(new(ChatRole.Tool, [new FunctionResultContent(call.CallId, new { count = 7 })]));
+        var second = await client.GetStreamingResponseAsync(messages, options).ToChatResponseAsync();
+
+        Assert.Equal("Seven records.", second.Text);
+        Assert.Equal("contract-model", requests[0].ModelId);
+        Assert.Equal(128, requests[0].InferenceConfig.MaxTokens);
+        Assert.Equal("read_records", Assert.Single(requests[0].ToolConfig.Tools).ToolSpec.Name);
+        Assert.Contains(requests[1].Messages.SelectMany(message => message.Content), content => content.ToolResult?.ToolUseId == call.CallId);
+    }
+
+    [Theory]
+    [InlineData("Ollama")]
+    [InlineData("OpenAI")]
+    [InlineData("Anthropic")]
+    public async Task CancellationReachesTheProviderTransport(string provider)
+    {
+        var handler = new RecordingHandler([]) { Wait = true };
+        await using var services = Register(provider, handler).BuildServiceProvider();
+        await using var scope = services.CreateAsyncScope();
+        using var cancellation = new CancellationTokenSource();
+        var client = scope.ServiceProvider.GetRequiredService<IChatClient>();
+        var response = client.GetStreamingResponseAsync([new(ChatRole.User, "Hello")], new() { MaxOutputTokens = 128 }, cancellation.Token)
+            .ToChatResponseAsync(cancellationToken: cancellation.Token);
+        await handler.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        await cancellation.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await response);
+        Assert.True(handler.Cancelled);
+        Assert.Single(handler.Requests);
+    }
+
+    [Theory]
+    [InlineData("http://provider.example/v1")]
+    [InlineData("https://user:secret@provider.example/v1")]
+    [InlineData("https://provider.example/v1?key=secret")]
+    public void RejectsUnsafeCloudEndpoints(string endpoint)
+    {
+        var services = new ServiceCollection().AddNgbOpenAiChatClient(options =>
+        {
+            options.Endpoint = endpoint;
+            options.Model = "model";
+            options.ApiKey = "key";
+        });
+        using var provider = services.BuildServiceProvider();
+
+        Assert.Throws<OptionsValidationException>(() => provider.GetRequiredService<IOptions<OpenAiAssistantOptions>>().Value);
+    }
+
+    private static ServiceCollection Register(string provider, RecordingHandler handler)
+    {
+        var services = new ServiceCollection();
+        string name;
+        switch (provider)
+        {
+            case "Ollama":
+                services.AddNgbOllamaChatClient(options => options.Model = "contract-model");
+                name = Ollama.DependencyInjection.HttpClientName;
+                break;
+            case "OpenAI":
+                services.AddNgbOpenAiChatClient(options =>
+                {
+                    options.Model = "contract-model";
+                    options.ApiKey = "provider-key";
+                    options.Endpoint = "https://compatible.example/v1";
+                });
+                name = OpenAI.DependencyInjection.HttpClientName;
+                break;
+            default:
+                services.AddNgbAnthropicChatClient(options =>
+                {
+                    options.Model = "contract-model";
+                    options.ApiKey = "provider-key";
+                });
+                name = Anthropic.DependencyInjection.HttpClientName;
+                break;
+        }
+
+        services.AddHttpClient(name).ConfigurePrimaryHttpMessageHandler(() => handler);
+        return services;
+    }
+
+    private static string[] Responses(string provider)
+        => provider switch
+        {
+            "Ollama" =>
+            [
+                """
+                {"model":"contract-model","message":{"role":"assistant","content":"","tool_calls":[{"function":{"name":"read_records","arguments":{"typeCode":"pm.property"}}}]},"done":false}
+                {"model":"contract-model","message":{"role":"assistant","content":""},"done":true,"done_reason":"stop"}
+
+                """,
+                """
+                {"model":"contract-model","message":{"role":"assistant","content":"Seven records."},"done":false}
+                {"model":"contract-model","message":{"role":"assistant","content":""},"done":true,"done_reason":"stop"}
+
+                """
+            ],
+            "OpenAI" =>
+            [
+                """
+                data: {"id":"chat-1","object":"chat.completion.chunk","created":1,"model":"contract-model","choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"call-1","type":"function","function":{"name":"read_records","arguments":"{\"typeCode\":\"pm.property\"}"}}]},"finish_reason":null}]}
+
+                data: {"id":"chat-1","object":"chat.completion.chunk","created":1,"model":"contract-model","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}
+
+                data: [DONE]
+
+
+                """,
+                """
+                data: {"id":"chat-2","object":"chat.completion.chunk","created":1,"model":"contract-model","choices":[{"index":0,"delta":{"role":"assistant","content":"Seven records."},"finish_reason":null}]}
+
+                data: {"id":"chat-2","object":"chat.completion.chunk","created":1,"model":"contract-model","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+
+                data: [DONE]
+
+
+                """
+            ],
+            _ =>
+            [
+                """
+                event: message_start
+                data: {"type":"message_start","message":{"id":"msg-1","type":"message","role":"assistant","content":[],"model":"contract-model","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":10,"output_tokens":0}}}
+
+                event: content_block_start
+                data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"call-1","name":"read_records","input":{}}}
+
+                event: content_block_delta
+                data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"typeCode\":\"pm.property\"}"}}
+
+                event: content_block_stop
+                data: {"type":"content_block_stop","index":0}
+
+                event: message_delta
+                data: {"type":"message_delta","delta":{"stop_reason":"tool_use","stop_sequence":null},"usage":{"output_tokens":10}}
+
+                event: message_stop
+                data: {"type":"message_stop"}
+
+
+                """,
+                """
+                event: message_start
+                data: {"type":"message_start","message":{"id":"msg-2","type":"message","role":"assistant","content":[],"model":"contract-model","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":10,"output_tokens":0}}}
+
+                event: content_block_start
+                data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
+
+                event: content_block_delta
+                data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Seven records."}}
+
+                event: content_block_stop
+                data: {"type":"content_block_stop","index":0}
+
+                event: message_delta
+                data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":10}}
+
+                event: message_stop
+                data: {"type":"message_stop"}
+
+
+                """
+            ]
+        };
+
+    private static byte[] BedrockEvent(string type, string json)
+    {
+        var headers = new List<IEventStreamHeader>();
+        foreach (var (name, value) in new[] { (":message-type", "event"), (":event-type", type), (":content-type", "application/json") })
+        {
+            var header = new EventStreamHeader(name);
+            header.SetString(value);
+            headers.Add(header);
+        }
+
+        return new EventStreamMessage(headers, Encoding.UTF8.GetBytes(json)).ToByteArray();
+    }
+
+    private sealed record RecordedRequest(Uri Uri, string Body, string? Authorization, string? ApiKey);
+
+    private sealed class RecordingHandler(string[] responses) : HttpMessageHandler
+    {
+        public List<RecordedRequest> Requests { get; } = [];
+        public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public bool Wait { get; init; }
+        public bool Cancelled { get; private set; }
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Requests.Add(new(request.RequestUri!, await request.Content!.ReadAsStringAsync(cancellationToken),
+                request.Headers.Authorization?.ToString(), request.Headers.TryGetValues("x-api-key", out var keys) ? keys.Single() : null));
+            Started.TrySetResult();
+            if (Wait)
+            {
+                try
+                {
+                    await Task.Delay(Timeout.Infinite, cancellationToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    Cancelled = true;
+                    throw;
+                }
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(responses[Requests.Count - 1], Encoding.UTF8,
+                    request.RequestUri!.AbsolutePath == "/api/chat" ? "application/x-ndjson" : "text/event-stream")
+            };
+        }
+    }
+}

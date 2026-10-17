@@ -1,6 +1,8 @@
 using NgbApplication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using NGB.AiAssistant.AspNetCore;
+using NGB.AiAssistant.Ollama;
 using NGB.Api;
 using NGB.Api.Attachments;
 using NGB.Api.WorkCenter;
@@ -41,6 +43,8 @@ builder.Services.AddAuthorization(options =>
     options.FallbackPolicy = new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build());
 
 builder.Services.AddNgbMcp(builder.Configuration);
+builder.Services.AddNgbAiAssistant(builder.Configuration, services =>
+    services.AddNgbOllamaChatClient(builder.Configuration.GetSection(OllamaAssistantOptions.SectionName).Bind));
 
 var app = builder.Build();
 app.UseExceptionHandler();
@@ -49,6 +53,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 app.MapNgbMcp();
+app.MapNgbAiAssistant();
 app.MapNgbWorkCenterHub();
 app.MapHealthChecks("/health").AllowAnonymous();
 app.Run();

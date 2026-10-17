@@ -23,7 +23,8 @@ All registered features default to `false`. Unknown feature codes, incorrect cas
   "FeatureManagement": {
     "Attachments": false,
     "Notes": true,
-    "Mcp": false
+    "Mcp": false,
+    "AiAssistant": false
   },
   "Attachments": {
     "UploadExpirationEnabled": false
@@ -37,6 +38,7 @@ Equivalent environment keys:
 FeatureManagement__Attachments=false
 FeatureManagement__Notes=true
 FeatureManagement__Mcp=false
+FeatureManagement__AiAssistant=false
 Attachments__UploadExpirationEnabled=false
 ```
 
@@ -54,6 +56,13 @@ Use `Attachments:UploadExpirationEnabled=true` to keep expiring abandoned pendin
 Turning a feature off does not delete its business data or revoke existing role grants. Notes and ready attachment metadata remain available when it is enabled again. The expiration worker may still mark abandoned pending uploads as deleted, while retaining all stored files. Disabling the flag does not revoke previously issued MinIO bearer URLs: upload URLs remain usable until expiry, and download URLs remain usable until expiry. Requests already admitted by an old replica may finish during deployment, so drain and restart all replicas before treating a disable as fully applied.
 
 ## Host composition
+
+[AI Assistant](/guides/ai-assistant) adds `FeatureManagement:AiAssistant`, mapped
+from `FEATURE_AI_ASSISTANT` in Compose. It defaults to false and requires MCP to
+be enabled; an invalid combination fails startup. MCP can remain enabled without
+Assistant. When Assistant is disabled, its provider callback and HTTP endpoints
+are not registered, and its shared UI button is hidden. It adds no permissions
+or persistent conversation storage.
 
 Use the storage callback so MinIO is registered and validated only when Attachments is enabled:
 
@@ -93,6 +102,12 @@ For the Notes-only configuration above, the response includes:
 
 ```json
 [
+  {
+    "code": "AiAssistant",
+    "displayName": "AI Assistant",
+    "group": "Integrations",
+    "enabled": false
+  },
   {
     "code": "Attachments",
     "displayName": "Attachments",

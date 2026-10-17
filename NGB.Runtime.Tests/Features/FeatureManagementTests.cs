@@ -52,10 +52,12 @@ public sealed class FeatureManagementTests
         (await features.IsEnabledAsync(NgbFeatures.Mcp, default)).Should().Be(mcp);
         (await features.IsEnabledAsync("Unknown", default)).Should().BeFalse();
         var states = await new FeaturesController(features).Get(default);
-        states.Should().HaveCount(3);
+        states.Select(x => x.Code).Should().BeEquivalentTo(
+            NgbFeatures.Attachments, NgbFeatures.Notes, NgbFeatures.Mcp, NgbFeatures.AiAssistant);
         states.Single(x => x.Code == NgbFeatures.Attachments).Enabled.Should().Be(attachments);
         states.Single(x => x.Code == NgbFeatures.Notes).Enabled.Should().Be(notes);
         states.Single(x => x.Code == NgbFeatures.Mcp).Enabled.Should().Be(mcp);
+        states.Single(x => x.Code == NgbFeatures.AiAssistant).Enabled.Should().BeFalse();
 
         configuration["FeatureManagement:Attachments"] = (!attachments).ToString();
         configuration["FeatureManagement:Mcp"] = (!mcp).ToString();

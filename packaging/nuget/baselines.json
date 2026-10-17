@@ -178,6 +178,48 @@
       "previous": null
     },
     {
+      "id": "NGB.Platform.AiAssistant",
+      "project": "NGB.AiAssistant/NGB.AiAssistant.csproj",
+      "kind": "runtime",
+      "firstStableInMajor": "3.3.0",
+      "previous": null
+    },
+    {
+      "id": "NGB.Platform.AiAssistant.AspNetCore",
+      "project": "NGB.AiAssistant.AspNetCore/NGB.AiAssistant.AspNetCore.csproj",
+      "kind": "runtime",
+      "firstStableInMajor": "3.3.0",
+      "previous": null
+    },
+    {
+      "id": "NGB.Platform.AiAssistant.Ollama",
+      "project": "NGB.AiAssistant.Ollama/NGB.AiAssistant.Ollama.csproj",
+      "kind": "runtime",
+      "firstStableInMajor": "3.3.0",
+      "previous": null
+    },
+    {
+      "id": "NGB.Platform.AiAssistant.OpenAI",
+      "project": "NGB.AiAssistant.OpenAI/NGB.AiAssistant.OpenAI.csproj",
+      "kind": "runtime",
+      "firstStableInMajor": "3.3.0",
+      "previous": null
+    },
+    {
+      "id": "NGB.Platform.AiAssistant.Anthropic",
+      "project": "NGB.AiAssistant.Anthropic/NGB.AiAssistant.Anthropic.csproj",
+      "kind": "runtime",
+      "firstStableInMajor": "3.3.0",
+      "previous": null
+    },
+    {
+      "id": "NGB.Platform.AiAssistant.Bedrock",
+      "project": "NGB.AiAssistant.Bedrock/NGB.AiAssistant.Bedrock.csproj",
+      "kind": "runtime",
+      "firstStableInMajor": "3.3.0",
+      "previous": null
+    },
+    {
       "id": "NGB.Platform.Templates",
       "project": "packaging/templates/NGB.Platform.Templates.csproj",
       "kind": "template",

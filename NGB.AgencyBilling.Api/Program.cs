@@ -4,6 +4,8 @@ using NGB.AgencyBilling.Api.Services;
 using NGB.AgencyBilling.DependencyInjection;
 using NGB.AgencyBilling.PostgreSql.DependencyInjection;
 using NGB.AgencyBilling.Runtime.DependencyInjection;
+using NGB.AiAssistant.AspNetCore;
+using NGB.AiAssistant.Ollama;
 using NGB.Api;
 using NGB.Api.Attachments;
 using NGB.Api.Reporting;
@@ -66,6 +68,8 @@ builder.Services.RemoveAll<IReportVariantAccessContext>();
 builder.Services.AddScoped<IReportVariantAccessContext, HttpReportVariantAccessContext>();
 
 builder.Services.AddNgbMcp(builder.Configuration);
+builder.Services.AddNgbAiAssistant(builder.Configuration, services =>
+    services.AddNgbOllamaChatClient(builder.Configuration.GetSection(OllamaAssistantOptions.SectionName).Bind));
 
 var app = builder.Build();
 
@@ -87,6 +91,7 @@ app.UseAuthorization();
 
 app.MapControllers();
 app.MapNgbMcp();
+app.MapNgbAiAssistant();
 app.MapNgbWorkCenterHub();
 
 app.Run();

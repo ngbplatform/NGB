@@ -11,6 +11,12 @@ NGB.BackgroundJobs.PostgreSql/NGB.BackgroundJobs.PostgreSql.csproj
 NGB.Contracts/NGB.Contracts.csproj
 NGB.Core/NGB.Core.csproj
 NGB.Definitions/NGB.Definitions.csproj
+NGB.AiAssistant/NGB.AiAssistant.csproj
+NGB.AiAssistant.AspNetCore/NGB.AiAssistant.AspNetCore.csproj
+NGB.AiAssistant.Ollama/NGB.AiAssistant.Ollama.csproj
+NGB.AiAssistant.OpenAI/NGB.AiAssistant.OpenAI.csproj
+NGB.AiAssistant.Anthropic/NGB.AiAssistant.Anthropic.csproj
+NGB.AiAssistant.Bedrock/NGB.AiAssistant.Bedrock.csproj
 NGB.Mcp/NGB.Mcp.csproj
 NGB.Mcp.AspNetCore/NGB.Mcp.AspNetCore.csproj
 NGB.Metadata/NGB.Metadata.csproj

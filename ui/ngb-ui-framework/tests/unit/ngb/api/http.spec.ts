@@ -16,6 +16,7 @@ import {
   httpGet,
   httpPost,
   httpPostFile,
+  httpPostStream,
   httpPut,
   httpRequest,
 } from '../../../../src/ngb/api/http'
@@ -54,6 +55,31 @@ describe('api http', () => {
   afterEach(() => {
     vi.unstubAllEnvs()
     vi.unstubAllGlobals()
+  })
+
+  it('refreshes a rejected stream once and disposes its unauthorized body', async () => {
+    authMocks.getAccessToken.mockResolvedValueOnce('old-token').mockResolvedValueOnce('new-token')
+    authMocks.forceRefreshAccessToken.mockResolvedValueOnce('new-token')
+    const cancelled = vi.fn()
+    const unauthorized = new Response(new ReadableStream({ cancel: cancelled }), { status: 401 })
+    const success = new Response('data: {"type":"done"}\n\n', { headers: { 'content-type': 'text/event-stream' } })
+    fetchMock.mockResolvedValueOnce(unauthorized).mockResolvedValueOnce(success)
+
+    const response = await httpPostStream('/api/ai-assistant/chat', { messages: [] })
+
+    expect(response).toBe(success)
+    expect(cancelled).toHaveBeenCalledOnce()
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(fetchMock.mock.calls[1]![1]).toMatchObject({
+      credentials: 'omit', headers: { Authorization: 'Bearer new-token', Accept: 'text/event-stream' },
+    })
+  })
+
+  it('rejects a non-stream response instead of treating an HTML error page as an answer', async () => {
+    fetchMock.mockResolvedValue(new Response('<h1>Unavailable</h1>', { headers: { 'content-type': 'text/html' } }))
+
+    await expect(httpPostStream('/api/ai-assistant/chat', {})).rejects.toThrow('invalid response')
+    expect(fetchMock).toHaveBeenCalledOnce()
   })
 
   it('uses the configured api base url, appends normalized query params, and sends bearer auth headers', async () => {

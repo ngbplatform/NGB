@@ -30,6 +30,7 @@
         :userRoles="resolvedUserRoles"
         :themeResolved="themeResolved"
         :hasSettings="true"
+        :hasAssistant="assistantEnabled"
         :showMainMenu="nodes.length > 0"
         @openMainMenu="mobileMainMenuOpen = true"
         @openPalette="$emit('openPalette')"
@@ -37,7 +38,7 @@
         @openNotifications="helpOpen = false; settingsOpen = false; notificationsOpen = true"
         @openHelp="notificationsOpen = false; settingsOpen = false; helpOpen = true"
         @openSettings="notificationsOpen = false; helpOpen = false; settingsOpen = true"
-        @signOut="$emit('signOut')"
+        @signOut="signOut"
         @toggleTheme="theme.toggle()"
       />
 
@@ -82,52 +83,12 @@
       <NgbWorkCenterDrawer :vertical="workCenterVertical" @close="notificationsOpen = false" />
     </NgbDrawer>
 
-    <!-- Help drawer (right sidebar placeholder) -->
-    <NgbDrawer
+    <NgbAiAssistantPanel
+      v-if="assistantEnabled && assistantOpened"
       :open="helpOpen"
-      title="Help"
-      subtitle="NGB Assistant"
       @update:open="helpOpen = $event"
-    >
-      <div class="flex min-h-full items-center justify-center">
-        <div class="w-full max-w-[360px] rounded-[24px] border border-ngb-border bg-ngb-bg px-6 py-7 text-center shadow-card">
-          <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-full border border-ngb-border bg-ngb-card text-ngb-muted">
-            <NgbIcon name="help-circle" :size="26" />
-          </div>
-
-          <div class="mt-5 text-lg font-semibold text-ngb-text">Help is coming soon</div>
-          <div class="mt-2 text-sm leading-6 text-ngb-muted">
-            NGB Assistant will help you find features, learn workflows, and get answers while you work.
-          </div>
-
-          <div class="mt-6 rounded-[18px] border border-ngb-border bg-ngb-card px-4 py-4 text-left">
-            <div class="text-xs font-semibold uppercase tracking-[0.12em] text-ngb-muted">What you'll be able to do</div>
-            <div class="mt-3 space-y-3">
-              <div class="flex items-start gap-3">
-                <span class="mt-0.5 text-ngb-muted">
-                  <NgbIcon name="search" :size="16" />
-                </span>
-                <span class="text-sm leading-6 text-ngb-text">Get guided onboarding</span>
-              </div>
-              <div class="flex items-start gap-3">
-                <span class="mt-0.5 text-ngb-muted">
-                  <NgbIcon name="help-circle" :size="16" />
-                </span>
-                <span class="text-sm leading-6 text-ngb-text">Ask product questions</span>
-              </div>
-              <div class="flex items-start gap-3">
-                <span class="mt-0.5 text-ngb-muted">
-                  <NgbIcon name="arrow-right" :size="16" />
-                </span>
-                <span class="text-sm leading-6 text-ngb-text">Find pages and actions faster</span>
-              </div>
-            </div>
-          </div>
-
-          <div class="mt-5 text-xs leading-5 text-ngb-muted">This is a UI placeholder.</div>
-        </div>
-      </div>
-    </NgbDrawer>
+      @navigate="$emit('navigate', $event)"
+    />
 
     <!-- Settings drawer (right sidebar) -->
     <NgbDrawer
@@ -166,7 +127,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, defineAsyncComponent, onMounted, ref, watch } from 'vue';
+import { useFeatureStore } from '../features/useFeatureStore';
+import { NGB_FEATURES } from '../features/types';
+import { useAiAssistant } from '../ai-assistant/useAiAssistant';
 import NgbTopBar from './NgbTopBar.vue';
 import NgbSiteSidebar from './NgbSiteSidebar.vue';
 import NgbDrawer from '../components/NgbDrawer.vue';
@@ -211,6 +175,11 @@ const emit = defineEmits<{
   (e: 'signOut'): void;
 }>();
 
+const NgbAiAssistantPanel = defineAsyncComponent(() => import('../ai-assistant/NgbAiAssistantPanel.vue'));
+const features = useFeatureStore();
+const assistant = useAiAssistant();
+const assistantEnabled = computed(() => features.isEnabled(NGB_FEATURES.aiAssistant) && features.isEnabled(NGB_FEATURES.mcp));
+const assistantOpened = ref(false);
 const sidebarCollapsed = ref(false);
 const theme = useTheme();
 const themeResolved = computed(() => theme.resolved.value);
@@ -224,6 +193,16 @@ function toggleSidebar() {
 
 const notificationsOpen = ref(false);
 const helpOpen = ref(false);
+watch(helpOpen, open => {
+  if (open) assistantOpened.value = true;
+});
+watch(assistantEnabled, enabled => {
+  if (!enabled) helpOpen.value = false;
+});
+function signOut() {
+  assistant.reset();
+  emit('signOut');
+}
 const settingsOpen = ref(false);
 const mobileMainMenuOpen = ref(false);
 const settingsSections = computed<SiteSettingsSection[]>(() => [
@@ -260,6 +239,7 @@ const attentionCount = computed(() => workCenter.summary.value?.attentionCount ?
 const canBack = computed(() => Boolean(props.canBack));
 
 onMounted(() => {
+  void features.load();
   void workCenter.refreshSummary().catch(() => undefined);
   void workCenter.connectRealtime();
 });

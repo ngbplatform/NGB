@@ -12,7 +12,8 @@ const page = (text: string, link: string) => ({ text, link })
 const section = (text: string, items: Array<ReturnType<typeof page>>, collapsed = false) => ({ text, items, collapsed })
 const mcpSidebar = [
   section('MCP Server', [
-    page('MCP Server Guide', '/guides/mcp-server')
+    page('MCP Server Guide', '/guides/mcp-server'),
+    page('AI Assistant', '/guides/ai-assistant')
   ]),
   section('Related Guides', [
     page('Feature Flags', '/architecture/feature-flags'),
@@ -72,6 +73,7 @@ export default defineConfig({
     search: { provider: 'local' },
     sidebar: {
       '/guides/mcp-server': mcpSidebar,
+      '/guides/ai-assistant': mcpSidebar,
       '/start-here/': [
         section('Start Here', [
           page('Platform Overview', '/start-here/overview'),
@@ -113,7 +115,8 @@ export default defineConfig({
           page('Idempotency and Concurrency', '/architecture/idempotency-and-concurrency'),
           page('Feature Flags', '/architecture/feature-flags'),
           page('Attachments & Notes', '/architecture/attachments-and-notes'),
-          page('MCP Server', '/guides/mcp-server')
+          page('MCP Server', '/guides/mcp-server'),
+          page('AI Assistant', '/guides/ai-assistant')
         ], true)
       ],
       '/ecosystem/': [
@@ -131,6 +134,7 @@ export default defineConfig({
           page('Runtime', '/platform/runtime'),
           page('API', '/platform/api'),
           page('MCP Server', '/guides/mcp-server'),
+          page('AI Assistant', '/guides/ai-assistant'),
           page('Persistence', '/platform/persistence'),
           page('PostgreSQL', '/platform/postgresql'),
           page('Accounting and Registers', '/platform/accounting-and-registers'),
@@ -199,6 +203,7 @@ export default defineConfig({
           page('Platform Extension Points', '/guides/platform-extension-points'),
           page('Extend an External Application', '/guides/extend-external-application'),
           page('MCP Server', '/guides/mcp-server'),
+          page('AI Assistant', '/guides/ai-assistant'),
           page('Document Actions and Work Center', '/guides/document-actions-and-work-center'),
           page('Add a Document with Accounting and Registers', '/guides/add-document-with-accounting-and-registers'),
           page('Add a Canonical Report', '/guides/add-canonical-report-workflow'),
