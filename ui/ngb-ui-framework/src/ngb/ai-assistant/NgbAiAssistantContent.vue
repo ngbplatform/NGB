@@ -38,7 +38,14 @@
     </div>
 
     <div class="border-t border-ngb-border p-4">
-      <p v-if="assistant.busy" role="status" aria-live="polite" class="mb-2 text-xs text-ngb-muted">{{ assistant.status }}</p>
+      <div v-if="assistant.busy" role="status" aria-live="polite" aria-atomic="true" class="mb-2 text-ngb-muted">
+        <span class="sr-only">Assistant is responding…</span>
+        <span class="assistant-activity" aria-hidden="true">
+          <span class="assistant-activity-dot" />
+          <span class="assistant-activity-dot" />
+          <span class="assistant-activity-dot" />
+        </span>
+      </div>
       <div v-if="assistant.error" role="alert" class="mb-3 text-sm text-ngb-danger">
         {{ assistant.error }}
         <button v-if="canRetry" type="button" class="ml-2 underline ngb-focus" @click="assistant.retry()">Retry</button>
@@ -145,6 +152,46 @@ onMounted(() => input.value?.focus())
 </script>
 
 <style scoped>
+.assistant-activity {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  height: 1rem;
+}
+
+.assistant-activity-dot {
+  width: 0.375rem;
+  height: 0.375rem;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .assistant-activity-dot {
+    animation: assistant-activity 1.2s ease-in-out infinite;
+  }
+
+  .assistant-activity-dot:nth-child(2) {
+    animation-delay: 0.15s;
+  }
+
+  .assistant-activity-dot:nth-child(3) {
+    animation-delay: 0.3s;
+  }
+}
+
+@keyframes assistant-activity {
+  0%, 60%, 100% {
+    opacity: 0.45;
+    transform: translateY(0);
+  }
+
+  30% {
+    opacity: 1;
+    transform: translateY(-0.2rem);
+  }
+}
+
 .assistant-markdown :deep(p + p),
 .assistant-markdown :deep(ul),
 .assistant-markdown :deep(ol) {
