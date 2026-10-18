@@ -429,6 +429,7 @@ public sealed partial class AssistantHttpTests
         public bool ProviderRegistered { get; set; }
         public ConcurrentBag<string> ToolUsers { get; } = [];
         public ConcurrentBag<string> ModelInputs { get; } = [];
+        public ConcurrentDictionary<string, string?> ToolDescriptions { get; } = new();
         public ConcurrentBag<string> Searches { get; } = [];
         public Guid PaymentId { get; } = Guid.NewGuid();
         public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -442,6 +443,10 @@ public sealed partial class AssistantHttpTests
         {
             var input = messages.ToArray();
             Assert.DoesNotContain(options!.Tools!, tool => tool.Name is "search" or "fetch");
+            foreach (var available in options.Tools!)
+            {
+                state.ToolDescriptions[available.Name] = available.Description;
+            }
             if (state.Mode == "custom-record")
                 Assert.Equal("Find an authorized payment.", options.Tools!.Single(tool => tool.Name == "payment_lookup").Description);
             state.ModelInputs.Add(System.Text.Json.JsonSerializer.Serialize(input));

@@ -9,6 +9,8 @@ internal sealed class AiAssistantValues
 {
     private const int MaximumValues = 512;
 
+    private static readonly Regex EmbeddedDate = new(@"\d{4}-\d{2}-\d{2}", RegexOptions.CultureInvariant | RegexOptions.NonBacktracking);
+
     private readonly string _prefix = Guid.NewGuid().ToString("N")[..12];
     private readonly Dictionary<(string Kind, string Value), AiAssistantValue> _values = new();
 
@@ -114,7 +116,7 @@ internal sealed class AiAssistantValues
         if (scalar.TryGetValue<string>(out var text) && text.Length <= 8000)
         {
             value = text;
-            if (field is "fileName" or "text" or "memo" or "resolution_notes")
+            if (field is "fileName" or "text" or "memo")
             {
                 kind = "text";
             }
@@ -129,6 +131,12 @@ internal sealed class AiAssistantValues
                 && DateTimeOffset.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.None, out _))
             {
                 kind = "timestamp";
+            }
+            else if (EmbeddedDate.IsMatch(text))
+            {
+                // A date embedded in a description or identifier is literal content,
+                // regardless of the field name chosen by the installed application.
+                kind = "text";
             }
         }
         else if (field == "sizeBytes" && scalar.TryGetValue<long>(out var size) && size >= 0)

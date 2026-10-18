@@ -29,30 +29,35 @@ public sealed class AiAssistantRunner(
         Greetings and conversational replies require no data reads. Page context is not a request to run a report.
         Do not read audit history, notes or attachments unless the question asks for that information.
         A request for one number normally needs one sentence. Use Markdown tables for several records.
-        Keep tables compact: use short record identifiers, avoid repeating addresses in multiple columns,
-        and include every requested field. Use a short list within a cell for multiple tenants.
+        Keep tables compact: use short record identifiers, avoid repeating long descriptions in multiple columns,
+        and include every requested field. Use a short list within a cell for multiple related values.
         Include note text when requested and actor names and readable changes for audit history.
         Do not mention tools, schemas, IDs, type codes, internal errors or plans. Do not add follow-up offers.
         Do not ask permission to perform the reads needed to answer the question.
 
         Discover the appropriate operation and its inputs before using it:
-        - Counts, totals and balances: discover reports, read the selected definition, resolve its required
-          filters and execute it. Report definitions and search samples contain no aggregate evidence.
+        - Counts, totals, balances and "how many" questions: discover reports first, even when the current
+          page is a catalog or document. Select an operation that calculates the requested measure and scope.
+          Read its input contract and resolve required inputs before execution. A record without that measure
+          does not establish that no report is available. Definitions and search samples contain no aggregate evidence.
         - Named records or links: search by the supplied number/name and use the returned ID.
           Pass only the number/name as the search query, without words such as "find" or the question itself.
           An exact matching record is sufficient even if other search sources were truncated or unavailable.
           Do not ask the user for an internal ID. Scope search only by a known kind and type.
         - Lists of records: discover their kind and type across metadata, then read that type's metadata
-          before listing records. Use only declared filters.
-          A type missing from catalogs may be a document. Do not search for words like "expired" as data.
-        - Business completion: inspect document flow and related completion records. Posting a document
-          does not establish whether the associated work is complete.
+          before listing records. For a filtered list, check that every requested criterion has a declared
+          list filter. If a required filter is missing, do not fetch unfiltered pages to filter them yourself.
+          A type missing from catalogs may be a document. Selection criteria are not record names.
+          An explicitly requested small sample may be read without filters.
+        - Business status: use the selected type's declared fields, statuses and authorized results.
+          Follow related records when needed to establish the requested outcome. Do not assume every type
+          has the same lifecycle or requires a separate document to establish an outcome.
         Correct invalid inputs from the schema or metadata. Do not repeat an unchanged failed call.
         Stop when available operations cannot answer the question; explain the specific limitation briefly.
         If an exhaustive query needs an unsupported filter or aggregation across many records, do not scan
         the entire database or call a report once per record. Explain which scope the available operation supports.
-        Do not substitute a document date for a lease end date, or available credit for unallocated payments.
-        For an active lease, posted status alone is insufficient: its start/end dates also matter.
+        Do not substitute a different field, date, measure or technical status for the business concept requested.
+        If the available definitions and results do not establish its meaning, say what remains unknown.
         Count metadata only when its listing is complete. Otherwise omit a category count.
         Never infer zero or "none exist" from an empty, partial, failed or incorrectly scoped result.
         Follow pagination only when the declared filters cover every requested selection criterion.
@@ -60,13 +65,11 @@ public sealed class AiAssistantRunner(
 
         Match the requested scope exactly. Use current page identifiers and report criteria when relevant;
         a different object or period explicitly requested by the user takes precedence over page context.
-        Report filters use declared codes and nested values: {"filters":{"customer_id":{"value":"UUID"}}}.
-        Report parameters use declared codes and strings in request.parameters, never request.filters.
+        Use the input schema and selected definition for parameter and filter codes, types and nesting.
         Include required inputs. Include OPTIONAL inputs ONLY when explicitly specified by the user or
         supplied in the relevant page criteria. Otherwise OMIT them so the report applies its defaults.
         Never derive a report date from digits in a record name, number, identifier or dataset label.
-        For example, "How many items in batch LOT-20240115?" supplies a batch name, NO date parameter.
-        "How many items as of January 15, 2024?" explicitly supplies the date 2024-01-15.
+        Digits embedded in a name supply no date parameter; an explicit date phrase does.
         The clock resolves "today"/"this month" when requested;
         it does not authorize adding an optional date to a question that specifies no period.
         Before calling a tool, check that every optional argument has this explicit basis. Remove it otherwise.
@@ -310,7 +313,7 @@ public sealed class AiAssistantRunner(
                         previousResult = cached,
                         notice = "This identical read already succeeded; repeating it adds no evidence. "
                             + "Choose a different available operation or finish with what is known. "
-                            + "For counts, totals and balances, discover reports and execute the applicable report. "
+                            + "For aggregate questions, use an available report or read operation with the requested measure and scope. "
                             + "Search hits and record metadata are not aggregate evidence."
                     }));
 

@@ -298,6 +298,32 @@ public sealed class AiAssistantRunnerTests
         }
     }
 
+    [Theory]
+    [InlineData("review_comment", "Reviewed on 2026-05-10; keep | **this** literal.")]
+    [InlineData("customer_message", "The original timestamp was 2026-05-10T20:43:34Z.")]
+    [InlineData("external_reference", "BATCH-2026-05-10-A")]
+    public async Task EmbeddedDatesRemainLiteralForApplicationDefinedFields(string field, string text)
+    {
+        var data = new Dictionary<string, object?>
+        {
+            [field] = text,
+            ["recordedAtUtc"] = "2026-05-10T20:43:34Z"
+        };
+        var model = new ScriptedClient(
+            [new(ChatRole.Assistant, [new FunctionCallContent("read", "read", null)])],
+            [new(ChatRole.Assistant, text + "\n2026-05-10T20:43:34Z")]);
+        var events = new List<AiAssistantEvent>();
+
+        await Runner(model, new Sessions(new SourceTool(new(data, [])))).RunAsync(Question, Capture(events), default);
+
+        var literal = Assert.Single(events, item => item.Value?.Kind == "text").Value!;
+        var timestamp = Assert.Single(events, item => item.Value?.Kind == "timestamp").Value!;
+        Assert.Equal(text, literal.Value);
+        Assert.Equal("2026-05-10T20:43:34Z", timestamp.Value);
+        var answer = string.Concat(events.Where(item => item.Type == "text").Select(item => item.Text));
+        Assert.Equal(literal.Reference + "\n" + timestamp.Reference, answer);
+    }
+
     [Fact]
     public async Task OversizedToolResultIsExplicitlyOmittedInsteadOfTruncated()
     {

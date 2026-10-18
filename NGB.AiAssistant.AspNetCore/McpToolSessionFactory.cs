@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.AI;
@@ -53,11 +54,12 @@ internal sealed class McpToolSessionFactory(
             }, cancellationToken: ct);
 
             var tools = await client.ListToolsAsync(cancellationToken: ct);
+            var knownTypes = new HashSet<(string Kind, string TypeCode)>();
 
             return new Session(client, tools
                 .Where(tool => tool.ProtocolTool.Annotations?.ReadOnlyHint == true
                     && tool.ProtocolTool.Meta?[NgbMcpToolMetadata.CompatibilityOnly]?.GetValue<bool>() != true)
-                .Select(tool => (AIFunction)new ReadTool(tool))
+                .Select(tool => (AIFunction)new ReadTool(tool, knownTypes))
                 .ToArray());
         }
         catch
@@ -78,7 +80,7 @@ internal sealed class McpToolSessionFactory(
         public ValueTask DisposeAsync() => client.DisposeAsync();
     }
 
-    private sealed class ReadTool(McpClientTool tool) : AIFunction
+    private sealed class ReadTool(McpClientTool tool, HashSet<(string Kind, string TypeCode)> knownTypes) : AIFunction
     {
         public override string Name => tool.Name;
         public override string Description => tool.Description;
@@ -88,11 +90,43 @@ internal sealed class McpToolSessionFactory(
             AIFunctionArguments arguments,
             CancellationToken cancellationToken)
         {
-            var result = await tool.CallAsync(arguments, cancellationToken: cancellationToken);
+            var requested = new Dictionary<string, object?>(arguments, StringComparer.Ordinal);
+            var kind = StringArgument(requested, "kind");
+            var typeCode = StringArgument(requested, "typeCode");
+
+            if (tool.Name == McpToolNames.ListRecords
+                && kind is not null
+                && typeCode is not null
+                && !knownTypes.Contains((kind, typeCode)))
+            {
+                return new AiAssistantToolResult(new
+                {
+                    error = "metadata_required",
+                    message = "Read this kind and type's metadata before listing records. Check its declared filters; "
+                        + "if they cannot express the requested exhaustive query, explain the limitation instead of scanning records."
+                }, [], IsError: true);
+            }
+
+            if (tool.Name is McpToolNames.ListRecords
+                or McpToolNames.ListNotes
+                or McpToolNames.ListAttachments
+                or McpToolNames.GetAuditHistory)
+            {
+                requested["limit"] = PageSize(requested.GetValueOrDefault("limit"));
+            }
+            else if (tool.Name == McpToolNames.ExecuteReport
+                && requested.TryGetValue("request", out var reportRequest)
+                && JsonSerializer.SerializeToNode(reportRequest, Json) is JsonObject report)
+            {
+                report["limit"] = JsonSerializer.SerializeToNode(PageSize(report["limit"], 200), Json);
+                requested["request"] = report;
+            }
+
+            var result = await tool.CallAsync(requested, cancellationToken: cancellationToken);
             var text = result.Content.OfType<TextContentBlock>().Select(с => с.Text).ToArray();
             
             if (result.IsError == true)
-                return new AiAssistantToolResult(new { error = true, content = text }, []);
+                return new AiAssistantToolResult(new { error = true, content = text }, [], IsError: true);
 
             if (result.StructuredContent is not { } content)
                 return new AiAssistantToolResult(text, []);
@@ -106,7 +140,33 @@ internal sealed class McpToolSessionFactory(
 
             // The envelope is transport metadata. Pass business data once; sources are handled
             // separately by the runner and are never inferred from arbitrary payload fields.
-            return new AiAssistantToolResult(response?.Data ?? content, sources);
+            var data = response?.Data ?? content;
+            var projected = McpAssistantProjection.Create(tool.Name, data, requested);
+            if (tool.Name == McpToolNames.GetMetadata && kind is not null && typeCode is not null)
+                knownTypes.Add((kind, typeCode));
+
+            return new AiAssistantToolResult(projected, sources);
+        }
+
+        private static string? StringArgument(IDictionary<string, object?> arguments, string name)
+        {
+            arguments.TryGetValue(name, out var argument);
+            var value = JsonSerializer.SerializeToElement(argument, Json);
+            return value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+        }
+
+        private static object PageSize(object? requested, int maximum = 100)
+        {
+            if (requested is null)
+                return 10;
+
+            var value = JsonSerializer.SerializeToElement(requested, Json);
+
+            // Preserve invalid inputs for the MCP validator. Valid pages retain their
+            // cursor/completeness metadata; a smaller page never becomes a complete list.
+            return value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var limit) && limit > 0 && limit <= maximum
+                ? Math.Min(limit, 20)
+                : value;
         }
     }
 }

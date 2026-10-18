@@ -24,7 +24,8 @@ internal static class BuiltInTools
 
         builder.Add<MetadataRequest, MetadataResult, GetMetadataTool>(
             McpToolNames.GetMetadata,
-            "Read a permitted canonical definition. Metadata does not authorize mutations.",
+            "Read a permitted canonical definition using a type code returned by discovery, search or page context. "
+            + "Metadata does not authorize mutations.",
             []);
 
         builder.Add<SearchRequest, SearchResult, SearchTool>(
@@ -37,8 +38,10 @@ internal static class BuiltInTools
 
         builder.Add<RecordsRequest, RecordsResult, ListRecordsTool>(
             McpToolNames.ListRecords,
-            "List records of a known type (including requests for several examples). Discover the type and its kind in metadata first. "
-            + "Use declared list filters and continuation cursors. Search is for finding named records, not enumerating all records. "
+            "List records of a known type (including requests for several examples). Read the type's metadata and declared list filters first. "
+            + "For a filtered list, every requested criterion must have a declared list filter. If a required filter is missing, "
+            + "do not scan unfiltered pages or filter them yourself. A visible field is not necessarily a supported filter. "
+            + "An explicitly requested small sample may omit filters. Search is for finding named records, not enumerating all records. "
             + "A page is not the complete population while a continuation is present. No arbitrary sorting.",
             []);
 
@@ -50,9 +53,9 @@ internal static class BuiltInTools
 
         builder.Add<FlowRequest, FlowResult, FlowTool>(
             McpToolNames.GetDocumentFlow,
-            "Read a bounded graph containing only permitted, reachable objects. Use it to follow related documents and completion records. "
-            + "A posted document is recorded in the system; posting alone does not establish whether the business process is finished. "
-            + "Read related document details to establish the actual outcome. An incomplete graph cannot prove that no related documents exist.",
+            "Read a bounded graph containing only permitted, reachable objects and their declared relationships. "
+            + "Read related details when needed to establish the requested business fact; a relationship alone does not establish an outcome. "
+            + "An incomplete graph cannot prove that no related objects exist.",
             []);
 
         builder.Add<EffectsRequest, EffectsResult, EffectsTool>(
@@ -62,7 +65,8 @@ internal static class BuiltInTools
 
         builder.Add<ReportsRequest, ReportsResult, ListReportsTool>(
             McpToolNames.ListReports,
-            "Discover installed reports visible to the current user: compact names and descriptions with paging. "
+            "Discover installed reports: authorized names and descriptions with paging. Start here for counts, totals, balances and 'how many' questions, "
+            + "including when the current page is a catalog or document. Select a report whose description covers the requested measure and scope. "
             + "Read the selected report's definition for its inputs before executing it. This returns metadata, not report figures.",
             []);
 

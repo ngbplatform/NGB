@@ -1,6 +1,7 @@
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
+using ModelContextProtocol.Client;
 using Moq;
 using NGB.Application.Abstractions.Features;
 using NGB.Application.Abstractions.Services;
@@ -12,6 +13,7 @@ using NGB.Contracts.Metadata;
 using NGB.Contracts.Notes;
 using NGB.Contracts.Reporting;
 using NGB.Contracts.Services;
+using NGB.Mcp.AspNetCore;
 using NGB.Notes;
 using Xunit;
 
@@ -19,6 +21,111 @@ namespace NGB.AiAssistant.AspNetCore.IntegrationTests;
 
 public sealed partial class AssistantHttpTests
 {
+    [Fact]
+    public async Task AssistantUsesTheSameDescriptionsAsTheAuthorizedMcpClient()
+    {
+        await using var host = await Host.StartAsync(mode: "custom-record");
+        using var http = host.Client("alex");
+        await using var mcp = await McpClient.CreateAsync(new HttpClientTransport(new HttpClientTransportOptions
+        {
+            Endpoint = new Uri(http.BaseAddress!, "/mcp")
+        }, http));
+        var tools = await mcp.ListToolsAsync();
+
+        using var response = await http.PostAsJsonAsync("/api/ai-assistant/chat", Question);
+        var events = ReadEvents(await response.Content.ReadAsStringAsync());
+
+        Assert.Contains(events, item => item.Type == "done");
+        var expected = tools.Where(tool => tool.ProtocolTool.Annotations?.ReadOnlyHint == true
+            && tool.ProtocolTool.Meta?[NgbMcpToolMetadata.CompatibilityOnly]?.GetValue<bool>() != true).ToArray();
+        Assert.Equal(expected.Length, host.State.ToolDescriptions.Count);
+        foreach (var tool in expected)
+        {
+            Assert.Equal(tool.Description, host.State.ToolDescriptions[tool.Name]);
+        }
+    }
+
+    [NativeOllamaFact]
+    public async Task NativeOllamaDiscoversAnAggregateFromAnUnrelatedInstalledApplication()
+    {
+        var count = Random.Shared.Next(200, 900);
+        var definition = new ReportDefinitionDto("laboratory.calibration_summary", "Calibration Summary",
+            Description: "The number of calibrated instruments across all laboratories.");
+        var reports = new Mock<IAuthorizedReportReadService>(MockBehavior.Strict);
+        reports.Setup(value => value.GetAllDefinitionsAsync(It.IsAny<CancellationToken>())).ReturnsAsync([definition]);
+        reports.Setup(value => value.GetDefinitionAsync(definition.ReportCode, It.IsAny<CancellationToken>())).ReturnsAsync(definition);
+        reports.Setup(value => value.ExecuteAsync(definition.ReportCode, It.IsAny<ReportExecutionRequestDto>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ReportExecutionResponseDto(new ReportSheetDto(
+                [new("calibrated_instruments", "Calibrated Instruments", "int32")],
+                [new(ReportRowKind.Detail, [new(JsonSerializer.SerializeToElement(count), count.ToString(), "int32")])]),
+                0, 1, 1, false, null));
+        var budget = new Mock<IReportRequestAdmission>();
+        budget.SetupGet(value => value.ExecutionTimeout).Returns(TimeSpan.FromSeconds(30));
+        budget.Setup(value => value.AcquireAsync(It.IsAny<CancellationToken>())).ReturnsAsync(Mock.Of<IDisposable>());
+        await using var host = await Host.StartAsync(mode: "ollama", configure: services =>
+        {
+            services.AddScoped(_ => reports.Object);
+            services.AddScoped(_ => budget.Object);
+        });
+        using var http = host.Client("alex");
+        http.Timeout = TimeSpan.FromMinutes(4);
+
+        using var response = await http.PostAsJsonAsync("/api/ai-assistant/chat", new AiAssistantRequest(
+            [new("user", "How many calibrated instruments are there across all laboratories? Give only the count.")]));
+        var events = ReadEvents(await response.Content.ReadAsStringAsync());
+        var answer = string.Concat(events.Where(item => item.Type == "text").Select(item => item.Text));
+        var trace = answer + "\n" + string.Join('\n', host.State.ModelInputs);
+
+        Assert.True(events.All(item => item.Type != "error"), trace);
+        Assert.Contains(events, item => item.Type == "done");
+        Assert.Contains(count.ToString(), answer);
+        reports.Verify(value => value.GetDefinitionAsync(definition.ReportCode, It.IsAny<CancellationToken>()), Times.AtLeastOnce);
+        reports.Verify(value => value.ExecuteAsync(definition.ReportCode, It.Is<ReportExecutionRequestDto>(request =>
+            (request.Parameters == null || request.Parameters.Count == 0) && (request.Filters == null || request.Filters.Count == 0)),
+            It.IsAny<CancellationToken>()), Times.AtLeastOnce);
+    }
+
+    [NativeOllamaFact]
+    public async Task NativeOllamaUsesTheInstalledTypesOutcomeWithoutAssumingACompletionDocument()
+    {
+        const string typeCode = "laboratory.inspection";
+        var id = Guid.NewGuid();
+        var metadata = new DocumentTypeMetadataDto(typeCode, "Inspection", EntityKind.Document,
+            List: new ListMetadataDto([new("inspection_result", "Inspection Result", DataType.String)]));
+        var documents = new Mock<IAuthorizedDocumentReadService>(MockBehavior.Strict);
+        documents.Setup(value => value.GetAllMetadataAsync(It.IsAny<CancellationToken>())).ReturnsAsync([metadata]);
+        documents.Setup(value => value.GetTypeMetadataAsync(typeCode, It.IsAny<CancellationToken>())).ReturnsAsync(metadata);
+        documents.Setup(value => value.GetByIdAsync(typeCode, id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DocumentDto(id, "Inspection INS-0042", new RecordPayload(new Dictionary<string, JsonElement>
+            {
+                ["inspection_result"] = JsonSerializer.SerializeToElement("Failed"),
+                ["inspector_comment"] = JsonSerializer.SerializeToElement("Sample did not meet the required specification.")
+            }), DocumentStatus.Posted, false));
+        var scopes = new Mock<IRecordReadScopeFactory>();
+        scopes.Setup(value => value.OpenAsync(It.IsAny<BusinessObjectRef>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Mock.Of<IAsyncDisposable>());
+        await using var host = await Host.StartAsync(mode: "ollama", configure: services =>
+        {
+            services.AddScoped(_ => documents.Object);
+            services.AddScoped(_ => scopes.Object);
+        });
+        using var http = host.Client("alex");
+        http.Timeout = TimeSpan.FromMinutes(4);
+
+        using var response = await http.PostAsJsonAsync("/api/ai-assistant/chat", new AiAssistantRequest(
+            [new("user", "Did this inspection pass? Explain what establishes the result.")], new("document", typeCode, id)));
+        var events = ReadEvents(await response.Content.ReadAsStringAsync());
+        var answer = string.Concat(events.Where(item => item.Type == "text").Select(item => item.Text));
+        var trace = answer + "\n" + string.Join('\n', host.State.ModelInputs);
+
+        Assert.True(events.All(item => item.Type != "error"), trace);
+        Assert.Contains(events, item => item.Type == "done");
+        Assert.Contains("fail", answer, StringComparison.OrdinalIgnoreCase);
+        documents.Verify(value => value.GetByIdAsync(typeCode, id, It.IsAny<CancellationToken>()), Times.AtLeastOnce);
+        documents.Verify(value => value.GetRelationshipGraphAsync(It.IsAny<string>(), It.IsAny<Guid>(), It.IsAny<int>(),
+            It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
     [Fact]
     public async Task CompactReportEvidencePreservesPagingScopeAndExactAmounts()
     {
