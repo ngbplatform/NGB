@@ -5,11 +5,18 @@ export type AssistantPageContext = NgbPageContext
 
 export type AssistantSource = NgbSourceIdentity & { title: string }
 
+export type AssistantValue = {
+  reference: string
+  kind: 'date' | 'timestamp' | 'bytes' | 'text'
+  value: string
+}
+
 export type AssistantMessage = {
   id: string
   role: 'user' | 'assistant'
   text: string
   sources: AssistantSource[]
+  values?: AssistantValue[]
   state: 'complete' | 'streaming' | 'stopped' | 'error'
 }
 
@@ -20,10 +27,11 @@ export type AssistantRequest = {
 }
 
 export type AssistantEvent = {
-  type: 'text' | 'status' | 'source' | 'heartbeat' | 'done' | 'error'
+  type: 'text' | 'status' | 'source' | 'value' | 'heartbeat' | 'done' | 'error'
   text?: string | null
   code?: string | null
   source?: AssistantSource | null
+  value?: AssistantValue | null
 }
 
 export type AssistantSettings = {

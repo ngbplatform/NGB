@@ -16,6 +16,7 @@
 
     <ItemGroup>
         <ProjectReference Include="..\NGB.AiAssistant\NGB.AiAssistant.csproj" />
+        <ProjectReference Include="..\NGB.Contracts\NGB.Contracts.csproj" />
         <ProjectReference Include="..\NGB.Mcp\NGB.Mcp.csproj" />
         <ProjectReference Include="..\NGB.Mcp.AspNetCore\NGB.Mcp.AspNetCore.csproj" />
         <ProjectReference Include="..\NGB.Runtime\NGB.Runtime.csproj" />

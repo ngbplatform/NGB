@@ -1,0 +1,226 @@
+using System.Net.Http.Json;
+using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
+using Moq;
+using NGB.Application.Abstractions.Features;
+using NGB.Application.Abstractions.Services;
+using NGB.Attachments;
+using NGB.Contracts.Attachments;
+using NGB.Contracts.BusinessObjects;
+using NGB.Contracts.Common;
+using NGB.Contracts.Metadata;
+using NGB.Contracts.Notes;
+using NGB.Contracts.Reporting;
+using NGB.Contracts.Services;
+using NGB.Notes;
+using Xunit;
+
+namespace NGB.AiAssistant.AspNetCore.IntegrationTests;
+
+public sealed partial class AssistantHttpTests
+{
+    [Fact]
+    public async Task CompactReportEvidencePreservesPagingScopeAndExactAmounts()
+    {
+        var amount = JsonSerializer.SerializeToElement(69511126.85m);
+        var sheet = new ReportSheetDto(
+            [new("amount", "Amount", "decimal")],
+            [new(ReportRowKind.Detail, [new(amount, "69,511,126.85", "decimal")])],
+            new("Aging", "Selected lease"),
+            HeaderRows: [new(ReportRowKind.Header, [new(Display: "October 2026")])]);
+        var reports = new Mock<IAuthorizedReportReadService>(MockBehavior.Strict);
+        reports.Setup(value => value.GetDefinitionAsync("pm.aging", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ReportDefinitionDto("pm.aging", "Aging"));
+        reports.Setup(value => value.ExecuteAsync("pm.aging", It.IsAny<ReportExecutionRequestDto>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ReportExecutionResponseDto(sheet, 0, 10, null, true, "next-page"));
+        await using var host = await Host.StartAsync(mode: "report-execute", configure: services =>
+            services.AddScoped(_ => reports.Object));
+        using var client = host.Client("alex");
+
+        using var response = await client.PostAsJsonAsync("/api/ai-assistant/chat", Question);
+        var events = ReadEvents(await response.Content.ReadAsStringAsync());
+        var answer = string.Concat(events.Where(item => item.Type == "text").Select(item => item.Text));
+        var data = JsonSerializer.Deserialize<JsonElement>(answer).GetProperty("data");
+
+        Assert.Contains(events, item => item.Type == "done");
+        Assert.True(data.GetProperty("hasMore").GetBoolean());
+        Assert.Equal("next-page", data.GetProperty("nextCursor").GetString());
+        Assert.False(data.TryGetProperty("total", out _));
+        Assert.Equal("pm.aging", data.GetProperty("criteria").GetProperty("reportCode").GetString());
+        Assert.Equal(10, data.GetProperty("criteria").GetProperty("request").GetProperty("limit").GetInt32());
+        Assert.Equal("Selected lease", data.GetProperty("subtitle").GetString());
+        Assert.Equal("October 2026", data.GetProperty("headerRows")[0].GetProperty("cells")[0].GetProperty("display").GetString());
+        Assert.Equal(69511126.85m, data.GetProperty("rows")[0].GetProperty("cells")[0].GetProperty("value").GetDecimal());
+    }
+
+    [NativeOllamaFact]
+    public async Task NativeOllamaDoesNotSubstituteOneLeaseForAnAllLeaseTotal()
+    {
+        var definition = new ReportDefinitionDto("pm.receivables.open_items", "Open Items Report",
+            Description: "Receivable open items for one lease, including unapplied payments.",
+            Filters: [new("lease_id", "Lease", "uuid", IsRequired: true,
+                Lookup: new DocumentLookupSourceDto(["pm.lease"]))]);
+        var reports = new Mock<IAuthorizedReportReadService>(MockBehavior.Strict);
+        reports.Setup(value => value.GetAllDefinitionsAsync(It.IsAny<CancellationToken>())).ReturnsAsync([definition]);
+        reports.Setup(value => value.GetDefinitionAsync(definition.ReportCode, It.IsAny<CancellationToken>())).ReturnsAsync(definition);
+        await using var host = await Host.StartAsync(mode: "ollama", configure: services =>
+            services.AddScoped(_ => reports.Object));
+        using var client = host.Client("alex");
+        client.Timeout = TimeSpan.FromMinutes(4);
+
+        using var response = await client.PostAsJsonAsync("/api/ai-assistant/chat", new AiAssistantRequest(
+            [new("user", "What is the total unallocated payment amount across all leases? Give me only the amount and its currency, if known.")]));
+        var events = ReadEvents(await response.Content.ReadAsStringAsync());
+        var answer = string.Concat(events.Where(item => item.Type == "text").Select(item => item.Text));
+        var trace = answer + "\n" + string.Join('\n', host.State.ModelInputs);
+
+        Assert.True(events.All(item => item.Type != "error"), trace);
+        Assert.Contains(events, item => item.Type == "done");
+        Assert.True(answer.Contains("cannot", StringComparison.OrdinalIgnoreCase)
+            || answer.Contains("unable", StringComparison.OrdinalIgnoreCase)
+            || answer.Contains("can't", StringComparison.OrdinalIgnoreCase)
+            || answer.Contains("not available", StringComparison.OrdinalIgnoreCase), trace);
+        reports.Verify(value => value.GetDefinitionAsync(definition.ReportCode, It.IsAny<CancellationToken>()), Times.AtLeastOnce);
+        reports.Verify(value => value.ExecuteAsync(It.IsAny<string>(), It.IsAny<ReportExecutionRequestDto>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [NativeOllamaFact]
+    public async Task NativeOllamaGreetingDoesNotRunTheCurrentPageReport()
+    {
+        await using var host = await Host.StartAsync(mode: "ollama");
+        using var client = host.Client("alex");
+        client.Timeout = TimeSpan.FromMinutes(4);
+        var request = new AiAssistantRequest([new("user", "hi")], new("report", "pm.maintenance.queue"));
+
+        using var response = await client.PostAsJsonAsync("/api/ai-assistant/chat", request);
+        var events = ReadEvents(await response.Content.ReadAsStringAsync());
+        var trace = string.Join('\n', host.State.ModelInputs);
+
+        Assert.True(events.All(item => item.Type != "error"), trace);
+        Assert.Contains(events, item => item.Type == "done");
+        Assert.DoesNotContain("functionCall", trace, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(host.State.ToolUsers);
+    }
+
+    [NativeOllamaFact]
+    public async Task NativeOllamaDoesNotClaimACompleteDateSelectionFromAPartialPage()
+    {
+        var documents = new Mock<IAuthorizedDocumentReadService>(MockBehavior.Strict);
+        var metadata = new DocumentTypeMetadataDto("pm.lease", "Lease", EntityKind.Document,
+            List: new ListMetadataDto(
+                [new("end_on_utc", "End On", DataType.Date)],
+                [new("party_id", "Party", DataType.Guid), new("property_id", "Property", DataType.Guid)]));
+        documents.Setup(value => value.GetAllMetadataAsync(It.IsAny<CancellationToken>())).ReturnsAsync([metadata]);
+        documents.Setup(value => value.GetTypeMetadataAsync("pm.lease", It.IsAny<CancellationToken>())).ReturnsAsync(metadata);
+        var lease = new DocumentDto(Guid.NewGuid(), "Lease for unit 102", new RecordPayload(
+            new Dictionary<string, JsonElement> { ["end_on_utc"] = JsonSerializer.SerializeToElement("2026-03-26") }), DocumentStatus.Posted, false);
+        documents.Setup(value => value.GetPageAsync("pm.lease", It.IsAny<PageRequestDto>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PageResponseDto<DocumentDto>([lease], 0, 10, null, HasMore: true, NextCursor: "next-page"));
+        var search = new Mock<INgbSearchService>();
+        search.Setup(value => value.SearchAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<NgbSearchKind?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new NgbSearchResult([], false, []));
+        await using var host = await Host.StartAsync(mode: "ollama", configure: services =>
+        {
+            services.AddScoped(_ => documents.Object);
+            services.AddScoped(_ => search.Object);
+            // Allow discovery, metadata and a bounded page read before the answer phase.
+            services.Configure<AiAssistantOptions>(options => options.MaxToolCalls = 4);
+        });
+        using var client = host.Client("alex");
+        client.Timeout = TimeSpan.FromMinutes(4);
+
+        using var response = await client.PostAsJsonAsync("/api/ai-assistant/chat", new AiAssistantRequest(
+            [new("user", "List all leases whose end date falls between October 1 and October 31, 2026.")], new("document", "pm.lease")));
+        var events = ReadEvents(await response.Content.ReadAsStringAsync());
+        var answer = string.Concat(events.Where(item => item.Type == "text").Select(item => item.Text));
+        var trace = string.Join('\n', host.State.ModelInputs);
+
+        Assert.True(events.All(item => item.Type != "error"), trace);
+        Assert.Contains(events, item => item.Type == "done");
+        documents.Verify(value => value.GetTypeMetadataAsync("pm.lease", It.IsAny<CancellationToken>()), Times.AtLeastOnce);
+        documents.Verify(value => value.GetPageAsync(It.IsAny<string>(), It.IsAny<PageRequestDto>(), It.IsAny<CancellationToken>()), Times.AtMostOnce);
+        Assert.DoesNotContain("no leases", answer, StringComparison.OrdinalIgnoreCase);
+        Assert.True(answer.Contains("cannot", StringComparison.OrdinalIgnoreCase)
+            || answer.Contains("unable", StringComparison.OrdinalIgnoreCase)
+            || answer.Contains("can't", StringComparison.OrdinalIgnoreCase), answer);
+    }
+
+    [NativeOllamaFact]
+    public async Task NativeOllamaUsesDisplayReferencesForNotesTimestampsAndAttachmentSizes()
+    {
+        var target = new BusinessObjectRef(BusinessObjectKind.Document, "pm.receivable_payment", Guid.NewGuid());
+        var author = Guid.NewGuid();
+        var created = new DateTime(2026, 5, 10, 20, 43, 34, DateTimeKind.Utc);
+        var notes = new Mock<INoteService>(MockBehavior.Strict);
+        notes.Setup(value => value.ListAsync(target, It.IsAny<int>(), null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new BusinessObjectPage<NoteDto>(
+                [new(Guid.NewGuid(), "Keep the date 2026-05-10 exactly as written.", 1, created, author, "Alex Carter", null, null)], null));
+        var attachments = new Mock<IAttachmentService>(MockBehavior.Strict);
+        attachments.Setup(value => value.ListAsync(target, It.IsAny<int>(), null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new BusinessObjectPage<AttachmentDto>(
+                [new(Guid.NewGuid(), "Screenshot 2026-10-02 at 5.46.52 PM.png", "image/png", 723275, created, author, "Alex Carter")], null));
+        var features = new Mock<INgbFeatureService>();
+        features.Setup(value => value.IsEnabledAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        await using var host = await Host.StartAsync(mode: "ollama", configure: services =>
+        {
+            services.AddScoped(_ => notes.Object);
+            services.AddScoped(_ => attachments.Object);
+            services.AddScoped(_ => features.Object);
+        });
+        using var client = host.Client("alex");
+        client.Timeout = TimeSpan.FromMinutes(4);
+
+        using var response = await client.PostAsJsonAsync("/api/ai-assistant/chat", new AiAssistantRequest(
+            [new("user", "Show notes with their text, authors and creation times. Also show attachment names and sizes.")],
+            new("document", target.TypeCode, target.Id), "America/New_York"));
+        var events = ReadEvents(await response.Content.ReadAsStringAsync());
+        var answer = string.Concat(events.Where(item => item.Type == "text").Select(item => item.Text));
+        var trace = answer + "\n" + string.Join('\n', host.State.ModelInputs);
+
+        Assert.True(events.All(item => item.Type != "error"), trace);
+        Assert.Contains(events, item => item.Type == "done");
+        foreach (var kind in new[] { "timestamp", "bytes", "text" })
+        {
+            Assert.True(events.Any(item => item.Value?.Kind == kind && answer.Contains(item.Value.Reference, StringComparison.Ordinal)), trace);
+        }
+        Assert.DoesNotContain("704 KB", answer);
+    }
+
+    [NativeOllamaFact]
+    public async Task NativeOllamaFindsAnExactDocumentNumberWithoutATypeHintOrUnrequestedAudit()
+    {
+        var id = Guid.NewGuid();
+        var documents = new Mock<IAuthorizedDocumentReadService>(MockBehavior.Strict);
+        var metadata = new DocumentTypeMetadataDto("pm.payable_charge", "Payable Charge", EntityKind.Document);
+        documents.Setup(value => value.GetAllMetadataAsync(It.IsAny<CancellationToken>())).ReturnsAsync([metadata]);
+        documents.Setup(value => value.GetTypeMetadataAsync(metadata.DocumentType, It.IsAny<CancellationToken>())).ReturnsAsync(metadata);
+        documents.Setup(value => value.GetByIdAsync(metadata.DocumentType, id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DocumentDto(id, "Payable Charge PC-2026-000021", new RecordPayload(
+                new Dictionary<string, JsonElement> { ["amount"] = JsonSerializer.SerializeToElement(981.61m) }), DocumentStatus.Posted, false));
+        var search = new Mock<INgbSearchService>(MockBehavior.Strict);
+        search.Setup(value => value.SearchAsync("PC-2026-000021", It.IsAny<int>(), It.IsAny<NgbSearchKind?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new NgbSearchResult([new("document", metadata.DocumentType, id, "Payable Charge PC-2026-000021")], true, []));
+        var scopes = new Mock<IRecordReadScopeFactory>();
+        scopes.Setup(value => value.OpenAsync(It.IsAny<BusinessObjectRef>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Mock.Of<IAsyncDisposable>());
+        var audit = new Mock<IAuditLogQueryService>(MockBehavior.Strict);
+        await using var host = await Host.StartAsync(mode: "ollama", configure: services =>
+        {
+            services.AddScoped(_ => documents.Object);
+            services.AddScoped(_ => search.Object);
+            services.AddScoped(_ => scopes.Object);
+            services.AddScoped(_ => audit.Object);
+        });
+        using var client = host.Client("alex");
+        client.Timeout = TimeSpan.FromMinutes(4);
+
+        using var response = await client.PostAsJsonAsync("/api/ai-assistant/chat", new AiAssistantRequest([new("user", "find PC-2026-000021")]));
+        var events = ReadEvents(await response.Content.ReadAsStringAsync());
+        var answer = string.Concat(events.Where(item => item.Type == "text").Select(item => item.Text));
+
+        Assert.True(events.All(item => item.Type != "error"), answer + "\n" + string.Join('\n', host.State.ModelInputs));
+        Assert.Contains("PC-2026-000021", answer);
+        Assert.Contains(events, item => item.Type == "source" && item.Source?.Id == id);
+        audit.VerifyNoOtherCalls();
+    }
+}

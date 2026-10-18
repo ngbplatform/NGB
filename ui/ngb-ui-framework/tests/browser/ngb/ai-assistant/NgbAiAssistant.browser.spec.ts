@@ -147,6 +147,31 @@ test('mobile panel fills the viewport and Stop cancels the active request', asyn
   await expect.element(view.getByRole('textbox', { name: 'Ask a question' })).toBeEnabled()
 })
 
+test('wide answers keep every labelled field inside the panel and preserve literal filenames', async () => {
+  await page.viewport(1440, 900)
+  vi.mocked(streamAssistant).mockImplementation(async (_, event) => {
+    event({ type: 'value', value: { reference: '{{ngb-value:abcdef012345-0}}', kind: 'text', value: 'Screenshot 2026-10-02 at 5.46.52 PM.png' } })
+    event({ type: 'value', value: { reference: '{{ngb-value:abcdef012345-1}}', kind: 'bytes', value: '723275' } })
+    event({ type: 'text', text: '| Lease | Tenant | Property | Start | Attachment | Size |\n| --- | --- | --- | --- | --- | --- |\n| Lease 1 | Alex **Carter** | 100 Hudson Ave, Dataset demo, Hoboken, NJ 07030 #102 | 2026-05-10 | {{ngb-value:abcdef012345-0}} | {{ngb-value:abcdef012345-1}} |' })
+    event({ type: 'done' })
+  })
+  const { view } = await mountShell()
+  await view.getByRole('textbox', { name: 'Ask a question' }).fill('Show the lease and attachment')
+  await view.getByRole('button', { name: 'Send', exact: true }).click()
+
+  await expect.element(view.getByText('723,275 bytes', { exact: true })).toBeVisible()
+  await expect.element(view.getByText('Screenshot 2026-10-02 at 5.46.52 PM.png', { exact: true })).toBeVisible()
+  const table = document.querySelector<HTMLDivElement>('.assistant-table')!
+  const cells = [...table.querySelectorAll('td')]
+  expect(cells).toHaveLength(6)
+  expect(cells.map(cell => cell.dataset.label)).toEqual(['Lease', 'Tenant', 'Property', 'Start', 'Attachment', 'Size'])
+  expect(table.scrollWidth).toBeLessThanOrEqual(table.clientWidth + 1)
+  for (const cell of cells) {
+    expect(cell.getBoundingClientRect().right).toBeLessThanOrEqual(table.getBoundingClientRect().right + 1)
+  }
+  expect(cells[1]?.querySelector('.assistant-cell-value')?.textContent).toBe('Alex Carter')
+})
+
 test('payment links use the returned Display and real record route instead of model URLs', async () => {
   await page.viewport(1440, 900)
   const id = '11111111-1111-4111-8111-111111111111'

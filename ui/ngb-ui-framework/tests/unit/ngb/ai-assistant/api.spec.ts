@@ -41,6 +41,8 @@ it.each([
   ['data: {"type":"error","text":"Unavailable"}\n\n', 'Unavailable'],
   ['data: {"type":"unexpected"}\n\n', 'invalid event'],
   ['data: {"type":"text","text":4}\n\n', 'invalid event'],
+  ['data: {"type":"value","value":{"reference":"forged","kind":"text","value":"hi"}}\n\n', 'invalid display value'],
+  ['data: {"type":"value","value":{"reference":"{{ngb-value:abcdef012345-0}}","kind":"html","value":"<script>"}}\n\n', 'invalid display value'],
   ['x'.repeat(65537), 'too large'],
 ])('rejects incomplete or invalid streams', async (text, message) => {
   response(text, 4096)

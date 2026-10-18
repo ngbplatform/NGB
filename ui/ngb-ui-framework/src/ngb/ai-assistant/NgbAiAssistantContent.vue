@@ -12,7 +12,7 @@
       </button>
     </header>
 
-    <div ref="conversation" class="min-h-0 flex-1 overflow-y-auto px-4 py-5" @scroll="trackScroll">
+    <div ref="conversation" class="min-h-0 min-w-0 flex-1 overflow-y-auto px-4 py-5" @scroll="trackScroll">
       <div v-if="assistant.messages.length === 0" class="space-y-3 py-6">
         <h3 class="text-lg font-semibold">How can I help?</h3>
         <p class="text-sm leading-6 text-ngb-muted">Find records, explore reports, and understand your business data.</p>
@@ -101,7 +101,7 @@ const canRetry = computed(() => !assistant.busy && assistant.messages.at(-1)?.st
 const suggestions = ['What reports can I run?', 'Help me find a record.', 'What data can I explore here?']
 
 function renderMessage(message: AssistantMessage): string {
-  return renderAssistantMarkdown(message.text, message.sources)
+  return renderAssistantMarkdown(message.text, message.sources, undefined, message.values)
 }
 
 function navigateLink(event: MouseEvent): void {
@@ -234,13 +234,48 @@ onMounted(() => input.value?.focus())
 
 .assistant-markdown :deep(th),
 .assistant-markdown :deep(td) {
-  min-width: 7rem;
+  min-width: 0;
   padding: 0.5rem 0.75rem;
   text-align: left;
   vertical-align: top;
   border-bottom: 1px solid var(--ngb-border);
-  overflow-wrap: normal;
+  overflow-wrap: anywhere;
   word-break: normal;
+}
+
+.assistant-markdown :deep(.assistant-table-wide thead) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+.assistant-markdown :deep(.assistant-table-wide tbody),
+.assistant-markdown :deep(.assistant-table-wide tr) {
+  display: block;
+}
+
+.assistant-markdown :deep(.assistant-table-wide tr + tr) {
+  border-top: 2px solid var(--ngb-border);
+}
+
+.assistant-markdown :deep(.assistant-table-wide td) {
+  display: grid;
+  grid-template-columns: minmax(5rem, 30%) minmax(0, 1fr);
+  gap: 0.75rem;
+  border-bottom: 0;
+}
+
+.assistant-markdown :deep(.assistant-table-wide td::before) {
+  content: attr(data-label);
+  font-weight: 600;
+  color: var(--ngb-muted);
+}
+
+.assistant-markdown :deep(.assistant-cell-value) {
+  min-width: 0;
+  white-space: pre-wrap;
 }
 
 .assistant-markdown :deep(th) {

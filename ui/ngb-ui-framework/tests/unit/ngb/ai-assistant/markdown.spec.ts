@@ -4,6 +4,47 @@ import { assistantSourcePath } from '../../../../src/ngb/ai-assistant/navigation
 
 afterEach(() => vi.unstubAllGlobals())
 
+it('renders verified timestamps, exact byte sizes and literal filenames and notes without interpreting their contents', () => {
+  const prefix = '{{ngb-value:abcdef012345-'
+  const result = renderAssistantMarkdown(`${prefix}0}} | ${prefix}1}} | ${prefix}2}} | ${prefix}3}}`, [], 'America/New_York', [
+    { reference: `${prefix}0}}`, kind: 'timestamp', value: '2026-05-10T20:43:34.293462Z' },
+    { reference: `${prefix}1}}`, kind: 'bytes', value: '723275' },
+    { reference: `${prefix}2}}`, kind: 'text', value: 'Screenshot 2026-10-02 at 5.46.52 PM.png' },
+    { reference: `${prefix}3}}`, kind: 'text', value: '2026-05-10 | **literal** <img src=x> [click](https://evil.example)' },
+  ])
+
+  expect(result).toContain('05/10/2026, 04:43:34 PM')
+  expect(result).toContain('723,275 bytes')
+  expect(result).toContain('Screenshot 2026-10-02 at 5.46.52 PM.png')
+  expect(result).toContain('2026-05-10 | **literal** &lt;img src=x&gt;')
+  expect(result).not.toContain('<img')
+  expect(result).not.toContain('<a ')
+  expect(result).not.toContain('<strong>')
+})
+
+it('does not accept display references supplied only by the model', () => {
+  const result = renderAssistantMarkdown('{{ngb-value:abcdef012345-0}}', [])
+  expect(result).toContain('Value unavailable')
+  expect(result).not.toContain('ngb-value:')
+})
+
+it('formats explicit UTC prose without converting dates embedded in filenames or code', () => {
+  const result = renderAssistantMarkdown(
+    '05/10/2026 at 20:43:35 UTC\n\nScreenshot 2026-10-02 at 5.46.52 PM.png\n\n`2026-10-02.json`',
+    [], 'America/New_York')
+  expect(result).toContain('05/10/2026, 04:43:35 PM')
+  expect(result).toContain('Screenshot 2026-10-02 at 5.46.52 PM.png')
+  expect(result).toContain('<code>2026-10-02.json</code>')
+})
+
+it('labels wide tables for the compact row layout without dropping requested columns', () => {
+  const result = renderAssistantMarkdown('| Lease | Tenant | Property | Start | End | Rent |\n| --- | --- | --- | --- | --- | --- |\n| A | B | C | D | E | F |', [])
+  expect(result).toContain('<table class="assistant-table-wide">')
+  expect(result).toContain('data-label="Tenant"')
+  expect(result).toContain('data-label="Rent"')
+  expect(result.match(/<td /g)).toHaveLength(6)
+})
+
 it('formats timestamps in the user time zone without shifting date-only values', () => {
   const result = renderAssistantMarkdown(
     '2026-05-10T20:43:34.293462Z; 2026-01-10T20:43:34Z; 2026-05-10; 2026-05-11T01:00:00+02:00',

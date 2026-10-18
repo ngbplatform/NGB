@@ -1,7 +1,7 @@
 import MarkdownIt from 'markdown-it'
 import { assistantSourcePath } from './navigation'
-import { formatAssistantDates } from './dateFormatting'
-import type { AssistantSource } from './types'
+import { formatAssistantDates, formatAssistantValue } from './dateFormatting'
+import type { AssistantSource, AssistantValue } from './types'
 
 const addressPattern = /https?:\/\/[^\s<>"']+|ngb-source:[a-zA-Z0-9_.:-]+/gi
 
@@ -10,9 +10,20 @@ export function renderAssistantMarkdown(
   text: string,
   sources: AssistantSource[],
   timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone,
+  values: AssistantValue[] = [],
 ): string {
   const markdown = new MarkdownIt({ html: false, linkify: true, breaks: true })
   const verified = new Map<string, { path: string; title: string }>()
+  const displays = new Map(values.map(value => [value.reference, formatAssistantValue(value, timeZone)]))
+
+  function displayText(text: string, formatDates: boolean): string {
+    // Substitute after parsing Markdown so source text cannot create HTML, links or
+    // table cells. Never run date replacements on literal filenames or note contents.
+    return text.split(/(\{\{ngb-value:[^{}]+\}\})/g).map(part => {
+      if (part.startsWith('{{ngb-value:')) return displays.get(part) ?? 'Value unavailable'
+      return formatDates ? formatAssistantDates(hideAddresses(part), timeZone) : hideAddresses(part)
+    }).join('')
+  }
 
   for (const source of sources) {
     const path = assistantSourcePath(source)
@@ -58,13 +69,38 @@ export function renderAssistantMarkdown(
             tokens.splice(index, end - index + 1, label)
           }
         } else if (token.type === 'text' || token.type === 'code_inline') {
-          token.content = formatAssistantDates(hideAddresses(token.content), timeZone)
+          token.content = displayText(token.content, token.type === 'text')
         }
       }
     }
   })
+  markdown.core.ruler.push('table-labels', state => {
+    let table: typeof state.tokens[number] | undefined
+    let headers: string[] = []
+    let column = 0
+    for (let index = 0; index < state.tokens.length; index++) {
+      const token = state.tokens[index]!
+      if (token.type === 'table_open') {
+        table = token
+        headers = []
+      } else if (token.type === 'th_open') {
+        headers.push(state.tokens[index + 1]?.content ?? '')
+      } else if (token.type === 'thead_close' && headers.length > 3) {
+        table?.attrSet('class', 'assistant-table-wide')
+      } else if (token.type === 'tr_open') {
+        column = 0
+      } else if (token.type === 'td_open') {
+        token.attrSet('data-label', headers[column++] ?? '')
+      }
+    }
+  })
   markdown.renderer.rules.image = (tokens, index) => markdown.utils.escapeHtml(hideAddresses(tokens[index]?.content ?? ''))
-  markdown.renderer.rules.table_open = () => '<div class="assistant-table" role="region" aria-label="Table" tabindex="0"><table>\n'
+  markdown.renderer.rules.table_open = (tokens, index) =>
+    '<div class="assistant-table" role="region" aria-label="Table" tabindex="0">'
+    + `<table${tokens[index]?.attrGet('class') === 'assistant-table-wide' ? ' class="assistant-table-wide"' : ''}>\n`
   markdown.renderer.rules.table_close = () => '</table></div>\n'
+  markdown.renderer.rules.td_open = (tokens, index, options, _env, renderer) =>
+    renderer.renderToken(tokens, index, options) + '<span class="assistant-cell-value">'
+  markdown.renderer.rules.td_close = () => '</span></td>\n'
   return markdown.render(text)
 }

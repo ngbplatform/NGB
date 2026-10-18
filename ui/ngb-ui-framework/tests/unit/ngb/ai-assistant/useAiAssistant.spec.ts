@@ -62,6 +62,22 @@ it('stops generation and ignores late chunks from the previous request', async (
   expect(assistant.messages.at(-1)).toMatchObject({ text: 'Partial', state: 'stopped' })
 })
 
+it('keeps display references local to a reply and sends original values in bounded follow-up history', async () => {
+  const reference = '{{ngb-value:abcdef012345-0}}'
+  vi.mocked(streamAssistant).mockImplementationOnce(async (_, event) => {
+    event({ type: 'value', value: { reference, kind: 'timestamp', value: '2026-05-10T20:43:34Z' } })
+    event({ type: 'text', text: `Created: ${reference}` })
+    event({ type: 'done' })
+  })
+  const assistant = useAiAssistant()
+  await assistant.send('When was it created?')
+  await assistant.send('Who created it?')
+
+  expect(assistant.messages[1]?.values).toHaveLength(1)
+  expect(assistant.messages[3]?.values).toEqual([])
+  expect(vi.mocked(streamAssistant).mock.calls[1]![0].messages[1]?.text).toBe('Created: 2026-05-10T20:43:34Z')
+})
+
 it.each(['subject', 'authenticated', 'feature'] as const)('clears private conversation on %s changes', async change => {
   const assistant = useAiAssistant()
   await assistant.send('Private question')

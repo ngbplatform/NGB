@@ -24,13 +24,20 @@ public sealed record AiAssistantSource(string Kind, string TypeCode, Guid? Id, s
 }
 
 /// <summary>Application data and explicit sources supplied by the trusted tool adapter.</summary>
-public sealed record AiAssistantToolResult(object? Data, IReadOnlyList<AiAssistantSource> Sources);
+public sealed record AiAssistantToolResult(
+    object? Data,
+    IReadOnlyList<AiAssistantSource> Sources,
+    bool IsError = false);
+
+/// <summary>A value read from an authorized result, rendered as text by the UI rather than rewritten by the model.</summary>
+public sealed record AiAssistantValue(string Reference, string Kind, string Value);
 
 public sealed record AiAssistantEvent(
     string Type,
     string? Text = null,
     string? Code = null,
-    AiAssistantSource? Source = null);
+    AiAssistantSource? Source = null,
+    AiAssistantValue? Value = null);
 
 public sealed record AiAssistantModelInfo(string Provider, string Model);
 

@@ -40,9 +40,15 @@ export async function streamAssistant(
         const data = frame.split('\n').filter(line => line.startsWith('data:')).map(line => line.slice(5).trimStart()).join('\n')
         if (!data) continue
         const event = JSON.parse(data) as AssistantEvent
-        if (!event || !['text', 'status', 'source', 'heartbeat', 'done', 'error'].includes(event.type)
+        if (!event || !['text', 'status', 'source', 'value', 'heartbeat', 'done', 'error'].includes(event.type)
           || (event.text != null && typeof event.text !== 'string')) {
           throw new Error('The assistant returned an invalid event.')
+        }
+        if (event.type === 'value' && (!event.value
+          || !/^\{\{ngb-value:[a-f0-9]{12}-\d{1,3}\}\}$/.test(event.value.reference)
+          || !['date', 'timestamp', 'bytes', 'text'].includes(event.value.kind)
+          || typeof event.value.value !== 'string' || event.value.value.length > 8000)) {
+          throw new Error('The assistant returned an invalid display value.')
         }
         if (event.type === 'error') throw new Error(event.text || 'The assistant could not complete the request.')
         onEvent(event)

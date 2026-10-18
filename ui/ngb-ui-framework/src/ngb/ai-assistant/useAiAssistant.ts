@@ -72,7 +72,11 @@ export const useAiAssistant = defineStore('ai-assistant', () => {
         const user = messages.value[index]!
         const answer = messages.value[index + 1]!
         if (answer.state === 'complete' && answer.text.length <= limits.maxMessageCharacters) {
-          previous.push({ role: 'user', text: user.text }, { role: 'assistant', text: answer.text })
+          const values = new Map(answer.values?.map(value => [value.reference, value.value]) ?? [])
+          const answerText = answer.text.replace(/\{\{ngb-value:[^{}]+\}\}/g, reference => values.get(reference) ?? 'Value unavailable')
+          if (answerText.length <= limits.maxMessageCharacters) {
+            previous.push({ role: 'user', text: user.text }, { role: 'assistant', text: answerText })
+          }
         }
       }
       const request: AssistantRequest = {
@@ -88,7 +92,7 @@ export const useAiAssistant = defineStore('ai-assistant', () => {
       if (encoder.encode(JSON.stringify(request)).length > limits.maxInputBytes) throw new Error('The question is too large. Please shorten it.')
 
       messages.value.push({ id: crypto.randomUUID(), role: 'user', text, sources: [], state: 'complete' })
-      messages.value.push({ id: crypto.randomUUID(), role: 'assistant', text: '', sources: [], state: 'streaming' })
+      messages.value.push({ id: crypto.randomUUID(), role: 'assistant', text: '', sources: [], values: [], state: 'streaming' })
       if (messages.value.length > maximumVisibleMessages) {
         messages.value.splice(0, messages.value.length - maximumVisibleMessages)
       }
@@ -102,6 +106,8 @@ export const useAiAssistant = defineStore('ai-assistant', () => {
           status.value = event.text ?? ''
         } else if (event.type === 'source' && event.source && reply.sources.length < 30) {
           reply.sources.push(event.source)
+        } else if (event.type === 'value' && event.value && (reply.values?.length ?? 0) < 512) {
+          reply.values?.push(event.value)
         } else if (event.type === 'done') {
           reply.state = 'complete'
         }

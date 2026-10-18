@@ -486,8 +486,11 @@ public sealed partial class AssistantHttpTests
                     arguments["id"] = state.PaymentId;
             }
 
-            yield return tool is null
-                ? new(ChatRole.Assistant, [new FunctionCallContent("call-1", toolName, arguments)]) { FinishReason = ChatFinishReason.ToolCalls }
+            var listing = state.Mode is "record-list" or "record-denied";
+            var metadataRead = listing && input.Count(message => message.Role == ChatRole.Tool) == 1;
+            yield return tool is null || metadataRead
+                ? new(ChatRole.Assistant, [new FunctionCallContent(metadataRead ? "call-2" : "call-1",
+                    listing && tool is null ? "ngb_get_metadata" : toolName, arguments)]) { FinishReason = ChatFinishReason.ToolCalls }
                 : new(ChatRole.Assistant, System.Text.Json.JsonSerializer.Serialize(tool.Contents.OfType<FunctionResultContent>().Single().Result))
                 {
                     FinishReason = ChatFinishReason.Stop
