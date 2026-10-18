@@ -137,30 +137,34 @@ internal static class VerticalMcpContract
         restResponse.EnsureSuccessStatusCode();
         var rest = await restResponse.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal(codes, rest.EnumerateArray().Select(report => report.GetProperty("reportCode").GetString()).Order());
-        foreach (var code in codes)
-            await CallAsync(client, "ngb_get_report_definition", new() { ["reportCode"] = code });
-
         var jsonOptions = new JsonSerializerOptions(JsonSerializerDefaults.Web);
         jsonOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
+        var definitions = new List<ReportDefinitionDto>();
+        foreach (var code in codes)
+        {
+            // Discovery returns summaries; execution inputs come from the full definition.
+            var data = await CallAsync(client, "ngb_get_report_definition", new() { ["reportCode"] = code });
+            var definition = data.Deserialize<ReportDefinitionDto>(jsonOptions)!;
+            Assert.Equal(code, definition.ReportCode);
+            definitions.Add(definition);
+        }
+
         var executed = 0;
-        var verticalReports = reports.GetProperty("items").EnumerateArray()
-                     .Where(item => item.GetProperty("reportCode").GetString()!.StartsWith(prefix, StringComparison.Ordinal))
-                     .Where(item => !item.TryGetProperty("filters", out var filters) || filters.ValueKind != JsonValueKind.Array
-                         || !filters.EnumerateArray().Any(filter => filter.GetProperty("isRequired").GetBoolean())).Take(2);
-        var canonicalReports = reports.GetProperty("items").EnumerateArray()
-            .Where(item => item.GetProperty("reportCode").GetString() == "accounting.trial_balance");
+        var verticalReports = definitions
+            .Where(definition => definition.ReportCode.StartsWith(prefix, StringComparison.Ordinal))
+            .Where(definition => definition.Filters is null || !definition.Filters.Any(filter => filter.IsRequired))
+            .Take(2)
+            .ToArray();
+        Assert.NotEmpty(verticalReports);
+        var canonicalReports = definitions.Where(definition => definition.ReportCode == "accounting.trial_balance");
         foreach (var definition in verticalReports.Concat(canonicalReports))
         {
-            var code = definition.GetProperty("reportCode").GetString()!;
+            var code = definition.ReportCode;
             var parameters = new Dictionary<string, string>();
-            if (definition.TryGetProperty("parameters", out var declared) && declared.ValueKind == JsonValueKind.Array)
+            foreach (var parameter in definition.Parameters ?? [])
             {
-                foreach (var parameter in declared.EnumerateArray())
-                {
-                    var parameterCode = parameter.GetProperty("code").GetString()!;
-                    Assert.Equal("date", parameter.GetProperty("dataType").GetString());
-                    parameters[parameterCode] = parameterCode.Contains("from", StringComparison.Ordinal) ? "2026-01-01" : "2026-10-01";
-                }
+                Assert.Equal("date", parameter.DataType);
+                parameters[parameter.Code] = parameter.Code.Contains("from", StringComparison.Ordinal) ? "2026-01-01" : "2026-10-01";
             }
             var request = new ReportExecutionRequestDto(Parameters: parameters, Limit: 2);
             using var executedRest = await http.PostAsJsonAsync($"/api/reports/{Uri.EscapeDataString(code)}/execute", request, jsonOptions);
