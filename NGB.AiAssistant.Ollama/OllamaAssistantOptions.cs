@@ -10,6 +10,6 @@ public sealed class OllamaAssistantOptions
     /// <summary>Explicitly permits HTTP beyond loopback. Disabled by default; use only on a trusted network.</summary>
     public bool AllowInsecureHttp { get; set; }
 
-    public string Model { get; set; } = "qwen3.5:4b";
+    public string Model { get; set; } = "qwen3.5:9b";
     public int ContextLength { get; set; } = 32 * 1024;
 }
