@@ -105,7 +105,7 @@ internal sealed class ListRecordsTool(
             Search: request.Search,
             Filters: request.Filters,
             Cursor: request.Cursor,
-            IncludeTotal: false);
+            IncludeTotal: request.IncludeTotal);
 
         return request.Kind switch
         {

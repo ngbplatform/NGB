@@ -43,8 +43,11 @@ public sealed record RecordsRequest(
     [property: Required, StringLength(128)] string TypeCode,
     [property: Range(1, 100)] int Limit = 50,
     [property: StringLength(16_384)] string? Cursor = null,
-    [property: StringLength(256)] string? Search = null,
-    IReadOnlyDictionary<string, string>? Filters = null);
+    [property: StringLength(256), Description("Optional text search within this type. Available independently of declared field filters.")] string? Search = null,
+    [property: Description("Declared list filter codes mapped directly to string values, for example {\"customer_id\":\"record UUID\"}. Unlike report filters, do not wrap values in objects. Multi-select filters use comma-separated values.")]
+    IReadOnlyDictionary<string, string>? Filters = null,
+    [property: Description("Request the exact count of records matching search and filters. Use limit 1 for count-only questions; read total, not items.length. Null total means unavailable.")]
+    bool IncludeTotal = false);
 
 public sealed record FlowRequest(
     [property: Required, StringLength(128)] string TypeCode,
@@ -68,9 +71,11 @@ public sealed record ReportReadRequest(
     [property: Description("Report options. Filters are a map keyed by the actual field codes from the report definition. "
         + "Example request: {\"filters\":{\"customer_id\":{\"value\":\"UUID returned by search\"}}}. "
         + "Replace customer_id with the report's filter code. Do not use a literal fieldCode key or an array of filters. "
-        + "For lookup filters, value is a record UUID returned by search. Parameters map declared parameter codes to strings. "
+        + "For lookup filters, value is a record UUID returned by search. Parameters map declared parameter codes to strings, "
+        + "including boolean and numeric values (for example \"true\" and \"10\", not JSON true or 10). "
         + "For dates, use yyyy-MM-dd strings. A date inside a record name or identifier is not a date request. "
-        + "Only pass optional parameters explicitly requested by the user or supplied in page criteria; otherwise omit them.")]
+        + "Only pass optional scope parameters requested by the user or supplied in page criteria; otherwise omit them. "
+        + "Declared output controls may select the requested totals or breakdown without changing the scope.")]
     ReportExecutionRequestDto Request);
 
 public sealed record AuditReadRequest(

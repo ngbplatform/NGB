@@ -39,7 +39,9 @@ internal static class BuiltInTools
         builder.Add<RecordsRequest, RecordsResult, ListRecordsTool>(
             McpToolNames.ListRecords,
             "List records of a known type (including requests for several examples). Read the type's metadata and declared list filters first. "
-            + "For a filtered list, every requested criterion must have a declared list filter. If a required filter is missing, "
+            + "Use search for text matching and filters for declared field criteria. Filters map codes directly to strings, not value objects. "
+            + "For exact record counts, use includeTotal=true and limit=1; total covers all matches, including later pages. "
+            + "Every structured criterion must have a declared list filter. If a required filter is missing, "
             + "do not scan unfiltered pages or filter them yourself. A visible field is not necessarily a supported filter. "
             + "An explicitly requested small sample may omit filters. Search is for finding named records, not enumerating all records. "
             + "A page is not the complete population while a continuation is present. No arbitrary sorting.",
@@ -65,7 +67,7 @@ internal static class BuiltInTools
 
         builder.Add<ReportsRequest, ReportsResult, ListReportsTool>(
             McpToolNames.ListReports,
-            "Discover installed reports: authorized names and descriptions with paging. Start here for counts, totals, balances and 'how many' questions, "
+            "Discover installed reports: authorized names and descriptions with paging. Start here for business measures, totals and balances, "
             + "including when the current page is a catalog or document. Select a report whose description covers the requested measure and scope. "
             + "Read the selected report's definition for its inputs before executing it. This returns metadata, not report figures.",
             []);
@@ -81,9 +83,10 @@ internal static class BuiltInTools
             "Execute an authorized report to obtain actual business figures. Read its definition and resolve required filters first. "
             + "Filters use actual field codes as keys: request.filters = {\"customer_id\":{\"value\":\"record UUID\"}}. "
             + "Replace customer_id with the field code declared by the report; never pass a bare UUID or a literal fieldCode key. "
-            + "Date inputs go in request.parameters as yyyy-MM-dd strings, not in filters or at the request root. "
+            + "All request.parameters values are strings, including booleans and numbers. Date parameters use yyyy-MM-dd. "
             + "Omit optional date parameters when no period was requested. Never extract a date from a record name or identifier. "
-            + "Reuses existing calculations and pagination; no export or immutable cross-page snapshot.",
+            + "Expand a returned group by copying its childrenPath to request.groupPath, keeping the same filters and parameters and resetting the cursor. "
+            + "This works independently of configurable layout capabilities. Reuses existing calculations and pagination; no export or immutable cross-page snapshot.",
             []);
 
         builder.Add<AuditReadRequest, AuditLogPageDto, AuditTool>(

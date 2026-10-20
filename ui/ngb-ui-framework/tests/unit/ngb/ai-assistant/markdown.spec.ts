@@ -37,12 +37,12 @@ it('formats explicit UTC prose without converting dates embedded in filenames or
   expect(result).toContain('<code>2026-10-02.json</code>')
 })
 
-it('labels wide tables for the compact row layout without dropping requested columns', () => {
+it('preserves wide tables as tables with every requested column', () => {
   const result = renderAssistantMarkdown('| Lease | Tenant | Property | Start | End | Rent |\n| --- | --- | --- | --- | --- | --- |\n| A | B | C | D | E | F |', [])
-  expect(result).toContain('<table class="assistant-table-wide">')
-  expect(result).toContain('data-label="Tenant"')
-  expect(result).toContain('data-label="Rent"')
-  expect(result.match(/<td /g)).toHaveLength(6)
+  expect(result).toContain('<table>')
+  expect(result).toContain('<th>Tenant</th>')
+  expect(result).toContain('<th>Rent</th>')
+  expect(result.match(/<td>/g)).toHaveLength(6)
 })
 
 it('formats timestamps in the user time zone without shifting date-only values', () => {
@@ -125,4 +125,16 @@ it('uses only validated sources and existing navigation targets', () => {
   expect(assistantSourcePath({ kind: 'document', typeCode: '//evil.example', id, title: 'Bad' })).toBeNull()
   expect(assistantSourcePath({ kind: 'generalJournalEntry', typeCode: 'general_journal_entry', id, title: 'Journal entry' }))
     .toBe(`/accounting/general-journal-entries/${id}`)
+})
+
+it('opens only a verified audit view and rejects invented views', () => {
+  vi.stubGlobal('window', { location: { origin: 'https://app.example' } })
+  const id = '11111111-1111-4111-8111-111111111111'
+  const source = { kind: 'document' as const, typeCode: 'example.record', id, title: 'Audit history', view: 'audit' as const }
+  expect(assistantSourcePath(source)).toBe(`/documents/example.record/${id}?view=audit`)
+  const result = renderAssistantMarkdown(`[Audit](ngb-source:document:example.record:${id}:audit)`, [source])
+  expect(result).toContain(`href="/documents/example.record/${id}?view=audit"`)
+  expect(renderAssistantMarkdown(`[Audit](ngb-source:document:example.record:${id}:audit)`, [{ ...source, view: null }]))
+    .not.toContain('href=')
+  expect(assistantSourcePath({ ...source, kind: 'report' })).toBeNull()
 })

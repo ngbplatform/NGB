@@ -3,7 +3,7 @@ import type { NgbPageContext } from '../navigation/types'
 
 export type AssistantPageContext = NgbPageContext
 
-export type AssistantSource = NgbSourceIdentity & { title: string }
+export type AssistantSource = NgbSourceIdentity & { title: string; view?: 'audit' | null }
 
 export type AssistantValue = {
   reference: string

@@ -5,7 +5,7 @@ using System.Text.RegularExpressions;
 
 namespace NGB.AiAssistant;
 
-internal sealed class AiAssistantValues
+internal sealed class AiAssistantValues(TimeZoneInfo? timeZone = null)
 {
     private const int MaximumValues = 512;
 
@@ -44,6 +44,7 @@ internal sealed class AiAssistantValues
             .Where(item => item.Value.Length > 0)
             .SelectMany(item => LiteralValues(item).Select(literal => new { literal, item }))
             .GroupBy(value => value.literal, StringComparer.Ordinal)
+            .Where(group => group.Select(value => (value.item.Kind, value.item.Value)).Distinct().Count() == 1)
             .ToDictionary(group => group.Key, group => group.First().item, StringComparer.Ordinal);
 
         if (literals.Count == 0)
@@ -62,7 +63,7 @@ internal sealed class AiAssistantValues
             TimeSpan.FromSeconds(1));
     }
 
-    private static IEnumerable<string> LiteralValues(AiAssistantValue value)
+    private IEnumerable<string> LiteralValues(AiAssistantValue value)
     {
         if (value.Kind == "bytes")
         {
@@ -72,6 +73,26 @@ internal sealed class AiAssistantValues
         else
         {
             yield return value.Value;
+            if (value.Kind == "date")
+            {
+                var date = DateOnly.ParseExact(value.Value, "yyyy-MM-dd", CultureInfo.InvariantCulture);
+                yield return date.ToString("M/d/yyyy", CultureInfo.InvariantCulture);
+                yield return date.ToString("MM/dd/yyyy", CultureInfo.InvariantCulture);
+            }
+            else if (value.Kind == "timestamp")
+            {
+                var instant = DateTimeOffset.Parse(value.Value, CultureInfo.InvariantCulture);
+                foreach (var displayed in new[] { instant.ToUniversalTime(), TimeZoneInfo.ConvertTime(instant, timeZone ?? TimeZoneInfo.Utc) })
+                {
+                    var zoneSuffix = displayed.Offset == TimeSpan.Zero ? " UTC" : string.Empty;
+                    yield return displayed.ToString("MM/dd/yyyy 'at' HH:mm:ss", CultureInfo.InvariantCulture) + zoneSuffix;
+                    yield return displayed.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture) + zoneSuffix;
+                    yield return displayed.ToString("HH:mm:ss", CultureInfo.InvariantCulture) + zoneSuffix;
+                    yield return displayed.ToString("HH:mm:ss", CultureInfo.InvariantCulture);
+                    yield return displayed.ToString("hh:mm:ss tt", CultureInfo.InvariantCulture);
+                    yield return displayed.ToString("MM/dd/yyyy, hh:mm:ss tt", CultureInfo.InvariantCulture);
+                }
+            }
         }
     }
 

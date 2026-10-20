@@ -98,6 +98,27 @@ public sealed class McpBuiltInToolTests
         Assert.Empty(page.GetProperty(resultName).GetProperty("items").EnumerateArray());
     }
 
+    [Fact]
+    public async Task ExactCountUsesServerTotalWithSearchAndStringFiltersInsteadOfCountingTheSample()
+    {
+        var catalogs = new Mock<IAuthorizedCatalogReadService>(MockBehavior.Strict);
+        catalogs.Setup(value => value.GetPageAsync("test.party", It.Is<PageRequestDto>(page =>
+                page.IncludeTotal && page.Limit == 1 && page.Search == "Ava Adams"
+                && page.Filters!["active_on"] == "2026-10-18"), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PageResponseDto<CatalogItemDto>([], 0, 1, 37, true, "next"));
+        using var host = Create(services => services.AddSingleton(catalogs.Object));
+
+        var page = await Call(host, "ngb_list_records", new
+        {
+            kind = "catalog", typeCode = "test.party", search = "Ava Adams", limit = 1,
+            includeTotal = true, filters = new { active_on = "2026-10-18" }
+        });
+
+        Assert.Equal(37, page.GetProperty("catalogs").GetProperty("total").GetInt32());
+        Assert.True(page.GetProperty("catalogs").GetProperty("hasMore").GetBoolean());
+        catalogs.VerifyAll();
+    }
+
     [Theory]
     [InlineData("catalog")]
     [InlineData("document")]

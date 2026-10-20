@@ -203,7 +203,7 @@ public sealed class AiAssistantRunnerTests
     }
 
     [Fact]
-    public async Task ConsecutiveReadFailuresGetABoundedFinalAnswerInsteadOfARetryLoop()
+    public async Task RepeatingAnUnchangedFailedReadGetsABoundedFinalAnswerInsteadOfARetryLoop()
     {
         var model = new ScriptedClient(
             [new(ChatRole.Assistant, [new FunctionCallContent("one", "read", null)])],
@@ -217,6 +217,29 @@ public sealed class AiAssistantRunnerTests
         Assert.Empty(model.Options[2].Tools!);
         Assert.Contains(events, item => item.Type == "done");
         Assert.Contains("Finish now", model.Requests[2][0].Text);
+    }
+
+    [Fact]
+    public async Task DifferentFailedReadsAllowRecoveryWithinTheReadBudget()
+    {
+        var model = new ScriptedClient(
+            [new(ChatRole.Assistant, [new FunctionCallContent("one", "read", new Dictionary<string, object?> { ["selection"] = 1 })])],
+            [new(ChatRole.Assistant, [new FunctionCallContent("two", "read", new Dictionary<string, object?> { ["selection"] = 2 })])],
+            [new(ChatRole.Assistant, [new FunctionCallContent("three", "read", new Dictionary<string, object?> { ["selection"] = 3 })])],
+            [new(ChatRole.Assistant, "The verified total is 42.")]);
+        var tool = new SequenceTool(
+            new(new { error = "invalid_input" }, [], IsError: true),
+            new(new { error = "metadata_required" }, [], IsError: true),
+            new(new { total = 42 }, []));
+        var events = new List<AiAssistantEvent>();
+
+        await Runner(model, new Sessions(tool), new() { MaxToolCalls = 3 }).RunAsync(Question, Capture(events), default);
+
+        Assert.Single(model.Options[2].Tools!);
+        Assert.Empty(model.Options[3].Tools!);
+        Assert.Contains("42", JsonSerializer.Serialize(model.Requests[3]));
+        Assert.Contains(events, item => item.Type == "text" && item.Text == "The verified total is 42.");
+        Assert.Contains(events, item => item.Type == "done");
     }
 
     [Fact]
@@ -252,6 +275,41 @@ public sealed class AiAssistantRunnerTests
         Assert.DoesNotContain("2026-05-01", JsonSerializer.Serialize(result));
         Assert.DoesNotContain(events, item => item.Type == "value");
         Assert.Contains(events, item => item.Type == "done");
+    }
+
+    [Theory]
+    [InlineData("19:19:57")]
+    [InlineData("19:19:57 UTC")]
+    [InlineData("03:19:57 PM")]
+    [InlineData("10/17/2026 at 19:19:57 UTC")]
+    [InlineData("10/17/2026, 03:19:57 PM")]
+    public async Task CopiedAuditTimesBindToTheVerifiedInstant(string displayed)
+    {
+        var result = new { createdAtUtc = "2026-10-17T19:19:57Z" };
+        var model = new ScriptedClient(
+            [new(ChatRole.Assistant, [new FunctionCallContent("one", "read", null)])],
+            [new(ChatRole.Assistant, displayed)]);
+        var events = new List<AiAssistantEvent>();
+
+        await Runner(model, new Sessions(new SourceTool(new(result, [])))).RunAsync(
+            Question with { TimeZone = "America/New_York" }, Capture(events), default);
+
+        var value = Assert.Single(events, item => item.Type == "value").Value!;
+        var answer = string.Concat(events.Where(item => item.Type == "text").Select(item => item.Text));
+        Assert.Equal(value.Reference, answer);
+        Assert.Equal(result.createdAtUtc, value.Value);
+    }
+
+    [Fact]
+    public async Task AmbiguousTimeDoesNotBindToAnArbitraryDay()
+    {
+        var result = new[] { new { at = "2026-10-17T19:19:57Z" }, new { at = "2026-10-18T19:19:57Z" } };
+        var model = new ScriptedClient(
+            [new(ChatRole.Assistant, [new FunctionCallContent("one", "read", null)])],
+            [new(ChatRole.Assistant, "19:19:57")]);
+        var events = new List<AiAssistantEvent>();
+        await Runner(model, new Sessions(new SourceTool(new(result, [])))).RunAsync(Question, Capture(events), default);
+        Assert.Equal("19:19:57", string.Concat(events.Where(item => item.Type == "text").Select(item => item.Text)));
     }
 
     [Fact]
@@ -590,6 +648,17 @@ public sealed class AiAssistantRunnerTests
 
         protected override ValueTask<object?> InvokeCoreAsync(AIFunctionArguments arguments, CancellationToken cancellationToken)
             => ValueTask.FromResult<object?>(result);
+    }
+
+    private sealed class SequenceTool(params AiAssistantToolResult[] results) : AIFunction
+    {
+        private int _index;
+
+        public override string Name => "read";
+        public override JsonElement JsonSchema => JsonSerializer.SerializeToElement(new { type = "object" });
+
+        protected override ValueTask<object?> InvokeCoreAsync(AIFunctionArguments arguments, CancellationToken cancellationToken)
+            => ValueTask.FromResult<object?>(results[_index++]);
     }
 
     private sealed class ScriptedClient(params ChatResponseUpdate[][] rounds) : IChatClient

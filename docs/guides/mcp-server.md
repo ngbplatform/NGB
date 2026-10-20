@@ -278,7 +278,7 @@ remain visible even when the caller has no matching readable records or reports.
 | `ngb_list_metadata` | Paged authorized catalog, document/GJE and report summaries. |
 | `ngb_get_metadata` | Authorized definition; document write-action descriptions are removed. |
 | `ngb_search` | Shared secured search with explicit truncation and unavailable sources. |
-| `ngb_list_records` | Existing paginated catalog/document/GJE reads; current filters/cursors. |
+| `ngb_list_records` | Existing paginated catalog/document/GJE reads; current filters/cursors and optional exact totals where supported. |
 | `ngb_get_record` | Authorized canonical record with bounded detail materialization. |
 | `ngb_get_document_flow` | Root View + ViewFlow; only permitted reachable nodes and edges. |
 | `ngb_get_document_effects` | Root View + ViewEffects; existing current-effect computation. |
@@ -325,6 +325,18 @@ IDs from the running host instead of guessing that a type/report is installed.
 `pm.party` is a PM catalog, not a universal platform type. An empty starter and a
 custom application expose their own installed definitions. Replace the report
 placeholder before calling; a report may require additional parameters.
+
+Record filters map declared filter codes directly to strings. For a count of
+matching stored records, set `includeTotal: true` and `limit: 1`; use the returned
+`total`, not the number of page items. A null total means the reader did not supply
+an exact count. This does not calculate business measures or add new filters.
+
+Report parameters also use strings, including boolean and numeric values such as
+`"true"` and `"10"`. Report filters instead map declared field codes to objects
+containing `value`. To expand an existing report group, pass its returned
+`childrenPath` as `request.groupPath`, retain the same parameters and filters,
+and reset the cursor. The adapter uses the report engine's existing calculations
+and drilldown behavior.
 
 An empty metadata page has this `structuredContent` shape:
 

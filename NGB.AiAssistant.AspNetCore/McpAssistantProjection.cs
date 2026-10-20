@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using NGB.Contracts.Audit;
 using NGB.Contracts.Metadata;
@@ -27,6 +28,8 @@ internal static class McpAssistantProjection
             McpToolNames.ExecuteReport => Report(data.Deserialize<ReportExecutionResponseDto>(Json)!, arguments),
             McpToolNames.ListMetadata => MetadataPage(data.Deserialize<MetadataPage>(Json)!),
             McpToolNames.ListReports => Reports(data.Deserialize<ReportsResult>(Json)!),
+            McpToolNames.ListRecords => Records(data, arguments),
+            McpToolNames.Search => Search(data.Deserialize<SearchResult>(Json)!, arguments),
             McpToolNames.GetAuditHistory => Audit(data.Deserialize<AuditLogPageDto>(Json)!),
             _ => data
         };
@@ -46,7 +49,7 @@ internal static class McpAssistantProjection
                 formFields = FormFields(document.Form),
                 filters = document.List?.Filters ?? [],
                 parts = document.Parts?.Select(part => new { part.PartCode, part.Title, fields = Fields(part.List) }),
-                filtering = "Only the declared list filters are supported. Field presence does not imply filter support."
+                filtering = "Text search is available through search. Field filters map declared codes directly to string values, not objects. Field presence does not imply filter support. Request includeTotal for an exact matching record count."
             },
             { Catalog: { } catalog } => new
             {
@@ -57,7 +60,7 @@ internal static class McpAssistantProjection
                 formFields = FormFields(catalog.Form),
                 filters = catalog.List?.Filters ?? [],
                 parts = catalog.Parts?.Select(part => new { part.PartCode, part.Title, fields = Fields(part.List) }),
-                filtering = "Only the declared list filters are supported. Field presence does not imply filter support."
+                filtering = "Text search is available through search. Field filters map declared codes directly to string values, not objects. Field presence does not imply filter support. Request includeTotal for an exact matching record count."
             },
             { Report: { } report } => Definition(report),
             _ => metadata
@@ -98,6 +101,12 @@ internal static class McpAssistantProjection
             filters = definition.Filters ?? [],
             definition.DefaultLayout,
             definition.Capabilities,
+            execution = new
+            {
+                tool = McpToolNames.ExecuteReport,
+                parameters = "request.parameters maps parameter codes to strings, including boolean and numeric values. Dates use yyyy-MM-dd.",
+                filters = "request.filters maps field codes to objects containing value, not bare values. Use each lookup's declared kind and type."
+            },
             scope = "Required filters restrict the report scope. Do not omit them or substitute a different scope."
         };
 
@@ -122,10 +131,35 @@ internal static class McpAssistantProjection
             page.Offset,
             page.Limit,
             page.HasMore,
+            definitions = "Report summaries do not declare required inputs or scope restrictions. Read the selected report's definition before deciding whether it can answer the question. Match lookup inputs to search results by the declared kind and type, not by field labels.",
             count = page is { HasMore: false, Offset: 0 }
                 ? (int?)page.Items.Count
                 : null
         };
+
+    private static object Search(SearchResult result, IDictionary<string, object?> arguments)
+        => new
+        {
+            criteria = arguments,
+            result.Items,
+            result.Truncated,
+            result.UnavailableSources,
+            evidence = "These matches establish record identities, not business measures or calculated states. "
+                + "For a business count, balance or total, use the matching identity as input to an existing report: "
+                + "discover reports with ngb_list_reports and read the selected definition. Do not enumerate these hits to calculate a total. "
+                + "For a simple count of records matching a name, use ngb_list_records with search and includeTotal=true."
+        };
+
+    private static object Records(JsonElement data, IDictionary<string, object?> arguments)
+    {
+        var result = data.Deserialize<JsonObject>(Json)!;
+        result["criteria"] = JsonSerializer.SerializeToNode(arguments, Json);
+        result["evidence"] = "A missing or null total means the exact record count is unknown. "
+            + "Limit is a page bound, not a count. HasMore or a cursor establishes only that additional pages exist. "
+            + "The returned rows cover this request's search and filters only; they do not establish an exhaustive result for other criteria.";
+
+        return result;
+    }
 
     private static object Audit(AuditLogPageDto page)
         => new

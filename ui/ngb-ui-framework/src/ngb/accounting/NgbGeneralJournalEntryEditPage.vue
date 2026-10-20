@@ -147,6 +147,14 @@ const showPost = computed(() => !isNew.value && documentStatus.value === 1 && ap
 const showReverse = computed(() => !isNew.value && documentStatus.value === 2)
 const canShareLink = computed(() => !isNew.value && !!currentId.value)
 const canOpenAudit = computed(() => !isNew.value && !!currentId.value)
+
+watch(
+  () => [route.query.view, currentId.value, canOpenAudit.value] as const,
+  ([view, id, allowed]) => {
+    auditOpen.value = view === 'audit' && !!id && allowed
+  },
+  { immediate: true },
+)
 const currentActorDisplay = computed(() => {
   const value = String(auth.userName ?? '').trim()
   return value || 'Current user'
@@ -486,6 +494,11 @@ function openAuditLog() {
 
 function closeAuditLog() {
   auditOpen.value = false
+  if (route.query.view === 'audit') {
+    const query = { ...route.query }
+    delete query.view
+    void router.replace({ query })
+  }
 }
 
 function closePage() {

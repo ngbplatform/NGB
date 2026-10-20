@@ -47,7 +47,7 @@
   },
   {
     "name": "ngb_execute_report",
-    "description": "Execute an authorized report to obtain actual business figures. Read its definition and resolve required filters first. Filters use actual field codes as keys: request.filters = {\u0022customer_id\u0022:{\u0022value\u0022:\u0022record UUID\u0022}}. Replace customer_id with the field code declared by the report; never pass a bare UUID or a literal fieldCode key. Date inputs go in request.parameters as yyyy-MM-dd strings, not in filters or at the request root. Omit optional date parameters when no period was requested. Never extract a date from a record name or identifier. Reuses existing calculations and pagination; no export or immutable cross-page snapshot.",
+    "description": "Execute an authorized report to obtain actual business figures. Read its definition and resolve required filters first. Filters use actual field codes as keys: request.filters = {\u0022customer_id\u0022:{\u0022value\u0022:\u0022record UUID\u0022}}. Replace customer_id with the field code declared by the report; never pass a bare UUID or a literal fieldCode key. All request.parameters values are strings, including booleans and numbers. Date parameters use yyyy-MM-dd. Omit optional date parameters when no period was requested. Never extract a date from a record name or identifier. Expand a returned group by copying its childrenPath to request.groupPath, keeping the same filters and parameters and resetting the cursor. This works independently of configurable layout capabilities. Reuses existing calculations and pagination; no export or immutable cross-page snapshot.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -329,7 +329,7 @@
             }
           },
           "additionalProperties": false,
-          "description": "Report options. Filters are a map keyed by the actual field codes from the report definition. Example request: {\u0022filters\u0022:{\u0022customer_id\u0022:{\u0022value\u0022:\u0022UUID returned by search\u0022}}}. Replace customer_id with the report\u0027s filter code. Do not use a literal fieldCode key or an array of filters. For lookup filters, value is a record UUID returned by search. Parameters map declared parameter codes to strings. For dates, use yyyy-MM-dd strings. A date inside a record name or identifier is not a date request. Only pass optional parameters explicitly requested by the user or supplied in page criteria; otherwise omit them."
+          "description": "Report options. Filters are a map keyed by the actual field codes from the report definition. Example request: {\u0022filters\u0022:{\u0022customer_id\u0022:{\u0022value\u0022:\u0022UUID returned by search\u0022}}}. Replace customer_id with the report\u0027s filter code. Do not use a literal fieldCode key or an array of filters. For lookup filters, value is a record UUID returned by search. Parameters map declared parameter codes to strings, including boolean and numeric values (for example \u0022true\u0022 and \u002210\u0022, not JSON true or 10). For dates, use yyyy-MM-dd strings. A date inside a record name or identifier is not a date request. Only pass optional scope parameters requested by the user or supplied in page criteria; otherwise omit them. Declared output controls may select the requested totals or breakdown without changing the scope."
         }
       },
       "required": [
@@ -6388,7 +6388,7 @@
   },
   {
     "name": "ngb_list_records",
-    "description": "List records of a known type (including requests for several examples). Read the type\u0027s metadata and declared list filters first. For a filtered list, every requested criterion must have a declared list filter. If a required filter is missing, do not scan unfiltered pages or filter them yourself. A visible field is not necessarily a supported filter. An explicitly requested small sample may omit filters. Search is for finding named records, not enumerating all records. A page is not the complete population while a continuation is present. No arbitrary sorting.",
+    "description": "List records of a known type (including requests for several examples). Read the type\u0027s metadata and declared list filters first. Use search for text matching and filters for declared field criteria. Filters map codes directly to strings, not value objects. For exact record counts, use includeTotal=true and limit=1; total covers all matches, including later pages. Every structured criterion must have a declared list filter. If a required filter is missing, do not scan unfiltered pages or filter them yourself. A visible field is not necessarily a supported filter. An explicitly requested small sample may omit filters. Search is for finding named records, not enumerating all records. A page is not the complete population while a continuation is present. No arbitrary sorting.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -6431,7 +6431,8 @@
           ],
           "default": null,
           "minLength": 0,
-          "maxLength": 256
+          "maxLength": 256,
+          "description": "Optional text search within this type. Available independently of declared field filters."
         },
         "filters": {
           "type": [
@@ -6441,7 +6442,13 @@
           "additionalProperties": {
             "type": "string"
           },
-          "default": null
+          "default": null,
+          "description": "Declared list filter codes mapped directly to string values, for example {\u0022customer_id\u0022:\u0022record UUID\u0022}. Unlike report filters, do not wrap values in objects. Multi-select filters use comma-separated values."
+        },
+        "includeTotal": {
+          "type": "boolean",
+          "default": false,
+          "description": "Request the exact count of records matching search and filters. Use limit 1 for count-only questions; read total, not items.length. Null total means unavailable."
         }
       },
       "required": [
@@ -6922,7 +6929,7 @@
   },
   {
     "name": "ngb_list_reports",
-    "description": "Discover installed reports: authorized names and descriptions with paging. Start here for counts, totals, balances and \u0027how many\u0027 questions, including when the current page is a catalog or document. Select a report whose description covers the requested measure and scope. Read the selected report\u0027s definition for its inputs before executing it. This returns metadata, not report figures.",
+    "description": "Discover installed reports: authorized names and descriptions with paging. Start here for business measures, totals and balances, including when the current page is a catalog or document. Select a report whose description covers the requested measure and scope. Read the selected report\u0027s definition for its inputs before executing it. This returns metadata, not report figures.",
     "inputSchema": {
       "type": "object",
       "properties": {

@@ -60,7 +60,7 @@ public sealed partial class AssistantHttpTests
         var events = ReadEvents(body);
         Assert.True(events.All(item => item.Type != "error") && events.Any(item => item.Type == "source"),
             string.Join('\n', host.State.ModelInputs));
-        var source = Assert.Single(events, item => item.Type == "source").Source!;
+        var source = Assert.Single(events, item => item.Type == "source" && item.Source!.View is null).Source!;
         var answer = string.Concat(events.Where(item => item.Type == "text").Select(item => item.Text));
 
         Assert.NotEmpty(host.State.Searches);
@@ -99,7 +99,13 @@ public sealed partial class AssistantHttpTests
         Assert.Contains(events, item => item.Type == "done");
         if (hasSource)
         {
-            var source = Assert.Single(sources);
+            var source = Assert.Single(sources, item => item.View is null);
+            if (mode == "record-detail")
+            {
+                var audit = Assert.Single(sources, item => item.View == "audit");
+                Assert.Equal(source.Id, audit.Id);
+                Assert.EndsWith(":audit", audit.Reference);
+            }
             Assert.Equal("document", source.Kind);
             Assert.Equal("pm.receivable_payment", source.TypeCode);
             Assert.Equal(host.State.PaymentId, source.Id);
@@ -471,7 +477,7 @@ public sealed partial class AssistantHttpTests
                 "report-list" => "ngb_list_reports",
                 "report-definition" => "ngb_get_report_definition",
                 "report-execute" or "report-denied" => "ngb_execute_report",
-                "record-search" => "ngb_search",
+                "record-search" or "search-evidence" => "ngb_search",
                 "record-list" or "record-denied" => "ngb_list_records",
                 "record-detail" => "ngb_get_record",
                 "custom-record" => "payment_lookup",
@@ -482,6 +488,8 @@ public sealed partial class AssistantHttpTests
                 : null;
             if (state.Mode is "report-execute" or "report-denied")
                 arguments!["request"] = new ReportExecutionRequestDto(Limit: 10);
+            if (state.Mode == "search-evidence")
+                arguments = new() { ["query"] = "Example", ["kind"] = "catalog", ["typeCode"] = "sample.record" };
             if (state.Mode.StartsWith("record-", StringComparison.Ordinal))
             {
                 arguments = new() { ["kind"] = "document", ["typeCode"] = "pm.receivable_payment" };

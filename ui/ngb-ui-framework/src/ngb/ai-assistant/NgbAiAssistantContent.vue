@@ -234,43 +234,14 @@ onMounted(() => input.value?.focus())
 
 .assistant-markdown :deep(th),
 .assistant-markdown :deep(td) {
-  min-width: 0;
+  min-width: 7rem;
+  max-width: 24rem;
   padding: 0.5rem 0.75rem;
   text-align: left;
   vertical-align: top;
   border-bottom: 1px solid var(--ngb-border);
   overflow-wrap: anywhere;
   word-break: normal;
-}
-
-.assistant-markdown :deep(.assistant-table-wide thead) {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-}
-
-.assistant-markdown :deep(.assistant-table-wide tbody),
-.assistant-markdown :deep(.assistant-table-wide tr) {
-  display: block;
-}
-
-.assistant-markdown :deep(.assistant-table-wide tr + tr) {
-  border-top: 2px solid var(--ngb-border);
-}
-
-.assistant-markdown :deep(.assistant-table-wide td) {
-  display: grid;
-  grid-template-columns: minmax(5rem, 30%) minmax(0, 1fr);
-  gap: 0.75rem;
-  border-bottom: 0;
-}
-
-.assistant-markdown :deep(.assistant-table-wide td::before) {
-  content: attr(data-label);
-  font-weight: 600;
-  color: var(--ngb-muted);
 }
 
 .assistant-markdown :deep(.assistant-cell-value) {

@@ -147,7 +147,7 @@ test('mobile panel fills the viewport and Stop cancels the active request', asyn
   await expect.element(view.getByRole('textbox', { name: 'Ask a question' })).toBeEnabled()
 })
 
-test('wide answers keep every labelled field inside the panel and preserve literal filenames', async () => {
+test('wide answers preserve a scrollable table and literal filenames', async () => {
   await page.viewport(1440, 900)
   vi.mocked(streamAssistant).mockImplementation(async (_, event) => {
     event({ type: 'value', value: { reference: '{{ngb-value:abcdef012345-0}}', kind: 'text', value: 'Screenshot 2026-10-02 at 5.46.52 PM.png' } })
@@ -164,12 +164,13 @@ test('wide answers keep every labelled field inside the panel and preserve liter
   const table = document.querySelector<HTMLDivElement>('.assistant-table')!
   const cells = [...table.querySelectorAll('td')]
   expect(cells).toHaveLength(6)
-  expect(cells.map(cell => cell.dataset.label)).toEqual(['Lease', 'Tenant', 'Property', 'Start', 'Attachment', 'Size'])
-  expect(table.scrollWidth).toBeLessThanOrEqual(table.clientWidth + 1)
-  for (const cell of cells) {
-    expect(cell.getBoundingClientRect().right).toBeLessThanOrEqual(table.getBoundingClientRect().right + 1)
-  }
-  expect(cells[1]?.querySelector('.assistant-cell-value')?.textContent).toBe('Alex Carter')
+  expect([...table.querySelectorAll('th')].map(cell => cell.textContent)).toEqual(['Lease', 'Tenant', 'Property', 'Start', 'Attachment', 'Size'])
+  expect(table.scrollWidth).toBeGreaterThan(table.clientWidth)
+  expect(getComputedStyle(table).overflowX).toBe('auto')
+  expect(getComputedStyle(table.querySelector('table')!).display).toBe('table')
+  table.scrollLeft = table.scrollWidth
+  expect(table.scrollLeft).toBeGreaterThan(0)
+  expect(cells[1]?.textContent).toBe('Alex Carter')
 })
 
 test('payment links use the returned Display and real record route instead of model URLs', async () => {

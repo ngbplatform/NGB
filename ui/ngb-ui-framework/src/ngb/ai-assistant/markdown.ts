@@ -28,7 +28,7 @@ export function renderAssistantMarkdown(
   for (const source of sources) {
     const path = assistantSourcePath(source)
     if (!path) continue
-    const reference = `ngb-source:${source.kind}:${source.typeCode}${source.id ? `:${source.id}` : ''}`
+    const reference = `ngb-source:${source.kind}:${source.typeCode}${source.id ? `:${source.id}` : ''}${source.view ? `:${source.view}` : ''}`
     const link = { path, title: source.title }
     verified.set(reference, link)
     verified.set(new URL(path, window.location.origin).href, link)
@@ -74,30 +74,9 @@ export function renderAssistantMarkdown(
       }
     }
   })
-  markdown.core.ruler.push('table-labels', state => {
-    let table: typeof state.tokens[number] | undefined
-    let headers: string[] = []
-    let column = 0
-    for (let index = 0; index < state.tokens.length; index++) {
-      const token = state.tokens[index]!
-      if (token.type === 'table_open') {
-        table = token
-        headers = []
-      } else if (token.type === 'th_open') {
-        headers.push(state.tokens[index + 1]?.content ?? '')
-      } else if (token.type === 'thead_close' && headers.length > 3) {
-        table?.attrSet('class', 'assistant-table-wide')
-      } else if (token.type === 'tr_open') {
-        column = 0
-      } else if (token.type === 'td_open') {
-        token.attrSet('data-label', headers[column++] ?? '')
-      }
-    }
-  })
   markdown.renderer.rules.image = (tokens, index) => markdown.utils.escapeHtml(hideAddresses(tokens[index]?.content ?? ''))
-  markdown.renderer.rules.table_open = (tokens, index) =>
-    '<div class="assistant-table" role="region" aria-label="Table" tabindex="0">'
-    + `<table${tokens[index]?.attrGet('class') === 'assistant-table-wide' ? ' class="assistant-table-wide"' : ''}>\n`
+  markdown.renderer.rules.table_open = () =>
+    '<div class="assistant-table" role="region" aria-label="Table" tabindex="0"><table>\n'
   markdown.renderer.rules.table_close = () => '</table></div>\n'
   markdown.renderer.rules.td_open = (tokens, index, options, _env, renderer) =>
     renderer.renderToken(tokens, index, options) + '<span class="assistant-cell-value">'

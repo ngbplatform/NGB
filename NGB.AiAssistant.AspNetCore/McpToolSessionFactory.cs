@@ -103,7 +103,20 @@ internal sealed class McpToolSessionFactory(
                 {
                     error = "metadata_required",
                     message = "Read this kind and type's metadata before listing records. Check its declared filters; "
-                        + "if they cannot express the requested exhaustive query, explain the limitation instead of scanning records."
+                        + "if they cannot express the requested exhaustive query, do not scan records. "
+                        + "For business measures, discover existing reports with ngb_list_reports. Missing record metadata does not establish that reports are unavailable."
+                }, [], IsError: true);
+            }
+
+            if (tool.Name == McpToolNames.ListRecords
+                && !string.IsNullOrWhiteSpace(StringArgument(requested, "cursor"))
+                && string.IsNullOrWhiteSpace(StringArgument(requested, "search"))
+                && !HasFilters(requested))
+            {
+                return new AiAssistantToolResult(new
+                {
+                    error = "filter_required",
+                    message = "Unfiltered record scans are not available in Assistant. Use declared filters or text search before continuing a record list. For an exact count, request includeTotal on the first page; for business aggregates, use a report."
                 }, [], IsError: true);
             }
 
@@ -138,6 +151,15 @@ internal sealed class McpToolSessionFactory(
                 source.Id,
                 source.Title)).ToArray() ?? [];
 
+            if (tool.Name == McpToolNames.GetRecord)
+            {
+                sources = sources.SelectMany(source => new[]
+                {
+                    source,
+                    source with { Title = "Audit history: " + source.Title[..Math.Min(source.Title.Length, 241)], View = "audit" }
+                }).ToArray();
+            }
+
             // The envelope is transport metadata. Pass business data once; sources are handled
             // separately by the runner and are never inferred from arbitrary payload fields.
             var data = response?.Data ?? content;
@@ -153,6 +175,15 @@ internal sealed class McpToolSessionFactory(
             arguments.TryGetValue(name, out var argument);
             var value = JsonSerializer.SerializeToElement(argument, Json);
             return value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+        }
+
+        private static bool HasFilters(IDictionary<string, object?> arguments)
+        {
+            arguments.TryGetValue("filters", out var argument);
+            var filters = JsonSerializer.SerializeToElement(argument, Json);
+
+            return filters.ValueKind == JsonValueKind.Object && filters.EnumerateObject().Any(property =>
+                property.Value.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(property.Value.GetString()));
         }
 
         private static object PageSize(object? requested, int maximum = 100)

@@ -1,5 +1,6 @@
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Client;
 using Moq;
@@ -21,6 +22,65 @@ namespace NGB.AiAssistant.AspNetCore.IntegrationTests;
 
 public sealed partial class AssistantHttpTests
 {
+    [Fact]
+    public async Task RecordEvidenceKeepsAnUnknownTotalAndTheActualPageCriteria()
+    {
+        const string type = "pm.receivable_payment";
+        var documents = new Mock<IAuthorizedDocumentReadService>(MockBehavior.Strict);
+        documents.Setup(value => value.GetTypeMetadataAsync(type, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DocumentTypeMetadataDto(type, "Payment", EntityKind.Document));
+        documents.Setup(value => value.GetPageAsync(type, It.IsAny<PageRequestDto>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PageResponseDto<DocumentDto>(
+                [new(Guid.NewGuid(), "Payment", new RecordPayload(), DocumentStatus.Posted, false)],
+                0, 10, null, HasMore: true, NextCursor: "next-page"));
+        await using var host = await Host.StartAsync(mode: "record-list", configure: services => services.AddScoped(_ => documents.Object));
+        using var client = host.Client("alex");
+
+        using var response = await client.PostAsJsonAsync("/api/ai-assistant/chat", Question);
+        var events = ReadEvents(await response.Content.ReadAsStringAsync());
+        var answer = string.Concat(events.Where(value => value.Type == "text").Select(value => value.Text));
+        var data = JsonSerializer.Deserialize<JsonElement>(answer).GetProperty("data");
+        var page = data.GetProperty("documents");
+
+        Assert.Contains(events, value => value.Type == "done");
+        Assert.Equal(JsonValueKind.Null, page.GetProperty("total").ValueKind);
+        Assert.True(page.GetProperty("hasMore").GetBoolean());
+        Assert.Equal("next-page", page.GetProperty("nextCursor").GetString());
+        Assert.Single(page.GetProperty("items").EnumerateArray());
+        Assert.Equal(10, data.GetProperty("criteria").GetProperty("limit").GetInt32());
+        Assert.Contains("not a count", data.GetProperty("evidence").GetString());
+        documents.VerifyAll();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SearchEvidencePreservesIdentityAndCompletenessWithoutClaimingAnAggregate(bool truncated)
+    {
+        var id = Guid.NewGuid();
+        var search = new Mock<INgbSearchService>(MockBehavior.Strict);
+        search.Setup(value => value.SearchAsync("Example", It.IsAny<int>(), NgbSearchKind.Catalog,
+                "sample.record", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new NgbSearchResult([new("catalog", "sample.record", id, "Example")], truncated, ["reports"]));
+        await using var host = await Host.StartAsync(mode: "search-evidence", configure: services => services.AddScoped(_ => search.Object));
+        using var client = host.Client("alex");
+
+        using var response = await client.PostAsJsonAsync("/api/ai-assistant/chat", Question);
+        var events = ReadEvents(await response.Content.ReadAsStringAsync());
+        var answer = string.Concat(events.Where(value => value.Type == "text").Select(value => value.Text));
+        var data = JsonSerializer.Deserialize<JsonElement>(answer).GetProperty("data");
+
+        Assert.Contains(events, value => value.Type == "done");
+        Assert.Equal(truncated, data.GetProperty("truncated").GetBoolean());
+        Assert.Equal("reports", data.GetProperty("unavailableSources")[0].GetString());
+        Assert.Equal("Example", data.GetProperty("criteria").GetProperty("query").GetString());
+        Assert.Equal(id, Assert.Single(data.GetProperty("items").EnumerateArray()).GetProperty("recordId").GetGuid());
+        Assert.Contains("ngb_list_reports", data.GetProperty("evidence").GetString());
+        Assert.False(data.TryGetProperty("total", out _));
+        Assert.Equal(id, Assert.Single(events, value => value.Type == "source").Source!.Id);
+        search.VerifyAll();
+    }
+
     [Fact]
     public async Task AssistantUsesTheSameDescriptionsAsTheAuthorizedMcpClient()
     {
@@ -132,7 +192,8 @@ public sealed partial class AssistantHttpTests
         var amount = JsonSerializer.SerializeToElement(69511126.85m);
         var sheet = new ReportSheetDto(
             [new("amount", "Amount", "decimal")],
-            [new(ReportRowKind.Detail, [new(amount, "69,511,126.85", "decimal")])],
+            [new(ReportRowKind.Group, [new(amount, "69,511,126.85", "decimal")],
+                ChildrenPath: [JsonSerializer.SerializeToElement(7), JsonSerializer.SerializeToElement("category")])],
             new("Aging", "Selected lease"),
             HeaderRows: [new(ReportRowKind.Header, [new(Display: "October 2026")])]);
         var reports = new Mock<IAuthorizedReportReadService>(MockBehavior.Strict);
@@ -158,6 +219,9 @@ public sealed partial class AssistantHttpTests
         Assert.Equal("Selected lease", data.GetProperty("subtitle").GetString());
         Assert.Equal("October 2026", data.GetProperty("headerRows")[0].GetProperty("cells")[0].GetProperty("display").GetString());
         Assert.Equal(69511126.85m, data.GetProperty("rows")[0].GetProperty("cells")[0].GetProperty("value").GetDecimal());
+        var childrenPath = data.GetProperty("rows")[0].GetProperty("childrenPath");
+        Assert.Equal(7, childrenPath[0].GetInt32());
+        Assert.Equal("category", childrenPath[1].GetString());
     }
 
     [NativeOllamaFact]
@@ -246,7 +310,10 @@ public sealed partial class AssistantHttpTests
         Assert.Contains(events, item => item.Type == "done");
         documents.Verify(value => value.GetTypeMetadataAsync("pm.lease", It.IsAny<CancellationToken>()), Times.AtLeastOnce);
         documents.Verify(value => value.GetPageAsync(It.IsAny<string>(), It.IsAny<PageRequestDto>(), It.IsAny<CancellationToken>()), Times.AtMostOnce);
-        Assert.DoesNotContain("no leases", answer, StringComparison.OrdinalIgnoreCase);
+        Assert.False(Regex.IsMatch(answer,
+            @"\b(there are no leases|no leases (have|end|exist|match|were found)|found no leases)\b",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant), answer + "\n" + trace);
+        Assert.DoesNotContain("100", answer);
         Assert.True(answer.Contains("cannot", StringComparison.OrdinalIgnoreCase)
             || answer.Contains("unable", StringComparison.OrdinalIgnoreCase)
             || answer.Contains("can't", StringComparison.OrdinalIgnoreCase), answer);
@@ -282,7 +349,7 @@ public sealed partial class AssistantHttpTests
             new("document", target.TypeCode, target.Id), "America/New_York"));
         var events = ReadEvents(await response.Content.ReadAsStringAsync());
         var answer = string.Concat(events.Where(item => item.Type == "text").Select(item => item.Text));
-        var trace = answer + "\n" + string.Join('\n', host.State.ModelInputs);
+        var trace = JsonSerializer.Serialize(events) + "\n" + string.Join('\n', host.State.ModelInputs);
 
         Assert.True(events.All(item => item.Type != "error"), trace);
         Assert.Contains(events, item => item.Type == "done");

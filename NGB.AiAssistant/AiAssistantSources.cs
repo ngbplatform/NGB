@@ -8,6 +8,7 @@ internal static class AiAssistantSources
 
     internal static bool IsValid(AiAssistantSource source)
         => NgbSourceKinds.IsSupported(source.Kind)
+           && (source.View is null || source.View == "audit" && NgbSourceKinds.IsRecord(source.Kind))
            && source.TypeCode is { Length: > 0 and <= 128 }
            && source.TypeCode.All(character => char.IsAsciiLetterOrDigit(character) || character is '.' or '_' or '-')
            && (source.Kind == NgbSourceKinds.Report || source.Id is not null && source.Id != Guid.Empty)
