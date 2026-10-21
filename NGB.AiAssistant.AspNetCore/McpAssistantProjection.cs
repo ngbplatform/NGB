@@ -105,9 +105,14 @@ internal static class McpAssistantProjection
             {
                 tool = McpToolNames.ExecuteReport,
                 parameters = "request.parameters maps parameter codes to strings, including boolean and numeric values. Dates use yyyy-MM-dd.",
-                filters = "request.filters maps field codes to objects containing value, not bare values. Use each lookup's declared kind and type."
+                filters = "request.filters maps field codes to objects containing value, not bare values. Use each lookup's declared kind and type.",
+                groupPath = "To expand a returned row, copy its childrenPath to request.groupPath. "
+                    + "AllowsRowGroups and AllowsDetailFields control layout customization, not expansion of returned rows."
             },
-            scope = "Required filters restrict the report scope. Do not omit them or substitute a different scope."
+            scope = "Required filters restrict the report scope. Do not omit them or substitute a different scope. "
+                + "Each lookup needs an identity of its declared kind and type. A current-page ID from another type "
+                + "is not that lookup value. If no explicit name or verified relationship identifies the requested "
+                + "record, ask the user which record they mean before executing the report."
         };
 
     private static object MetadataPage(MetadataPage page)
@@ -156,7 +161,9 @@ internal static class McpAssistantProjection
         result["criteria"] = JsonSerializer.SerializeToNode(arguments, Json);
         result["evidence"] = "A missing or null total means the exact record count is unknown. "
             + "Limit is a page bound, not a count. HasMore or a cursor establishes only that additional pages exist. "
-            + "The returned rows cover this request's search and filters only; they do not establish an exhaustive result for other criteria.";
+            + "The returned rows cover this request's search and filters only; they do not establish an exhaustive result for other criteria. "
+            + "Use the returned fields to answer the question. Read individual records only for requested information "
+            + "missing from these rows, not to verify that the server applied its declared filters.";
 
         return result;
     }
@@ -222,6 +229,11 @@ internal static class McpAssistantProjection
             columns = report.Sheet.Columns.Select(column => new { column.Code, column.Title, column.DataType, column.SemanticRole }),
             headerRows = report.Sheet.HeaderRows is { } headers ? Rows(headers) : null,
             rows = Rows(report.Sheet.Rows),
+            drilldown = report.Sheet.Rows.Any(row => row.ChildrenPath is not null)
+                ? "This result contains expandable rows. To read a row's contributing entries, call ngb_execute_report "
+                    + "with the same reportCode, filters and parameters, copy that row's childrenPath into request.groupPath, "
+                    + "and omit request.cursor and request.offset. Layout customization flags do not disable this expansion."
+                : null,
             report.Diagnostics
         };
 

@@ -17,11 +17,17 @@ export type AssistantMessage = {
   text: string
   sources: AssistantSource[]
   values?: AssistantValue[]
+  context?: AssistantPageContext | null
   state: 'complete' | 'streaming' | 'stopped' | 'error'
 }
 
 export type AssistantRequest = {
-  messages: { role: 'user' | 'assistant'; text: string }[]
+  messages: {
+    role: 'user' | 'assistant'
+    text: string
+    context?: AssistantPageContext | null
+    sources?: AssistantSource[]
+  }[]
   context?: AssistantPageContext | null
   timeZone?: string
 }

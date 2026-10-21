@@ -36,7 +36,7 @@
         @openPalette="$emit('openPalette')"
         @back="$emit('back')"
         @openNotifications="helpOpen = false; settingsOpen = false; notificationsOpen = true"
-        @openHelp="notificationsOpen = false; settingsOpen = false; helpOpen = true"
+        @openHelp="notificationsOpen = false; settingsOpen = false; helpOpen = !helpOpen"
         @openSettings="notificationsOpen = false; helpOpen = false; settingsOpen = true"
         @signOut="signOut"
         @toggleTheme="theme.toggle()"

@@ -454,10 +454,54 @@ public sealed class AiAssistantRunnerTests
                  })
         {
             var events = new List<AiAssistantEvent>();
-            await Assert.ThrowsAsync<AiAssistantException>(() => Runner(new ScriptedClient(updates), new Sessions())
+            await Assert.ThrowsAsync<AiAssistantException>(() => Runner(new ScriptedClient(updates, updates), new Sessions())
                 .RunAsync(Question, Capture(events), default));
             Assert.DoesNotContain(events, item => item.Type == "done");
         }
+    }
+
+    [Fact]
+    public async Task OutputLimitRetriesOnceWithoutPublishingIncompleteTextOrExecutingIncompleteCalls()
+    {
+        var invoked = 0;
+        var model = new ScriptedClient(
+            [new(ChatRole.Assistant, [new TextContent("Unfinished"), new FunctionCallContent("incomplete", "read", null)])
+                { FinishReason = ChatFinishReason.Length }],
+            [new(ChatRole.Assistant, "The requested balance could not be established.")]);
+        var events = new List<AiAssistantEvent>();
+
+        await Runner(model, new Sessions(AIFunctionFactory.Create(() => ++invoked, "read")))
+            .RunAsync(Question, Capture(events), default);
+
+        Assert.Equal(0, invoked);
+        Assert.Empty(model.Options[1].Tools!);
+        Assert.DoesNotContain("Unfinished", string.Concat(events.Select(item => item.Text)));
+        Assert.Contains(events, item => item.Type == "done");
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task FollowUpLinksRequireFreshAuthorizationOfTheExactHistoricalSource(bool allowed)
+    {
+        var candidate = new AiAssistantSource("document", "sample.invoice", Guid.NewGuid(), "Old title");
+        var verified = candidate with { Title = "Current title" };
+        var model = new ScriptedClient([new ChatResponseUpdate(ChatRole.Assistant, $"[Open]({candidate.Reference})")]);
+        var sessions = new ResolvingSessions(allowed ? verified : null);
+        var request = new AiAssistantRequest([
+            new("user", "Find my invoice"),
+            new("assistant", "Invoice found") { Sources = [candidate] },
+            new("user", "Give me its link")]);
+        var events = new List<AiAssistantEvent>();
+
+        await new AiAssistantRunner(model, sessions, Options.Create(new AiAssistantOptions()))
+            .RunAsync(request, Capture(events), default);
+
+        Assert.Equal(candidate, Assert.Single(sessions.Candidates));
+        if (allowed)
+            Assert.Equal(verified, Assert.Single(events, item => item.Type == "source").Source);
+        else
+            Assert.DoesNotContain(events, item => item.Type == "source");
     }
 
     [Fact]
@@ -639,6 +683,24 @@ public sealed class AiAssistantRunnerTests
             Disposed = true;
             return ValueTask.CompletedTask;
         }
+    }
+
+    private sealed class ResolvingSessions(AiAssistantSource? resolved)
+        : IAiAssistantToolSessionFactory, IAiAssistantToolSession, IAiAssistantSourceResolver
+    {
+        public List<AiAssistantSource> Candidates { get; } = [];
+        public IReadOnlyList<AIFunction> Tools => [];
+
+        public Task<IAiAssistantToolSession> OpenAsync(CancellationToken ct)
+            => Task.FromResult<IAiAssistantToolSession>(this);
+
+        public Task<AiAssistantSource?> ResolveAsync(AiAssistantSource candidate, CancellationToken ct)
+        {
+            Candidates.Add(candidate);
+            return Task.FromResult(resolved);
+        }
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 
     private sealed class SourceTool(AiAssistantToolResult result) : AIFunction

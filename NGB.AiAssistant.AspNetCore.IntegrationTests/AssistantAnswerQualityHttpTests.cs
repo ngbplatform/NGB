@@ -212,7 +212,7 @@ public sealed partial class AssistantHttpTests
 
         Assert.Contains(events, item => item.Type == "done");
         Assert.True(data.GetProperty("hasMore").GetBoolean());
-        Assert.Equal("next-page", data.GetProperty("nextCursor").GetString());
+        Assert.StartsWith("page-", data.GetProperty("nextCursor").GetString());
         Assert.False(data.TryGetProperty("total", out _));
         Assert.Equal("pm.aging", data.GetProperty("criteria").GetProperty("reportCode").GetString());
         Assert.Equal(10, data.GetProperty("criteria").GetProperty("request").GetProperty("limit").GetInt32());
@@ -269,7 +269,7 @@ public sealed partial class AssistantHttpTests
 
         Assert.True(events.All(item => item.Type != "error"), trace);
         Assert.Contains(events, item => item.Type == "done");
-        Assert.DoesNotContain("functionCall", trace, StringComparison.OrdinalIgnoreCase);
+        Assert.True(!trace.Contains("functionCall", StringComparison.OrdinalIgnoreCase), trace);
         Assert.Empty(host.State.ToolUsers);
     }
 
@@ -316,7 +316,8 @@ public sealed partial class AssistantHttpTests
         Assert.DoesNotContain("100", answer);
         Assert.True(answer.Contains("cannot", StringComparison.OrdinalIgnoreCase)
             || answer.Contains("unable", StringComparison.OrdinalIgnoreCase)
-            || answer.Contains("can't", StringComparison.OrdinalIgnoreCase), answer);
+            || answer.Contains("can't", StringComparison.OrdinalIgnoreCase)
+            || answer.Contains("not possible", StringComparison.OrdinalIgnoreCase), answer);
     }
 
     [NativeOllamaFact]

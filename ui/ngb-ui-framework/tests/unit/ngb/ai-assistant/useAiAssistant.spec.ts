@@ -26,7 +26,7 @@ beforeEach(() => {
   })
 })
 
-it('sends bounded conversational context and retains only text from previous turns', async () => {
+it('sends bounded conversational history', async () => {
   const assistant = useAiAssistant()
   await assistant.send('First')
   await assistant.send('Second')
@@ -39,6 +39,25 @@ it('sends bounded conversational context and retains only text from previous tur
   })
   expect(assistant.messages).toHaveLength(6)
   expect(assistant.busy).toBe(false)
+})
+
+it('keeps historical page identities and navigation candidates distinct from the current page', async () => {
+  const first = { kind: 'document' as const, typeCode: 'sample.invoice', id: '11111111-1111-4111-8111-111111111111' }
+  const second = { ...first, id: '22222222-2222-4222-8222-222222222222' }
+  const source = { ...first, title: 'Invoice 1' }
+  vi.mocked(streamAssistant).mockImplementationOnce(async (_, event) => {
+    event({ type: 'source', source })
+    event({ type: 'text', text: 'Invoice 1 found' })
+    event({ type: 'done' })
+  })
+  const assistant = useAiAssistant()
+  await assistant.send('Show this invoice', first)
+  await assistant.send('Now show this one', second)
+
+  const request = vi.mocked(streamAssistant).mock.calls[1]![0]
+  expect(request.context).toEqual(second)
+  expect(request.messages[0]?.context).toEqual(first)
+  expect(request.messages[1]?.sources).toEqual([source])
 })
 
 it('stops generation and ignores late chunks from the previous request', async () => {

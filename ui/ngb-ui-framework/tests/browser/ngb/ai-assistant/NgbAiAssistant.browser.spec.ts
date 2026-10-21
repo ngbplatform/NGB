@@ -1,4 +1,4 @@
-import { page } from 'vitest/browser'
+import { page, userEvent } from 'vitest/browser'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { render } from 'vitest-browser-vue'
 import { createPinia } from 'pinia'
@@ -120,6 +120,72 @@ test('does not display discovered sources for a numeric answer and renders a scr
   expect(table.textContent).not.toContain('293462Z')
   expect(table.getBoundingClientRect().width).toBeLessThanOrEqual(480)
   expect(getComputedStyle(table).overflowX).toBe('auto')
+})
+
+test('resizes from the left edge and toggles the panel without losing the conversation or width', async () => {
+  await page.viewport(1440, 900)
+  const { view } = await mountShell()
+  await view.getByRole('textbox', { name: 'Ask a question' }).fill('Question')
+  await view.getByRole('button', { name: 'Send', exact: true }).click()
+  const panel = document.querySelector<HTMLElement>('[data-testid="ai-assistant-panel"]')!
+  const handle = view.getByRole('separator', { name: 'Resize AI Assistant' })
+  const userSelectProperty = CSS.supports('user-select', 'none') ? 'user-select' : '-webkit-user-select'
+  let selectionDuringResize: string | undefined
+  handle.element().addEventListener('pointerdown', () => {
+    selectionDuringResize = getComputedStyle(document.body).getPropertyValue(userSelectProperty)
+  }, { once: true })
+  expect(getComputedStyle(handle.element()).cursor).toBe('col-resize')
+  expect(panel.getBoundingClientRect().width).toBe(440)
+  await handle.dropTo(view.getByTestId('site-main'), { targetPosition: { x: 500, y: 100 } })
+  expect(panel.getBoundingClientRect().width).toBeGreaterThan(440)
+  expect(selectionDuringResize).toBe('none')
+  expect(document.body.style.cursor).toBe('')
+  expect(document.body.style.getPropertyValue(userSelectProperty)).toBe('')
+  await handle.click()
+  await userEvent.keyboard('{Home}')
+  expect(panel.getBoundingClientRect().width).toBe(320)
+  await handle.click()
+  await userEvent.keyboard('{ArrowLeft}')
+  expect(panel.getBoundingClientRect().width).toBe(330)
+  await userEvent.keyboard('{End}')
+  expect(panel.getBoundingClientRect().width).toBe(800)
+  await userEvent.keyboard('{Home}')
+  expect(panel.getBoundingClientRect().width).toBe(320)
+
+  await view.getByRole('button', { name: 'AI Assistant', exact: true }).click()
+  await expect.element(panel).not.toBeVisible()
+  await view.getByRole('button', { name: 'AI Assistant', exact: true }).click()
+  await expect.element(handle).toBeVisible()
+  expect(panel.getBoundingClientRect().width).toBe(320)
+  await expect.element(view.getByText('Seven', { exact: true })).toBeVisible()
+})
+
+test('restores existing selection styles and their priority when resizing is cancelled', async () => {
+  await page.viewport(1440, 900)
+  const { view } = await mountShell()
+  const handle = view.getByRole('separator', { name: 'Resize AI Assistant' })
+  const userSelectProperty = CSS.supports('user-select', 'none') ? 'user-select' : '-webkit-user-select'
+  const initialStyle = document.body.getAttribute('style')
+  let selectionDuringResize: string | undefined
+
+  try {
+    document.body.style.cursor = 'crosshair'
+    document.body.style.setProperty(userSelectProperty, 'text', 'important')
+    handle.element().addEventListener('pointerdown', event => {
+      selectionDuringResize = getComputedStyle(document.body).getPropertyValue(userSelectProperty)
+      handle.element().dispatchEvent(new PointerEvent('pointercancel', { pointerId: event.pointerId }))
+    }, { once: true })
+
+    await handle.dropTo(view.getByTestId('site-main'), { targetPosition: { x: 500, y: 100 } })
+
+    expect(selectionDuringResize).toBe('none')
+    expect(document.body.style.cursor).toBe('crosshair')
+    expect(document.body.style.getPropertyValue(userSelectProperty)).toBe('text')
+    expect(document.body.style.getPropertyPriority(userSelectProperty)).toBe('important')
+  } finally {
+    if (initialStyle === null) document.body.removeAttribute('style')
+    else document.body.setAttribute('style', initialStyle)
+  }
 })
 
 test('mobile panel fills the viewport and Stop cancels the active request', async () => {

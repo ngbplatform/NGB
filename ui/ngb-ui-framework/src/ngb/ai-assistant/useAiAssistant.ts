@@ -59,7 +59,7 @@ export const useAiAssistant = defineStore('ai-assistant', () => {
     busy.value = true
     error.value = ''
     status.value = 'Connecting…'
-    lastContext = context ? { ...context } : null
+    lastContext = context ? JSON.parse(JSON.stringify(context)) as AssistantPageContext : null
     let reply: AssistantMessage | null = null
 
     try {
@@ -75,7 +75,10 @@ export const useAiAssistant = defineStore('ai-assistant', () => {
           const values = new Map(answer.values?.map(value => [value.reference, value.value]) ?? [])
           const answerText = answer.text.replace(/\{\{ngb-value:[^{}]+\}\}/g, reference => values.get(reference) ?? 'Value unavailable')
           if (answerText.length <= limits.maxMessageCharacters) {
-            previous.push({ role: 'user', text: user.text }, { role: 'assistant', text: answerText })
+            previous.push(
+              { role: 'user', text: user.text, ...(user.context ? { context: user.context } : {}) },
+              { role: 'assistant', text: answerText, ...(answer.sources.length ? { sources: answer.sources } : {}) },
+            )
           }
         }
       }
@@ -91,7 +94,7 @@ export const useAiAssistant = defineStore('ai-assistant', () => {
       }
       if (encoder.encode(JSON.stringify(request)).length > limits.maxInputBytes) throw new Error('The question is too large. Please shorten it.')
 
-      messages.value.push({ id: crypto.randomUUID(), role: 'user', text, sources: [], state: 'complete' })
+      messages.value.push({ id: crypto.randomUUID(), role: 'user', text, sources: [], context: lastContext, state: 'complete' })
       messages.value.push({ id: crypto.randomUUID(), role: 'assistant', text: '', sources: [], values: [], state: 'streaming' })
       if (messages.value.length > maximumVisibleMessages) {
         messages.value.splice(0, messages.value.length - maximumVisibleMessages)

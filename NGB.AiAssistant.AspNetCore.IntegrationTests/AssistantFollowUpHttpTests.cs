@@ -114,7 +114,9 @@ public sealed partial class AssistantHttpTests
 
         Assert.True(events.All(x => x.Type != "error"), trace);
         var audit = Assert.Single(events, x => x.Type == "source" && x.Source?.View == "audit").Source!;
-        Assert.Contains($"[{audit.Title}]({audit.Reference})", answer);
+        Assert.Equal("Audit history: Invoice INV-0042", audit.Title);
+        // The renderer replaces the model's link label with this verified display.
+        Assert.Contains($"]({audit.Reference})", answer);
         Assert.DoesNotContain("Alex Carter", answer);
         documents.Verify(x => x.GetByIdAsync(type, id, It.IsAny<CancellationToken>()), Times.Once);
     }
