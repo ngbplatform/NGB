@@ -13,6 +13,14 @@ namespace NGB.AiAssistant.AspNetCore;
 /// <summary>Removes UI layout overhead from authorized MCP results without changing their business scope.</summary>
 internal static class McpAssistantProjection
 {
+    private const string RecordFiltering = "Only filters listed here support structured selection. "
+        + "Compare every requested criterion with these filters before reading a page. "
+        + "If a requested field has no filter, this list cannot answer that selection. "
+        + "Do not use unfiltered pages or text search to simulate the missing filter. "
+        + "An explicitly requested sample or unfiltered list is different from a filtered business question. "
+        + "Text search finds supplied record names or numbers. Field filters map declared codes directly "
+        + "to string values, not objects. Request includeTotal for an exact matching record count.";
+
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
@@ -49,7 +57,7 @@ internal static class McpAssistantProjection
                 formFields = FormFields(document.Form),
                 filters = document.List?.Filters ?? [],
                 parts = document.Parts?.Select(part => new { part.PartCode, part.Title, fields = Fields(part.List) }),
-                filtering = "Text search is available through search. Field filters map declared codes directly to string values, not objects. Field presence does not imply filter support. Request includeTotal for an exact matching record count."
+                filtering = RecordFiltering
             },
             { Catalog: { } catalog } => new
             {
@@ -60,7 +68,7 @@ internal static class McpAssistantProjection
                 formFields = FormFields(catalog.Form),
                 filters = catalog.List?.Filters ?? [],
                 parts = catalog.Parts?.Select(part => new { part.PartCode, part.Title, fields = Fields(part.List) }),
-                filtering = "Text search is available through search. Field filters map declared codes directly to string values, not objects. Field presence does not imply filter support. Request includeTotal for an exact matching record count."
+                filtering = RecordFiltering
             },
             { Report: { } report } => Definition(report),
             _ => metadata
@@ -110,6 +118,10 @@ internal static class McpAssistantProjection
                     + "AllowsRowGroups and AllowsDetailFields control layout customization, not expansion of returned rows."
             },
             scope = "Required filters restrict the report scope. Do not omit them or substitute a different scope. "
+                + "A requirement of this report is not necessarily a requirement of the user's task. "
+                + "If this scope or measure does not match the question, inspect other relevant reports. "
+                + "When the user asks for all records, a mandatory single-record filter is a scope mismatch, "
+                + "not missing user input. Do not ask the user to choose one record or substitute that record's total. "
                 + "Each lookup needs an identity of its declared kind and type. A current-page ID from another type "
                 + "is not that lookup value. If no explicit name or verified relationship identifies the requested "
                 + "record, ask the user which record they mean before executing the report."
@@ -122,11 +134,13 @@ internal static class McpAssistantProjection
             page.Offset,
             page.Limit,
             page.HasMore,
-            counts = !page.HasMore && page.Offset == 0
+            typeCounts = !page.HasMore && page.Offset == 0
                 ? page.Items
                     .GroupBy(item => item.Kind.ToCode())
                     .ToDictionary(group => group.Key, group => group.Count())
-                : null
+                : null,
+            evidence = "Items and typeCounts describe available type definitions, not stored business records. "
+                + "They cannot establish a record count, an empty selection or a business total."
         };
 
     private static object Reports(ReportsResult page)
@@ -162,6 +176,8 @@ internal static class McpAssistantProjection
         result["evidence"] = "A missing or null total means the exact record count is unknown. "
             + "Limit is a page bound, not a count. HasMore or a cursor establishes only that additional pages exist. "
             + "The returned rows cover this request's search and filters only; they do not establish an exhaustive result for other criteria. "
+            + "If a requested criterion has no declared filter, explain that limitation instead of presenting "
+            + "matching sample rows as the requested selection. A sample is appropriate only when explicitly requested. "
             + "Use the returned fields to answer the question. Read individual records only for requested information "
             + "missing from these rows, not to verify that the server applied its declared filters.";
 
@@ -221,6 +237,10 @@ internal static class McpAssistantProjection
             report.Total,
             report.HasMore,
             report.NextCursor,
+            evidence = "Rows and totals apply only to the criteria of this execution. Empty rows do not "
+                + "by themselves establish a zero balance; use an explicit measure or a definition that "
+                + "establishes that meaning. Partial detail rows cannot establish a complete aggregate. "
+                + "A total for one related record does not establish a total for its parent or all records.",
             report.Sheet.Meta?.Title,
             report.Sheet.Meta?.Subtitle,
             report.Sheet.Meta?.IsPivot,

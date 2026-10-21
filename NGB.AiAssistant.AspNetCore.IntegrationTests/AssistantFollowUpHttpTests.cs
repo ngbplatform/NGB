@@ -76,7 +76,7 @@ public sealed partial class AssistantHttpTests
         var trace = answer + "\n" + string.Join('\n', host.State.ModelInputs);
 
         Assert.True(events.All(x => x.Type != "error"), trace);
-        Assert.Contains("37", answer);
+        Assert.True(answer.Contains("37", StringComparison.Ordinal), trace);
         catalogs.Verify(x => x.GetPageAsync(metadata.CatalogType, It.Is<PageRequestDto>(r =>
             r.IncludeTotal && r.Search == "Ava Adams"), It.IsAny<CancellationToken>()), Times.AtLeastOnce);
     }
@@ -150,7 +150,7 @@ public sealed partial class AssistantHttpTests
         var trace = answer + "\n" + string.Join('\n', host.State.ModelInputs);
 
         Assert.True(events.All(x => x.Type != "error"), trace);
-        Assert.Contains("AG-0098", answer);
+        Assert.True(answer.Contains("AG-0098", StringComparison.Ordinal), trace);
         documents.Verify(x => x.GetPageAsync(metadata.DocumentType, It.Is<PageRequestDto>(r =>
             r.Filters != null && r.Filters["contact_id"] == contactId.ToString("D") && r.Filters["active_on"] == "2026-10-18"),
             It.IsAny<CancellationToken>()), Times.Once);

@@ -167,18 +167,90 @@ public sealed class AiAssistantRunnerTests
     }
 
     [Fact]
-    public async Task ContextPressureRemovesOldDialogueInPairsAndKeepsTheCurrentQuestion()
+    public async Task ContextPressureShortensOldAnswersWithoutLosingTheOriginalTask()
     {
         var model = new ScriptedClient([new ChatResponseUpdate(ChatRole.Assistant, "Current answer.")]);
+        var previous = new AiAssistantSource("document", "sample.invoice", Guid.NewGuid(), "Invoice INV-0042");
         var request = new AiAssistantRequest([
-            new("user", new string('x', 7000)), new("assistant", new string('y', 7000)),
+            new("user", new string('x', 7000)) { Context = new(previous.Kind, previous.TypeCode, previous.Id) },
+            new("assistant", new string('y', 7000) + "Which period?") { Sources = [previous] },
             new("user", "Current question")], new("document", "pm.lease", Guid.NewGuid()));
 
-        await Runner(model, new Sessions(), new() { MaxContextBytes = 16000 }).RunAsync(request, Ignore, default);
+        await Runner(model, new Sessions(), new() { MaxContextBytes = 26000 }).RunAsync(request, Ignore, default);
 
-        Assert.Equal([ChatRole.System, ChatRole.User], model.Requests[0].Select(message => message.Role));
-        Assert.Contains("Current question", model.Requests[0][1].Text);
-        Assert.Contains(request.Context!.Id!.Value.ToString(), model.Requests[0][1].Text);
+        Assert.Equal([ChatRole.System, ChatRole.User, ChatRole.Assistant, ChatRole.User], model.Requests[0].Select(message => message.Role));
+        Assert.Contains(new string('x', 7000), model.Requests[0][1].Text);
+        Assert.Contains(previous.Id!.Value.ToString(), model.Requests[0][1].Text);
+        Assert.Contains("Earlier answer shortened", model.Requests[0][2].Text);
+        Assert.Contains("Which period?", model.Requests[0][2].Text);
+        Assert.Contains(previous.Reference, model.Requests[0][2].Text);
+        Assert.Contains("Current question", model.Requests[0][^1].Text);
+        Assert.Contains(request.Context!.Id!.Value.ToString(), model.Requests[0][^1].Text);
+    }
+
+    [Fact]
+    public async Task ContextCompactionDoesNotExpandShorterHistoricalAnswers()
+    {
+        var model = new ScriptedClient([new ChatResponseUpdate(ChatRole.Assistant, "Current answer.")]);
+        var shortAnswer = new string('s', 1025);
+        var request = new AiAssistantRequest([
+            new("user", new string('x', 7000)),
+            new("assistant", shortAnswer),
+            new("user", "Q1 2026"),
+            new("assistant", new string('y', 7000) + "Which report?"),
+            new("user", "Decide yourself.")]);
+
+        await Runner(model, new Sessions(), new() { MaxContextBytes = 26000 }).RunAsync(request, Ignore, default);
+
+        Assert.Equal(shortAnswer, model.Requests[0][2].Text);
+        Assert.Contains("Earlier answer shortened", model.Requests[0][4].Text);
+        Assert.Contains("Which report?", model.Requests[0][4].Text);
+        Assert.Contains("Q1 2026", model.Requests[0][3].Text);
+    }
+
+    [Fact]
+    public async Task FinalAnswerUnderContextPressureKeepsTheTaskAndItsQuarterClarification()
+    {
+        var calls = Enumerable.Range(1, 3).Select(page => (AIContent)new FunctionCallContent($"call-{page}", "read",
+            new Dictionary<string, object?> { ["page"] = page })).ToList();
+        var model = new ScriptedClient(
+            [new(ChatRole.Assistant, calls)],
+            [new(ChatRole.Assistant, "The requested total is unavailable.")]);
+        var tool = AIFunctionFactory.Create((int page) => new { page, evidence = new string('x', 6000) }, "read");
+        var request = new AiAssistantRequest([
+            new("user", "Total unallocated payment amount across all agreements; amount and currency only."),
+            new("assistant", "Which period?"),
+            new("user", "Q1 2026"),
+            new("assistant", "Which report?"),
+            new("user", "Decide yourself.")]);
+
+        await Runner(model, new Sessions(tool), new() { MaxContextBytes = 28000 }).RunAsync(request, Ignore, default);
+
+        var transcript = JsonSerializer.Serialize(model.Requests[1]);
+        Assert.Contains("Total unallocated payment amount across all agreements", transcript);
+        Assert.Contains("Q1 2026", transcript);
+        Assert.Contains("Decide yourself", transcript);
+        Assert.Contains("evidence_omitted", transcript);
+        Assert.Empty(model.Options[1].Tools!);
+    }
+
+    [Theory]
+    [InlineData("05/10/2026 20:42:31")]
+    [InlineData("05/10/2026, 20:42:31")]
+    [InlineData("05/10/2026 16:42:31")]
+    public async Task AuditTimestampCopiesBindTheWholeDateAndTime(string answer)
+    {
+        var model = new ScriptedClient(
+            [new(ChatRole.Assistant, [new FunctionCallContent("one", "read", null)])],
+            [new(ChatRole.Assistant, answer)]);
+        var result = new { occurredAtUtc = "2026-05-10T20:42:31Z" };
+        var events = new List<AiAssistantEvent>();
+
+        await Runner(model, new Sessions(new SourceTool(new(result, [])))).RunAsync(
+            Question with { TimeZone = "America/New_York" }, Capture(events), default);
+
+        var value = Assert.Single(events, item => item.Value?.Kind == "timestamp").Value!;
+        Assert.Equal(value.Reference, string.Concat(events.Where(item => item.Type == "text").Select(item => item.Text)));
     }
 
     [Fact]
@@ -380,6 +452,30 @@ public sealed class AiAssistantRunnerTests
         Assert.Equal("2026-05-10T20:43:34Z", timestamp.Value);
         var answer = string.Concat(events.Where(item => item.Type == "text").Select(item => item.Text));
         Assert.Equal(literal.Reference + "\n" + timestamp.Reference, answer);
+    }
+
+    [Fact]
+    public async Task RejectedUnfilteredScanFinishesWithoutFurtherReads()
+    {
+        var model = new ScriptedClient(
+            [new(ChatRole.Assistant,
+            [
+                new FunctionCallContent("one", "read", null),
+                new FunctionCallContent("two", "read", new Dictionary<string, object?> { ["search"] = "another attempt" })
+            ])],
+            [new(ChatRole.Assistant, "The requested selection cannot be determined.")]);
+        var result = new AiAssistantToolResult(new { error = "unfiltered_scan" }, [], IsError: true)
+        {
+            ErrorCode = "unfiltered_scan"
+        };
+
+        await Runner(model, new Sessions(new SequenceTool(result))).RunAsync(Question, Ignore, default);
+
+        Assert.Equal(2, model.Requests.Count);
+        Assert.Empty(model.Options[1].Tools!);
+        Assert.Equal(ChatToolMode.None, model.Options[1].ToolMode);
+        Assert.Contains("unfiltered_scan", model.Requests[1][^1].Text);
+        Assert.Contains("read_phase_finished", model.Requests[1][^1].Text);
     }
 
     [Fact]
@@ -587,15 +683,65 @@ public sealed class AiAssistantRunnerTests
     }
 
     [Fact]
-    public async Task ProviderStreamWithoutAFinishReasonIsIncomplete()
+    public async Task RepeatedProviderStreamsWithoutAFinishReasonsAreIncomplete()
     {
-        var model = new ScriptedClient([new ChatResponseUpdate(ChatRole.Assistant, "Partial answer")]) { OmitFinishReason = true };
+        var model = new ScriptedClient(
+            [new(ChatRole.Assistant, "Partial answer")],
+            [new(ChatRole.Assistant, "Another partial answer")]) { OmitFinishReason = true };
         var events = new List<AiAssistantEvent>();
 
         var error = await Assert.ThrowsAsync<AiAssistantException>(() => Runner(model, new Sessions()).RunAsync(Question, Capture(events), default));
 
         Assert.Equal("incomplete_response", error.Code);
+        Assert.Equal(2, model.Requests.Count);
         Assert.DoesNotContain(events, item => item.Type == "done");
+        Assert.DoesNotContain(events, item => item.Type == "text");
+    }
+
+    [Fact]
+    public async Task UnterminatedToolResponseRetriesWithoutExecutingOrRetainingPartialCalls()
+    {
+        var invoked = 0;
+        var model = new ScriptedClient(
+            [new(ChatRole.Assistant, [new TextContent("Unfinished"), new FunctionCallContent("partial", "read", null)])],
+            [new(ChatRole.Assistant, [new FunctionCallContent("complete", "read", null)]) { FinishReason = ChatFinishReason.ToolCalls }],
+            [new(ChatRole.Assistant, "One record.") { FinishReason = ChatFinishReason.Stop }]) { OmitFinishReason = true };
+        var events = new List<AiAssistantEvent>();
+
+        await Runner(model, new Sessions(AIFunctionFactory.Create(() => new { count = ++invoked }, "read")))
+            .RunAsync(Question, Capture(events), default);
+
+        Assert.Equal(1, invoked);
+        Assert.Equal(3, model.Requests.Count);
+        Assert.Equal(model.Requests[0], model.Requests[1]);
+        Assert.NotEmpty(model.Options[1].Tools!);
+        Assert.DoesNotContain(model.Requests.SelectMany(request => request).SelectMany(message => message.Contents),
+            content => content is FunctionCallContent { CallId: "partial" });
+        Assert.Equal("One record.", string.Concat(events.Where(item => item.Type == "text").Select(item => item.Text)));
+        Assert.Equal("done", events[^1].Type);
+    }
+
+    [Fact]
+    public async Task UnterminatedFinalAnswerRetriesWithExistingEvidenceAndWithoutRepeatingReads()
+    {
+        var invoked = 0;
+        var model = new ScriptedClient(
+            [new(ChatRole.Assistant, [new FunctionCallContent("read", "read", null)]) { FinishReason = ChatFinishReason.ToolCalls }],
+            [new(ChatRole.Assistant, "Unfinished answer")],
+            [new(ChatRole.Assistant, "Seven records.") { FinishReason = ChatFinishReason.Stop }]) { OmitFinishReason = true };
+        var tool = AIFunctionFactory.Create(() => new { count = 7, reads = ++invoked }, "read");
+        var events = new List<AiAssistantEvent>();
+
+        await Runner(model, new Sessions(tool), new() { MaxToolCalls = 1 })
+            .RunAsync(Question, Capture(events), default);
+
+        Assert.Equal(1, invoked);
+        Assert.Equal(model.Requests[1].Select(message => message.Text), model.Requests[2].Select(message => message.Text));
+        Assert.Contains("count", model.Requests[2][^1].Text);
+        Assert.Empty(model.Options[2].Tools!);
+        Assert.Equal(ChatToolMode.None, model.Options[2].ToolMode);
+        Assert.Equal("Seven records.", string.Concat(events.Where(item => item.Type == "text").Select(item => item.Text)));
+        Assert.Equal("done", events[^1].Type);
     }
 
     [Fact]

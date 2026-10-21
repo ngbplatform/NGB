@@ -104,6 +104,7 @@ internal sealed class McpToolSessionFactory(
         : AIFunction, IAiAssistantPagedTool
     {
         private readonly AssistantReportContinuations _continuations = new();
+        private readonly HashSet<(string? Kind, string? TypeCode, string Cursor)> _unfilteredCursors = new();
 
         public override string Name => tool.Name;
         public override string Description => tool.Description;
@@ -143,16 +144,35 @@ internal sealed class McpToolSessionFactory(
                 }, [], IsError: true);
             }
 
-            if (tool.Name == McpToolNames.ListRecords
-                && !string.IsNullOrWhiteSpace(StringArgument(requested, "cursor"))
-                && string.IsNullOrWhiteSpace(StringArgument(requested, "search"))
-                && !HasFilters(requested))
+            if (tool.Name == McpToolNames.ListRecords && StringArgument(requested, "cursor") is { Length: > 0 } cursor)
             {
-                return new AiAssistantToolResult(new
+                if (_unfilteredCursors.Contains((kind, typeCode, cursor)))
                 {
-                    error = "filter_required",
-                    message = "Unfiltered record scans are not available in Assistant. Use declared filters or text search before continuing a record list. For an exact count, request includeTotal on the first page; for business aggregates, use a report."
-                }, [], IsError: true);
+                    return new AiAssistantToolResult(new
+                        {
+                            error = "unfiltered_scan",
+                            message = "This unfiltered scan cannot continue. The first page does not establish the requested selection. "
+                                + "Do not work around the limit by searching generic labels or inventing filters. "
+                                + "Explain which requested result remains unavailable; do not substitute matching sample rows."
+                        }, 
+                        [],
+                        IsError: true)
+                    {
+                        ErrorCode = "unfiltered_scan"
+                    };
+                }
+
+                if (string.IsNullOrWhiteSpace(StringArgument(requested, "search")) && !HasFilters(requested))
+                {
+                    return new AiAssistantToolResult(new
+                        {
+                            error = "filter_required",
+                            message = "Preserve the preceding page's search and declared filters when continuing a filtered list. "
+                                + "Do not invent a different selection or continue an unfiltered scan."
+                        },
+                        [],
+                        IsError: true);
+                }
             }
 
             if (tool.Name is McpToolNames.ListRecords
@@ -220,6 +240,23 @@ internal sealed class McpToolSessionFactory(
             }
 
             var projected = McpAssistantProjection.Create(tool.Name, data, requested);
+
+            if (tool.Name == McpToolNames.ListRecords)
+            {
+                var records = data.Deserialize<RecordsResult>(Json)!;
+                var nextCursor = records.Catalogs?.NextCursor
+                    ?? records.Documents?.NextCursor
+                    ?? records.GeneralJournalEntries?.NextCursor;
+
+                if (!string.IsNullOrWhiteSpace(nextCursor))
+                {
+                    var selection = (kind, typeCode, nextCursor);
+                    if (string.IsNullOrWhiteSpace(StringArgument(requested, "search")) && !HasFilters(requested))
+                        _unfilteredCursors.Add(selection);
+                    else
+                        _unfilteredCursors.Remove(selection);
+                }
+            }
 
             if (tool.Name == McpToolNames.ExecuteReport)
                 projected = _continuations.Publish(projected, requested);

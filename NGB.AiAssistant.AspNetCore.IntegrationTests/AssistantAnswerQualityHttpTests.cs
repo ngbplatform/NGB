@@ -315,6 +315,7 @@ public sealed partial class AssistantHttpTests
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant), answer + "\n" + trace);
         Assert.DoesNotContain("100", answer);
         Assert.True(answer.Contains("cannot", StringComparison.OrdinalIgnoreCase)
+            || answer.Contains("could not", StringComparison.OrdinalIgnoreCase)
             || answer.Contains("unable", StringComparison.OrdinalIgnoreCase)
             || answer.Contains("can't", StringComparison.OrdinalIgnoreCase)
             || answer.Contains("not possible", StringComparison.OrdinalIgnoreCase), answer);

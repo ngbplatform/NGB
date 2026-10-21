@@ -19,7 +19,8 @@ internal static class BuiltInTools
 
         builder.Add<MetadataListRequest, MetadataPage, ListMetadataTool>(
             McpToolNames.ListMetadata,
-            "List authorized catalog, document and report metadata with bounded paging.",
+            "Discover authorized catalog, document and report types with bounded paging. "
+            + "These are type definitions, not stored records or record counts. Use this to find a type by its business name.",
             []);
 
         builder.Add<MetadataRequest, MetadataResult, GetMetadataTool>(
@@ -30,7 +31,9 @@ internal static class BuiltInTools
 
         builder.Add<SearchRequest, SearchResult, SearchTool>(
             McpToolNames.Search,
-            "Find authorized records and reports by document number, name or display text. Use this first when the user asks for a record or link. "
+            "Find authorized records and reports by a supplied document number, name or display text. "
+            + "Use metadata discovery for generic type names; for example, a request for invoices does not supply an invoice name. "
+            + "Search cannot select records by dates, amounts or calculated business states. "
             + "Scope by kind and typeCode only when known from metadata or context; otherwise omit them. Retry without scope if a scoped search is empty. "
             + "Results provide real record IDs and display titles; truncated includes capped type fan-out. "
             + "Search discovers matching records; the number of hits is not an aggregate business count.",
@@ -38,12 +41,12 @@ internal static class BuiltInTools
 
         builder.Add<RecordsRequest, RecordsResult, ListRecordsTool>(
             McpToolNames.ListRecords,
-            "List records of a known type (including requests for several examples). Read the type's metadata and declared list filters first. "
-            + "Use search for text matching and filters for declared field criteria. Filters map codes directly to strings, not value objects. "
+            "Read a page of records using the type's declared server-side selection. Read its metadata first. "
+            + "Call only when declared filters cover every requested field criterion, or the user asks for names, an unfiltered list or examples. "
+            + "If metadata has a date field but no filter for the requested date selection, this operation cannot answer that question. "
+            + "Discover a suitable report or explain the missing selection capability; do not call this to inspect sample rows. "
+            + "Search matches supplied names or numbers. Filters map declared codes directly to strings, not value objects. "
             + "For exact record counts, use includeTotal=true and limit=1; total covers all matches, including later pages. "
-            + "Every structured criterion must have a declared list filter. If a required filter is missing, "
-            + "do not scan unfiltered pages or filter them yourself. A visible field is not necessarily a supported filter. "
-            + "An explicitly requested small sample may omit filters. Search is for finding named records, not enumerating all records. "
             + "A page is not the complete population while a continuation is present. No arbitrary sorting.",
             []);
 

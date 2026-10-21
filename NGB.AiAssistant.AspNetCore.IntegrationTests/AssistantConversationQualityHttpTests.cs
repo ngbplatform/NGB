@@ -1,0 +1,282 @@
+using System.Net.Http.Json;
+using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
+using Moq;
+using NGB.Application.Abstractions.Services;
+using NGB.Contracts.Common;
+using NGB.Contracts.Metadata;
+using NGB.Contracts.Reporting;
+using NGB.Contracts.Services;
+using Xunit;
+
+namespace NGB.AiAssistant.AspNetCore.IntegrationTests;
+
+public sealed partial class AssistantHttpTests
+{
+    [NativeOllamaFact]
+    public Task NativeOllamaKeepsTheRequestedMeasureAfterAQuarterClarification()
+        => VerifyClarifiedTotalAsync(delegateChoice: false);
+
+    [NativeOllamaFact]
+    public Task NativeOllamaKeepsTheRequestedMeasureWhenAskedToChooseTheReport()
+        => VerifyClarifiedTotalAsync(delegateChoice: true);
+
+    private static async Task VerifyClarifiedTotalAsync(bool delegateChoice)
+    {
+        var definition = new ReportDefinitionDto("sample.unallocated", "Unallocated Payments",
+            Description: "Total unallocated payment amount across all agreements for a period, with currency.",
+            Parameters: [new("from_utc", "date", true), new("to_utc", "date", true)]);
+        var reports = ReportMock(definition, _ => new ReportSheetDto(
+            [new("amount", "Unallocated amount", "decimal"), new("currency", "Currency", "string")],
+            [new(ReportRowKind.Total, [Cell(218.73m), Cell("USD")])]));
+        var messages = new List<AiAssistantMessage>
+        {
+            new("user", "What is the total unallocated payment amount across all agreements? Give me only the amount and its currency, if known."),
+            new("assistant", "Which time period should I use?"),
+            new("user", "1 quarter 2026")
+        };
+        if (delegateChoice)
+        {
+            messages.Add(new("assistant", "Which report should I use to calculate it?"));
+            messages.Add(new("user", "I don't know. Decide yourself."));
+        }
+
+        await using var host = await Host.StartAsync(mode: "ollama", configure: services => AddReportReads(services, reports.Object));
+        using var client = host.Client("alex");
+        client.Timeout = TimeSpan.FromMinutes(4);
+
+        using var response = await client.PostAsJsonAsync("/api/ai-assistant/chat", new AiAssistantRequest(messages));
+        var events = ReadEvents(await response.Content.ReadAsStringAsync());
+        var answer = string.Concat(events.Where(item => item.Type == "text").Select(item => item.Text));
+        var trace = answer + "\n" + string.Join('\n', host.State.ModelInputs);
+
+        Assert.True(events.All(item => item.Type != "error"), trace);
+        Assert.True(answer.Contains("218.73", StringComparison.Ordinal), trace);
+        Assert.True(answer.Contains("USD", StringComparison.Ordinal), trace);
+        Assert.DoesNotContain('?', answer);
+        reports.Verify(value => value.ExecuteAsync(definition.ReportCode, It.Is<ReportExecutionRequestDto>(request =>
+            request.Parameters != null && request.Parameters["from_utc"] == "2026-01-01"
+            && request.Parameters["to_utc"] == "2026-03-31" && request.Filters == null),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [NativeOllamaFact]
+    public async Task NativeOllamaDoesNotSubstituteASampleForAnUnavailableDateSelection()
+    {
+        const string type = "sample.agreement";
+        var metadata = new DocumentTypeMetadataDto(type, "Agreements", EntityKind.Document,
+            List: new ListMetadataDto(
+                [new("end_on_utc", "End On", DataType.Date)],
+                [new("property_id", "Property", DataType.Guid)]));
+        var documents = new Mock<IAuthorizedDocumentReadService>(MockBehavior.Strict);
+        documents.Setup(value => value.GetAllMetadataAsync(It.IsAny<CancellationToken>())).ReturnsAsync([metadata]);
+        documents.Setup(value => value.GetTypeMetadataAsync(type, It.IsAny<CancellationToken>())).ReturnsAsync(metadata);
+        var end = DateTime.UtcNow.Date.AddMonths(1).ToString("yyyy-MM-dd");
+        var agreement = new DocumentDto(Guid.NewGuid(), "Agreement AG-0098", new RecordPayload(
+            new Dictionary<string, JsonElement> { ["end_on_utc"] = JsonSerializer.SerializeToElement(end) }),
+            DocumentStatus.Posted, false);
+        documents.Setup(value => value.GetPageAsync(type, It.Is<PageRequestDto>(request =>
+                request.Search == null && request.Filters == null && request.Cursor == null), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PageResponseDto<DocumentDto>([agreement], 0, 10, null, true, "more-agreements"));
+        await using var host = await Host.StartAsync(mode: "ollama", configure: services => services.AddScoped(_ => documents.Object));
+        using var client = host.Client("alex");
+        client.Timeout = TimeSpan.FromMinutes(4);
+
+        using var response = await client.PostAsJsonAsync("/api/ai-assistant/chat", new AiAssistantRequest(
+            [new("user", "Give me agreements expiring next month.")], new("document", type)));
+        var events = ReadEvents(await response.Content.ReadAsStringAsync());
+        var answer = string.Concat(events.Where(item => item.Type == "text").Select(item => item.Text));
+        var trace = answer + "\n" + string.Join('\n', host.State.ModelInputs);
+
+        Assert.True(events.All(item => item.Type != "error"), trace);
+        Assert.True(answer.Contains("cannot", StringComparison.OrdinalIgnoreCase)
+            || answer.Contains("can't", StringComparison.OrdinalIgnoreCase)
+            || answer.Contains("unable", StringComparison.OrdinalIgnoreCase)
+            || answer.Contains("not support", StringComparison.OrdinalIgnoreCase), trace);
+        documents.Verify(value => value.GetTypeMetadataAsync(type, It.IsAny<CancellationToken>()), Times.AtLeastOnce);
+        Assert.False(answer.Contains("AG-0098", StringComparison.Ordinal), trace);
+        documents.Verify(value => value.GetPageAsync(It.IsAny<string>(), It.IsAny<PageRequestDto>(),
+            It.IsAny<CancellationToken>()), Times.AtMostOnce, trace);
+        documents.Verify(value => value.GetPageAsync(It.IsAny<string>(), It.Is<PageRequestDto>(request =>
+            request.Search != null || request.Filters != null || request.Cursor != null), It.IsAny<CancellationToken>()), Times.Never, trace);
+    }
+
+    [NativeOllamaFact]
+    public async Task NativeOllamaSelectsThePartyBalanceInsteadOfRequestingAnUnrelatedAccount()
+    {
+        var partyId = Guid.NewGuid();
+        var accountCard = new ReportDefinitionDto("sample.account_card", "Account Card",
+            Description: "Account activity and running balance.",
+            Filters: [new("account_id", "Account", "uuid", IsRequired: true)]);
+        var balance = new ReportDefinitionDto("sample.party_balance", "Party Outstanding Balance",
+            Description: "Outstanding balance for the selected party, including vendors, as of the supplied date.",
+            Parameters: [new("as_of_utc", "date", true)],
+            Filters: [new("party_id", "Party", "uuid", IsRequired: true, Lookup: new CatalogLookupSourceDto("sample.party"))]);
+        var reports = ReportMock(balance, _ => new ReportSheetDto(
+            [new("outstanding", "Outstanding", "decimal"), new("currency", "Currency", "string")],
+            [new(ReportRowKind.Total, [Cell(417.92m), Cell("USD")])]));
+        reports.Setup(value => value.GetAllDefinitionsAsync(It.IsAny<CancellationToken>())).ReturnsAsync([accountCard, balance]);
+        reports.Setup(value => value.GetDefinitionAsync(accountCard.ReportCode, It.IsAny<CancellationToken>())).ReturnsAsync(accountCard);
+        var catalogs = new Mock<IAuthorizedCatalogReadService>(MockBehavior.Strict);
+        catalogs.Setup(value => value.GetTypeMetadataAsync("sample.party", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CatalogTypeMetadataDto("sample.party", "Parties", EntityKind.Catalog));
+        catalogs.Setup(value => value.GetByIdAsync("sample.party", partyId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CatalogItemDto(partyId, "Atlantic Appliance", new RecordPayload(), false, false));
+        await using var host = await Host.StartAsync(mode: "ollama", configure: services =>
+        {
+            AddReportReads(services, reports.Object);
+            services.AddScoped(_ => catalogs.Object);
+        });
+        using var client = host.Client("alex");
+        client.Timeout = TimeSpan.FromMinutes(4);
+
+        using var response = await client.PostAsJsonAsync("/api/ai-assistant/chat", new AiAssistantRequest(
+            [new("user", "What is this party's outstanding balance as of October 20, 2026?")], new("catalog", "sample.party", partyId)));
+        var events = ReadEvents(await response.Content.ReadAsStringAsync());
+        var answer = string.Concat(events.Where(item => item.Type == "text").Select(item => item.Text));
+        var trace = answer + "\n" + string.Join('\n', host.State.ModelInputs);
+
+        Assert.True(events.All(item => item.Type != "error"), trace);
+        Assert.True(answer.Contains("417.92", StringComparison.Ordinal), trace);
+        Assert.DoesNotContain("account_id", answer);
+        Assert.False(answer.Contains('?'), trace);
+        reports.Verify(value => value.ExecuteAsync(balance.ReportCode, It.Is<ReportExecutionRequestDto>(request =>
+            request.Parameters != null && request.Parameters["as_of_utc"] == "2026-10-20"
+            && request.Filters != null && request.Filters["party_id"].Value.GetGuid() == partyId),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [NativeOllamaFact]
+    public async Task NativeOllamaExplainsAnUnavailableWriteWithoutBlamingUserPermissions()
+    {
+        var id = Guid.NewGuid();
+        await using var host = await Host.StartAsync(mode: "ollama");
+        using var client = host.Client("alex");
+        client.Timeout = TimeSpan.FromMinutes(4);
+
+        using var response = await client.PostAsJsonAsync("/api/ai-assistant/chat", new AiAssistantRequest(
+            [new("user", "Create and post a new charge for this agreement.")], new("document", "sample.agreement", id)));
+        var events = ReadEvents(await response.Content.ReadAsStringAsync());
+        var answer = string.Concat(events.Where(item => item.Type == "text").Select(item => item.Text));
+        var trace = answer + "\n" + string.Join('\n', host.State.ModelInputs);
+
+        Assert.True(events.All(item => item.Type != "error"), trace);
+        Assert.DoesNotContain("permission", answer, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(id.ToString(), answer);
+        Assert.DoesNotContain('?', answer);
+        Assert.True(answer.Length < 500, trace);
+        Assert.Empty(host.State.ToolUsers);
+    }
+
+    [NativeOllamaFact]
+    public async Task NativeOllamaKeepsAnAllAgreementScopeWhenTheClarifiedTotalIsUnavailable()
+    {
+        var definition = new ReportDefinitionDto("sample.open_items", "Open Items",
+            Description: "Outstanding charges and unallocated payments for one agreement only.",
+            Filters: [new("agreement_id", "Agreement", "uuid", IsRequired: true,
+                Lookup: new DocumentLookupSourceDto(["sample.agreement"]))]);
+        var reports = new Mock<IAuthorizedReportReadService>(MockBehavior.Strict);
+        reports.Setup(value => value.GetAllDefinitionsAsync(It.IsAny<CancellationToken>())).ReturnsAsync([definition]);
+        reports.Setup(value => value.GetDefinitionAsync(definition.ReportCode, It.IsAny<CancellationToken>())).ReturnsAsync(definition);
+        await using var host = await Host.StartAsync(mode: "ollama", configure: services => services.AddScoped(_ => reports.Object));
+        using var client = host.Client("alex");
+        client.Timeout = TimeSpan.FromMinutes(4);
+
+        using var response = await client.PostAsJsonAsync("/api/ai-assistant/chat", new AiAssistantRequest(
+        [
+            new("user", "What is the total unallocated payment amount across all agreements? Amount and currency only."),
+            new("assistant", "Which period and report should I use?"),
+            new("user", "1 quarter 2026"),
+            new("assistant", "Which report would you like?"),
+            new("user", "I don't know. Decide yourself.")
+        ]));
+        var events = ReadEvents(await response.Content.ReadAsStringAsync());
+        var answer = string.Concat(events.Where(item => item.Type == "text").Select(item => item.Text));
+        var trace = answer + "\n" + string.Join('\n', host.State.ModelInputs);
+
+        Assert.True(events.All(item => item.Type != "error"), trace);
+        Assert.True(answer.Contains("unallocated", StringComparison.OrdinalIgnoreCase), trace);
+        Assert.True(answer.Contains("cannot", StringComparison.OrdinalIgnoreCase)
+            || answer.Contains("can't", StringComparison.OrdinalIgnoreCase)
+            || answer.Contains("unable", StringComparison.OrdinalIgnoreCase)
+            || answer.Contains("not available", StringComparison.OrdinalIgnoreCase), trace);
+        Assert.False(answer.Contains('?'), trace);
+        reports.Verify(value => value.GetDefinitionAsync(definition.ReportCode, It.IsAny<CancellationToken>()), Times.AtLeastOnce);
+        reports.Verify(value => value.ExecuteAsync(It.IsAny<string>(), It.IsAny<ReportExecutionRequestDto>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [NativeOllamaFact]
+    public async Task NativeOllamaDoesNotTurnAPartialZeroIntoAPopulationBalance()
+    {
+        var definition = new ReportDefinitionDto("sample.balances", "Agreement Balances",
+            Description: "Outstanding balance by agreement. Detail rows are paginated; no population total is supplied.");
+        var reports = new Mock<IAuthorizedReportReadService>(MockBehavior.Strict);
+        reports.Setup(value => value.GetAllDefinitionsAsync(It.IsAny<CancellationToken>())).ReturnsAsync([definition]);
+        reports.Setup(value => value.GetDefinitionAsync(definition.ReportCode, It.IsAny<CancellationToken>())).ReturnsAsync(definition);
+        reports.Setup(value => value.ExecuteAsync(definition.ReportCode, It.Is<ReportExecutionRequestDto>(request => request.Cursor == null),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ReportExecutionResponseDto(new ReportSheetDto(
+                [new("agreement", "Agreement", "string"), new("outstanding", "Outstanding", "decimal")],
+                [new(ReportRowKind.Detail, [Cell("AG-0042"), Cell(0m)])]), 0, 1, null, true, "next-page"));
+        reports.Setup(value => value.ExecuteAsync(definition.ReportCode, It.Is<ReportExecutionRequestDto>(request => request.Cursor != null),
+                It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new UnauthorizedAccessException());
+        await using var host = await Host.StartAsync(mode: "ollama", configure: services => AddReportReads(services, reports.Object));
+        using var client = host.Client("alex");
+        client.Timeout = TimeSpan.FromMinutes(4);
+
+        using var response = await client.PostAsJsonAsync("/api/ai-assistant/chat", new AiAssistantRequest(
+            [new("user", "What is the total outstanding balance across all agreements?")]));
+        var events = ReadEvents(await response.Content.ReadAsStringAsync());
+        var answer = string.Concat(events.Where(item => item.Type == "text").Select(item => item.Text));
+        var trace = answer + "\n" + string.Join('\n', host.State.ModelInputs);
+
+        Assert.True(events.All(item => item.Type != "error"), trace);
+        Assert.True(answer.Contains("cannot", StringComparison.OrdinalIgnoreCase)
+            || answer.Contains("can't", StringComparison.OrdinalIgnoreCase)
+            || answer.Contains("unable", StringComparison.OrdinalIgnoreCase)
+            || answer.Contains("unknown", StringComparison.OrdinalIgnoreCase), trace);
+        Assert.DoesNotContain("no outstanding", answer, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("total outstanding balance is 0", answer, StringComparison.OrdinalIgnoreCase);
+        reports.Verify(value => value.ExecuteAsync(definition.ReportCode, It.Is<ReportExecutionRequestDto>(request => request.Cursor == null),
+            It.IsAny<CancellationToken>()), Times.AtLeastOnce, trace);
+        reports.Verify(value => value.ExecuteAsync(definition.ReportCode, It.Is<ReportExecutionRequestDto>(request => request.Cursor != null),
+            It.IsAny<CancellationToken>()), Times.AtLeastOnce, trace);
+    }
+
+    [NativeOllamaFact]
+    public async Task NativeOllamaReadsTheNewDocumentForACurrentRecordFollowUp()
+    {
+        const string type = "sample.invoice";
+        var oldId = Guid.NewGuid();
+        var currentId = Guid.NewGuid();
+        var documents = new Mock<IAuthorizedDocumentReadService>(MockBehavior.Strict);
+        documents.Setup(value => value.GetTypeMetadataAsync(type, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DocumentTypeMetadataDto(type, "Invoice", EntityKind.Document));
+        documents.Setup(value => value.GetByIdAsync(type, currentId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DocumentDto(currentId, "Invoice INV-0014", new RecordPayload(
+                new Dictionary<string, JsonElement> { ["amount"] = JsonSerializer.SerializeToElement(1993m) }),
+                DocumentStatus.Posted, false));
+        await using var host = await Host.StartAsync(mode: "ollama", configure: services => AddInvoiceReads(services, documents.Object));
+        using var client = host.Client("alex");
+        client.Timeout = TimeSpan.FromMinutes(4);
+
+        using var response = await client.PostAsJsonAsync("/api/ai-assistant/chat", new AiAssistantRequest(
+        [
+            new("user", "What is this invoice's amount?") { Context = new("document", type, oldId) },
+            new("assistant", "Invoice INV-0003 has an amount of 2795."),
+            new("user", "And what is this invoice's amount?")
+        ], new("document", type, currentId)));
+        var events = ReadEvents(await response.Content.ReadAsStringAsync());
+        var answer = string.Concat(events.Where(item => item.Type == "text").Select(item => item.Text));
+        var trace = answer + "\n" + string.Join('\n', host.State.ModelInputs);
+
+        Assert.True(events.All(item => item.Type != "error"), trace);
+        Assert.True(answer.Contains("INV-0014", StringComparison.Ordinal), trace);
+        Assert.True(answer.Replace(",", "", StringComparison.Ordinal).Contains("1993", StringComparison.Ordinal), trace);
+        Assert.DoesNotContain("2795", answer.Replace(",", "", StringComparison.Ordinal));
+        documents.Verify(value => value.GetByIdAsync(type, currentId, It.IsAny<CancellationToken>()), Times.Once);
+        documents.Verify(value => value.GetByIdAsync(type, oldId, It.IsAny<CancellationToken>()), Times.Never);
+    }
+}

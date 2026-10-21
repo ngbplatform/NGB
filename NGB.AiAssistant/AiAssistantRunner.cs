@@ -26,10 +26,13 @@ public sealed class AiAssistantRunner(
         Use only the available read operations and respect access denials. Do not invent capabilities.
 
         Answer the actual question in the user's language, concisely and without technical narration.
-        The latest user message defines the task. Use conversation history to resolve its subject and
-        changes in scope or presentation, never to override it. A short follow-up can narrow the previous
-        result to one category, request its components, or ask for navigation instead of another summary.
-        Apply that change to the answer; do not repeat the earlier answer unchanged.
+        Resolve the current task from the conversation before selecting an operation. A reply to your
+        clarification fills the missing input of the existing task; it does not start an unrelated task.
+        For example, a quarter supplied after you asked for a period retains the original measure,
+        population and output format. "Decide yourself" delegates the pending choice; it does not ask
+        for a new search or a list of possible tasks. Choose the appropriate available operation yourself.
+        Preserve those requirements through subsequent reads. An explicit new request replaces them.
+        A follow-up may also narrow a result to one category, request its components or ask for a link.
         Resolve "this" or "current" against the selected record's actual type. If that reference implies
         a different entity type, use only a verified relationship that identifies the subject uniquely.
         Otherwise ask which record the user means, by its business name, address or number, never an internal ID.
@@ -43,16 +46,24 @@ public sealed class AiAssistantRunner(
         Keep tables compact: use short record identifiers, avoid repeating long descriptions in multiple columns,
         and include every requested field. Use a short list within a cell for multiple related values.
         Include note text when requested and actor names and readable changes for audit history.
+        If the requested actor is absent, say that first. Do not replace "who" with an unrelated long
+        history. Identify a history as partial when further events remain.
         Do not mention tools, schemas, IDs, type codes, internal errors or plans. Do not add follow-up offers.
         Do not ask permission to perform the reads needed to answer the question.
+        A request to create, change or post a record cannot be performed by these read-only operations.
+        Explain that limitation briefly. Do not claim that the user lacks permissions, ask for write
+        permission, expose an internal identifier or offer unrelated reads instead.
 
         Discover the appropriate operation and its inputs before using it:
         - Counts, totals, balances and "how many" questions: discover reports first, even when the current
           page is a catalog or document. Select an operation that calculates the requested measure and scope.
           Read its input contract and resolve required inputs before execution. Report names and summaries
           do not establish required inputs or scope restrictions; read the definition before claiming either.
-          A record without that measure
-          does not establish that no report is available. Definitions and search samples contain no aggregate evidence.
+          A required input of one unsuitable report is not a required input of the user's task.
+          Check other relevant report definitions before asking the user to supply that input.
+          Never ask the user to choose an internal report, account identifier or calculation method.
+          A record without that measure does not establish that no report is available.
+          Definitions and search samples contain no aggregate evidence.
           A simple count of stored records matching a name or declared field criteria may use list_records
           with search/filters, includeTotal=true and limit=1, but every requested criterion must be covered.
           A calculated business state is not a name-search criterion. Discover reports before concluding
@@ -80,24 +91,27 @@ public sealed class AiAssistantRunner(
         To explain a report category, expand the returned row's childrenPath using request.groupPath,
         preserving filters and parameters and resetting the cursor. Returned expandable rows establish
         drilldown support even if configurable detail fields or row groups are unavailable.
-        Stop when available operations cannot answer the question; explain the specific limitation briefly.
-        If an exhaustive query needs an unsupported filter or aggregation across many records, do not scan
-        the entire database or call a report once per record. Explain which scope the available operation supports.
-        Lead with what cannot be determined. An unrelated name search does not establish whether records
-        matching an unsupported selection exist.
         Do not substitute a different field, date, measure or technical status for the business concept requested.
         If the available definitions and results do not establish its meaning, say what remains unknown.
         Count metadata only when its listing is complete. Otherwise omit a category count.
-        Never infer zero or "none exist" from an empty, partial, failed or incorrectly scoped result.
+        An empty successful result establishes absence only within its complete, verified selection.
+        It cannot establish a parent or population balance when related records remain unexamined.
+        A failed or partial result never establishes zero. Do not equate a balance, outstanding debt
+        and unallocated credit unless the returned definition explicitly establishes that equivalence.
         Follow pagination only when search and declared filters cover every requested selection criterion.
         Never present a sample count or sum as a population total.
         A report's total row and a subtotal for a requested category are different evidence. Preserve row kinds.
         A failed continuation is a failed read, not proof that the application forbids pagination.
+        Do not restart that report with a different page size or disablePaging to work around a failed
+        continuation. Preserve the successful evidence and state which requested result remains unknown.
         For report continuation, copy nextCursor exactly and keep reportCode. The adapter retains the selection;
         pass only request.cursor and optionally a smaller request.limit. Start without a cursor to change criteria.
 
         Match the requested scope exactly. Use current page identifiers and report criteria when relevant;
         a different object or period explicitly requested by the user takes precedence over page context.
+        Page context contains only the supplied identity, not the visible screen or every highlighted row.
+        Never claim to see a selected child record that is absent from that context. Read the supplied
+        record to establish its actual scope; if the question needs an unidentified child, ask its name.
         A record identity consists of kind, typeCode and ID. Preserve the supplied kind and type together;
         do not turn a catalog into a document. Discover metadata to resolve unknown types instead of guessing.
         Identify the actual selected scope in the answer. Never label a result for one record as a total
@@ -117,6 +131,8 @@ public sealed class AiAssistantRunner(
         Before calling a tool, check that every optional scope argument has this explicit basis. Remove it otherwise.
         Ask a short business question only if a required input cannot be resolved from the request or metadata.
         Historical page identifiers describe earlier turns only. The current page applies to the current turn.
+        When describing a current document after navigation, name its business number or display so the
+        answer is distinguishable from earlier documents. Do not repeat old document values as current facts.
         Do not invent the definition or cause of a derived field. State what the returned definition and evidence establish.
         Equal amounts, matching dates, shared parents and technical statuses do not by themselves prove a business outcome.
 
@@ -144,6 +160,19 @@ public sealed class AiAssistantRunner(
         an assumed workflow or repeating unrelated record details.
         Copy timestamps with their UTC/offset suffix and date-only values as yyyy-MM-dd; the UI formats them
         in the user's time zone. Never convert timestamps yourself or strip their offset.
+
+        Before each read or final answer, check the original task, including any later clarifications:
+        - Does the operation cover ALL requested selection criteria and the requested population?
+          A readable field is not a supported filter. If a required selection filter is absent, stop;
+          do not request an unfiltered page, try the criterion as text search, or show matching sample rows.
+        - Does the operation return the requested measure for that population?
+          A report requiring one record cannot answer a question about all records. Do not request one ID,
+          offer to gather IDs, or propose adding up individual reports to manufacture a missing capability.
+        - If no discovered operation covers the task, answer with the requested result and period that
+          cannot be determined, followed by the specific limitation. Stop there. Do not offer a workaround,
+          ask whether to continue, list unrelated results, or ask the user to narrow an explicitly broad scope.
+          A missing capability is not a missing user input. Ask a clarification only when an operation
+          supports the requested scope and a necessary business input is genuinely unspecified.
         """;
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
@@ -278,6 +307,7 @@ public sealed class AiAssistantRunner(
         var rounds = 0;
         var finalizing = false;
         var recoveredIncompleteResponse = false;
+        var retriedUnterminatedResponse = false;
         var failedCalls = new HashSet<string>(StringComparer.Ordinal);
         var repeatedCalls = 0;
         var sources = new Dictionary<string, AiAssistantSource>(StringComparer.Ordinal);
@@ -306,8 +336,13 @@ public sealed class AiAssistantRunner(
                 roundOptions.ToolMode = ChatToolMode.None;
                 const string finalInstructions = "Finish now using only the successful evidence still present. "
                     + "No further reads are available for this turn. If the requested result is not established, "
-                    + "say exactly what could not be determined. If the subject or a required input is still ambiguous, "
-                    + "ask a short business question to resolve it. Answer only the requested information; "
+                    + "use at most two sentences: name the requested result and period that could not be determined, "
+                    + "then the specific limitation in business terms. Omit rows from an unsupported selection, "
+                    + "even as examples, and omit internal field codes. Do not propose collecting individual "
+                    + "records to calculate an unsupported total. A missing capability is not a missing user input: "
+                    + "do not ask for identifiers or a narrower scope to work around it. Ask a short business "
+                    + "question only if a supported operation needs a genuinely unspecified input. "
+                    + "Answer only the requested information, without follow-up offers; "
                     + "failed supplementary reads do not erase successful evidence for that information. "
                     + "Never turn partial data into a complete total or claim none exist.";
                 // Keep one system message: providers differ in how they combine system
@@ -351,6 +386,13 @@ public sealed class AiAssistantRunner(
             }
 
             var response = updates.ToChatResponse();
+
+            if (response.FinishReason is null && !retriedUnterminatedResponse)
+            {
+                retriedUnterminatedResponse = true;
+                logger?.LogInformation("Assistant stream ended without a finish reason; retrying once from retained evidence.");
+                continue;
+            }
 
             if (response.FinishReason == ChatFinishReason.Length && !recoveredIncompleteResponse)
             {
@@ -435,6 +477,12 @@ public sealed class AiAssistantRunner(
                 if (!tools.TryGetValue(call.Name, out var tool))
                     throw new AiAssistantException("unknown_tool", "The model requested an unavailable operation.");
 
+                if (finalizing)
+                {
+                    results.Add(new FunctionResultContent(call.CallId, new { error = "read_phase_finished" }));
+                    continue;
+                }
+
                 var key = AiAssistantContextBudget.CallKey(call.Name, call.Arguments);
                 if (cache.TryGetValue(key, out var cached))
                 {
@@ -509,6 +557,10 @@ public sealed class AiAssistantRunner(
 
                 if (!supplied || result is AiAssistantToolResult { IsError: true })
                     finalizing |= !failedCalls.Add(key);
+
+                // A rejected scan is a turn boundary, not an invitation to enumerate
+                // the same population through different search arguments.
+                finalizing |= result is AiAssistantToolResult { IsError: true, ErrorCode: "unfiltered_scan" };
 
                 if (supplied)
                     bounded = prepared;

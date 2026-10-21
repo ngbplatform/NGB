@@ -15,18 +15,6 @@ internal static class AiAssistantContextBudget
         if (Measure(messages) <= maximumBytes)
             return true;
 
-        // Remove older dialogue in complete user/assistant pairs. The latest question,
-        // its page identifiers and the current turn's evidence must survive together.
-        while (messages.Count > 3
-               && messages[1].Role == ChatRole.User
-               && messages[2].Role == ChatRole.Assistant
-               && messages[3].Role == ChatRole.User)
-        {
-            messages.RemoveRange(1, 2);
-            if (Measure(messages) <= maximumBytes)
-                return true;
-        }
-
         // Planning and reasoning are not business evidence. Preserve call/result pairs
         // and their IDs, which providers need to correlate tool responses.
         for (var index = 1; index < messages.Count; index++)
@@ -38,6 +26,34 @@ internal static class AiAssistantContextBudget
             messages[index] = new ChatMessage(
                 ChatRole.Assistant,
                 message.Contents.Where(content => content is FunctionCallContent).ToList());
+        }
+
+        if (Measure(messages) <= maximumBytes)
+            return true;
+
+        // A short follow-up may supply only a date or delegate a choice. Removing the
+        // original user request would silently change the task. Compact old answers
+        // first, retaining every user turn and its historical page identifiers.
+        const string omission = "\n[Earlier answer shortened. It is not current application evidence.]\n";
+        var lastUser = messages.FindLastIndex(message => message.Role == ChatRole.User);
+        for (var index = 1; index < lastUser; index++)
+        {
+            var message = messages[index];
+            if (message.Role != ChatRole.Assistant
+                || message.Contents.FirstOrDefault() is not TextContent answer
+                || answer.Text.Length <= 1024 + omission.Length)
+            {
+                continue;
+            }
+
+            // Preserve the closing clarification and separate navigation candidates.
+            // Cutting the whole message could lose the question the user is answering.
+            var contents = message.Contents.ToList();
+            contents[0] = new TextContent(answer.Text[..512] + omission + answer.Text[^512..]);
+            messages[index] = new ChatMessage(ChatRole.Assistant, contents);
+
+            if (Measure(messages) <= maximumBytes)
+                return true;
         }
 
         return Measure(messages) <= maximumBytes;

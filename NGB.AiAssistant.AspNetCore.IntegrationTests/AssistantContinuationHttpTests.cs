@@ -5,7 +5,10 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using NGB.Application.Abstractions.Services;
+using NGB.Contracts.Common;
+using NGB.Contracts.Metadata;
 using NGB.Contracts.Reporting;
+using NGB.Contracts.Services;
 using NGB.Mcp;
 using Xunit;
 
@@ -224,6 +227,80 @@ public sealed partial class AssistantHttpTests
         Assert.Contains(events, item => item.Type == "done");
         Assert.Equal([4, 4, 2], executions.Select(request => request.Limit));
         Assert.All(executions.Skip(1), request => Assert.Equal(cursor, request.Cursor));
+    }
+
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    public async Task RecordContinuationDistinguishesMissingFiltersFromAnUnfilteredScan(bool filtered, bool changeSearch)
+    {
+        const string type = "sample.agreement";
+        const string cursor = "next-record-page";
+        var documents = new Mock<IAuthorizedDocumentReadService>(MockBehavior.Strict);
+        documents.Setup(value => value.GetTypeMetadataAsync(type, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DocumentTypeMetadataDto(type, "Agreements", EntityKind.Document,
+                List: new ListMetadataDto([], [new("group", "Group", DataType.String)])));
+        documents.Setup(value => value.GetPageAsync(type, It.IsAny<PageRequestDto>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string _, PageRequestDto request, CancellationToken _) =>
+            {
+                if (filtered)
+                    Assert.Equal("West", request.Filters!["group"]);
+                else
+                    Assert.Null(request.Cursor);
+
+                return new PageResponseDto<DocumentDto>([], 0, 10, null, request.Cursor is null,
+                    request.Cursor is null ? cursor : null);
+            });
+        var model = new WorkflowModel((round, input) =>
+        {
+            var arguments = new Dictionary<string, object?> { ["kind"] = "document", ["typeCode"] = type };
+            if (round == 0)
+                return ToolCall("metadata", McpToolNames.GetMetadata, arguments);
+            if (round == 1)
+            {
+                if (filtered)
+                    arguments["filters"] = new Dictionary<string, string> { ["group"] = "West" };
+                return ToolCall("first", McpToolNames.ListRecords, arguments);
+            }
+            if (round == 2)
+            {
+                arguments["cursor"] = cursor;
+                if (changeSearch)
+                    arguments["search"] = "Agreements";
+                return ToolCall("next", McpToolNames.ListRecords, arguments);
+            }
+            if (!filtered)
+            {
+                Assert.DoesNotContain(input, message => message.Role == ChatRole.Tool);
+                Assert.Contains("unfiltered_scan", input[^1].Text);
+                return Answer("The requested selection cannot be determined.");
+            }
+            if (round == 3)
+            {
+                Assert.Contains("filter_required", LatestToolData(input).GetRawText());
+                arguments["cursor"] = cursor;
+                arguments["filters"] = new Dictionary<string, string> { ["group"] = "West" };
+                return ToolCall("corrected", McpToolNames.ListRecords, arguments);
+            }
+
+            Assert.False(LatestToolData(input).GetProperty("data").GetProperty("documents").GetProperty("hasMore").GetBoolean());
+            return Answer("The selected pages were read.");
+        });
+        await using var host = await Host.StartAsync(configure: services =>
+        {
+            services.AddScoped(_ => documents.Object);
+            services.AddSingleton<IChatClient>(model);
+        });
+        using var http = host.Client("alex");
+
+        using var response = await http.PostAsJsonAsync("/api/ai-assistant/chat", Question);
+        var events = ReadEvents(await response.Content.ReadAsStringAsync());
+
+        Assert.DoesNotContain(events, item => item.Type == "error");
+        Assert.Contains(events, item => item.Type == "done");
+        documents.Verify(value => value.GetPageAsync(type, It.IsAny<PageRequestDto>(), It.IsAny<CancellationToken>()),
+            Times.Exactly(filtered ? 2 : 1));
     }
 
     private static JsonElement LatestToolData(ChatMessage[] input)

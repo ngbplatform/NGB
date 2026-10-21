@@ -86,6 +86,9 @@ internal sealed class AiAssistantValues(TimeZoneInfo? timeZone = null)
                 {
                     var zoneSuffix = displayed.Offset == TimeSpan.Zero ? " UTC" : string.Empty;
                     yield return displayed.ToString("MM/dd/yyyy 'at' HH:mm:ss", CultureInfo.InvariantCulture) + zoneSuffix;
+                    yield return displayed.ToString("MM/dd/yyyy HH:mm:ss", CultureInfo.InvariantCulture) + zoneSuffix;
+                    yield return displayed.ToString("MM/dd/yyyy HH:mm:ss", CultureInfo.InvariantCulture);
+                    yield return displayed.ToString("MM/dd/yyyy, HH:mm:ss", CultureInfo.InvariantCulture);
                     yield return displayed.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture) + zoneSuffix;
                     yield return displayed.ToString("HH:mm:ss", CultureInfo.InvariantCulture) + zoneSuffix;
                     yield return displayed.ToString("HH:mm:ss", CultureInfo.InvariantCulture);
