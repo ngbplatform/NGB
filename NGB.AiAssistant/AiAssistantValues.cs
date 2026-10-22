@@ -51,7 +51,7 @@ internal sealed class AiAssistantValues(TimeZoneInfo? timeZone = null)
             return answer;
 
         var alternatives = string.Join('|', literals.Keys.OrderByDescending(value => value.Length).Select(Regex.Escape));
-        var pattern = @"\{\{ngb-value:[^{}]+\}\}|(?<![\w.-])(?:" + alternatives + @")(?![\w.-])";
+        var pattern = @"\{\{ngb-value:[^{}]+\}\}|(?<![\w.-])(?:" + alternatives + @")(?![\w-]|\.\w)";
 
         return Regex.Replace(
             answer,
@@ -90,6 +90,7 @@ internal sealed class AiAssistantValues(TimeZoneInfo? timeZone = null)
                 var date = DateOnly.ParseExact(value.Value, "yyyy-MM-dd", CultureInfo.InvariantCulture);
                 yield return date.ToString("M/d/yyyy", CultureInfo.InvariantCulture);
                 yield return date.ToString("MM/dd/yyyy", CultureInfo.InvariantCulture);
+                yield return date.ToString("MMMM d, yyyy", CultureInfo.InvariantCulture);
             }
             else if (value.Kind == "timestamp")
             {
@@ -102,10 +103,9 @@ internal sealed class AiAssistantValues(TimeZoneInfo? timeZone = null)
                     yield return displayed.ToString("MM/dd/yyyy HH:mm:ss", CultureInfo.InvariantCulture);
                     yield return displayed.ToString("MM/dd/yyyy, HH:mm:ss", CultureInfo.InvariantCulture);
                     yield return displayed.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture) + zoneSuffix;
-                    yield return displayed.ToString("HH:mm:ss", CultureInfo.InvariantCulture) + zoneSuffix;
-                    yield return displayed.ToString("HH:mm:ss", CultureInfo.InvariantCulture);
-                    yield return displayed.ToString("hh:mm:ss tt", CultureInfo.InvariantCulture);
+                    yield return displayed.ToString("MM/dd/yyyy hh:mm:ss tt", CultureInfo.InvariantCulture);
                     yield return displayed.ToString("MM/dd/yyyy, hh:mm:ss tt", CultureInfo.InvariantCulture);
+                    yield return displayed.ToString("M/d/yyyy h:mm:ss tt", CultureInfo.InvariantCulture);
                 }
             }
         }
@@ -194,6 +194,11 @@ internal sealed class AiAssistantValues(TimeZoneInfo? timeZone = null)
             _values.Add(key, item);
         }
 
+        // Keep literal content readable in the tool's original string fields.
+        // Bind exact copies after generation without obscuring note text behind tokens.
+        if (kind == "text")
+            return node;
+
         // Supply the exact size and its label so models do not mistake a display
         // reference for missing metadata or need to calculate a human-readable size.
         if (kind == "bytes")
@@ -201,9 +206,13 @@ internal sealed class AiAssistantValues(TimeZoneInfo? timeZone = null)
 
         if (kind == "timestamp")
         {
+            var instant = DateTimeOffset.Parse(value, CultureInfo.InvariantCulture);
+            var local = TimeZoneInfo.ConvertTime(instant, timeZone ?? TimeZoneInfo.Utc);
+
             return new JsonObject
             {
                 ["display"] = item.Reference,
+                ["formatted"] = local.ToString("MM/dd/yyyy, hh:mm:ss tt", CultureInfo.InvariantCulture),
                 ["displayTimeZone"] = (timeZone ?? TimeZoneInfo.Utc).Id,
                 ["displayUsage"] = "Copy display verbatim for the full date and time. Do not shorten or convert raw; use it only in tool arguments.",
                 ["raw"] = node.DeepClone()

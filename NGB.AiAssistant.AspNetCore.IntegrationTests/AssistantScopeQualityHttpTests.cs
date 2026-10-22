@@ -362,7 +362,7 @@ public sealed partial class AssistantHttpTests
             new(source.Kind, source.TypeCode, source.Id), "America/New_York"));
         var events = ReadEvents(await response.Content.ReadAsStringAsync());
         var answer = string.Concat(events.Where(item => item.Type == "text").Select(item => item.Text));
-        var trace = answer + "\n" + string.Join('\n', host.State.ModelInputs);
+        var trace = answer + "\n" + JsonSerializer.Serialize(events) + "\n" + string.Join('\n', host.State.ModelInputs);
 
         Assert.True(events.All(item => item.Type != "error"), trace);
         var literal = Assert.Single(events, item => item.Value?.Value == filename).Value!;
@@ -373,6 +373,108 @@ public sealed partial class AssistantHttpTests
         Assert.DoesNotContain("UTC", answer);
         Assert.DoesNotContain("10/02/2026", answer);
         Assert.DoesNotContain(source.Id!.Value.ToString(), answer);
+        audit.VerifyAll();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AuditEvidenceDistinguishesMissingActorsAndUnverifiedContinuation(bool filteredPage)
+    {
+        var source = new AiAssistantSource("document", "sample.invoice", Guid.NewGuid(), "Invoice INV-0042");
+        var eventId = Guid.NewGuid();
+        var occurred = new DateTime(2026, 10, 17, 19, 19, 57, DateTimeKind.Utc);
+        var audit = new Mock<IAuditLogQueryService>(MockBehavior.Strict);
+        audit.Setup(value => value.GetEntityAuditLogAsync(AuditEntityKind.Document, source.Id!.Value,
+                null, null, It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AuditLogPageDto(filteredPage ? [] :
+                [new(eventId, (short)AuditEntityKind.Document, source.Id!.Value, "document.post",
+                    null, occurred, null, null, [])], new(occurred, eventId), 50));
+        var model = new WorkflowModel((round, input) =>
+        {
+            if (round == 0)
+            {
+                return ToolCall("audit", McpToolNames.GetAuditHistory, new()
+                {
+                    ["kind"] = "document",
+                    ["id"] = source.Id
+                });
+            }
+
+            var data = LatestToolData(input).GetProperty("data");
+            if (filteredPage)
+                Assert.Empty(data.GetProperty("items").EnumerateArray());
+            else
+                Assert.False(data.GetProperty("items")[0].GetProperty("actorRecorded").GetBoolean());
+            Assert.Equal(eventId, data.GetProperty("nextCursor").GetProperty("auditEventId").GetGuid());
+            Assert.False(data.GetProperty("endReached").GetBoolean());
+            Assert.Contains("not proof", data.GetProperty("paging").GetString());
+            return Answer("The event's author is unknown; further events have not been checked.");
+        });
+        await using var host = await Host.StartAsync(configure: services =>
+        {
+            services.AddScoped(_ => audit.Object);
+            services.AddSingleton<IChatClient>(model);
+        });
+        using var client = host.Client("alex");
+
+        using var response = await client.PostAsJsonAsync("/api/ai-assistant/chat", Question);
+        var events = ReadEvents(await response.Content.ReadAsStringAsync());
+
+        Assert.Contains(events, item => item.Type == "done");
+        audit.VerifyAll();
+    }
+
+    [NativeOllamaFact]
+    public async Task NativeOllamaKeepsAuditAuthorsWithTheirEventsAndReadsToTheEnd()
+    {
+        var source = new AiAssistantSource("document", "sample.invoice", Guid.NewGuid(), "Invoice INV-0042");
+        var documents = InvoiceReads(source, allowed: true);
+        var createdId = Guid.NewGuid();
+        var created = new DateTime(2026, 5, 10, 20, 42, 30, DateTimeKind.Utc);
+        var noted = new DateTime(2026, 10, 17, 19, 19, 57, DateTimeKind.Utc);
+        var audit = new Mock<IAuditLogQueryService>(MockBehavior.Strict);
+        audit.Setup(value => value.GetEntityAuditLogAsync(AuditEntityKind.Document, source.Id!.Value,
+                null, null, It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AuditLogPageDto(
+            [
+                new(Guid.NewGuid(), (short)AuditEntityKind.Document, source.Id!.Value, "notes.created",
+                    new(Guid.NewGuid(), "Alex Carter", null), noted, null, null,
+                    [new("note.text", null, JsonSerializer.Serialize("Note #3"))]),
+                new(createdId, (short)AuditEntityKind.Document, source.Id!.Value, "document.create_draft",
+                    null, created, null, null, [new("amount", null, "2795.00")])
+            ], new(created, createdId), 50));
+        audit.Setup(value => value.GetEntityAuditLogAsync(AuditEntityKind.Document, source.Id!.Value,
+                created, createdId, It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AuditLogPageDto([], null, 50));
+        await using var host = await Host.StartAsync(mode: "ollama", configure: services =>
+        {
+            AddInvoiceReads(services, documents.Object);
+            services.AddScoped(_ => audit.Object);
+        });
+        using var client = host.Client("alex");
+        client.Timeout = TimeSpan.FromMinutes(4);
+
+        using var response = await client.PostAsJsonAsync("/api/ai-assistant/chat", new AiAssistantRequest(
+            [new("user", "Who changed this document, when, and what changed? Show the available history in a table.")],
+            new(source.Kind, source.TypeCode, source.Id), "America/New_York"));
+        var events = ReadEvents(await response.Content.ReadAsStringAsync());
+        var answer = string.Concat(events.Where(item => item.Type == "text").Select(item => item.Text));
+        var trace = answer + "\n" + JsonSerializer.Serialize(events) + "\n" + string.Join('\n', host.State.ModelInputs);
+
+        Assert.True(events.All(item => item.Type != "error"), trace);
+        Assert.Contains(events, item => item.Type == "done");
+        var creationTime = Assert.Single(events, item => item.Value?.Value == "2026-05-10T20:42:30Z").Value!;
+        var noteTime = Assert.Single(events, item => item.Value?.Value == "2026-10-17T19:19:57Z").Value!;
+        Assert.True(answer.Contains(creationTime.Reference, StringComparison.Ordinal), trace);
+        Assert.True(answer.Contains(noteTime.Reference, StringComparison.Ordinal), trace);
+        var creationRow = Assert.Single(answer.Split('\n'), line => line.Contains(creationTime.Reference, StringComparison.Ordinal));
+        var noteRow = Assert.Single(answer.Split('\n'), line => line.Contains(noteTime.Reference, StringComparison.Ordinal));
+        Assert.DoesNotContain("Alex Carter", creationRow);
+        Assert.Contains("Alex Carter", noteRow);
+        Assert.False(System.Text.RegularExpressions.Regex.IsMatch(answer, @"\d{1,2}/\d{1,2}/\d{4}\s+\{\{ngb-value:"), trace);
+        Assert.DoesNotContain("partial", answer, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("further events remain", answer, StringComparison.OrdinalIgnoreCase);
         audit.VerifyAll();
     }
 
@@ -471,7 +573,7 @@ public sealed partial class AssistantHttpTests
         Assert.DoesNotContain('?', answer);
         Assert.DoesNotContain("account_id", answer);
         Assert.DoesNotContain("lease_id", answer);
-        Assert.DoesNotContain("provide", answer, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotMatch(@"(?i)\b(?:please\s+provide|(?:can|could|would)\s+you\s+provide|you\s+(?:need|have)\s+to\s+provide)\b", answer);
         Assert.DoesNotContain("0.00", answer);
         Assert.True(answer.Length < 500, trace);
         reports.Verify(value => value.ExecuteAsync(It.IsAny<string>(), It.IsAny<ReportExecutionRequestDto>(),

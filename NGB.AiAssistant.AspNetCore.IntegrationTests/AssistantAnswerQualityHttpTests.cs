@@ -10,6 +10,7 @@ using NGB.Attachments;
 using NGB.Contracts.Attachments;
 using NGB.Contracts.BusinessObjects;
 using NGB.Contracts.Common;
+using NGB.Contracts.Graph;
 using NGB.Contracts.Metadata;
 using NGB.Contracts.Notes;
 using NGB.Contracts.Reporting;
@@ -186,6 +187,82 @@ public sealed partial class AssistantHttpTests
             It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
+    [NativeOllamaFact]
+    public async Task NativeOllamaDoesNotEquateAnUnsuccessfulCompletionWithCompletedWork()
+        => await VerifyMaintenanceOutcome("UnableToComplete", completed: false);
+
+    [NativeOllamaFact]
+    public async Task NativeOllamaRecognizesSuccessfullyCompletedWork()
+        => await VerifyMaintenanceOutcome("Completed", completed: true);
+
+    private static async Task VerifyMaintenanceOutcome(string outcome, bool completed)
+    {
+        const string requestType = "pm.maintenance_request";
+        const string orderType = "pm.work_order";
+        const string completionType = "pm.work_order_completion";
+        var requestId = Guid.NewGuid();
+        var orderId = Guid.NewGuid();
+        var completionId = Guid.NewGuid();
+        DocumentTypeMetadataDto[] metadata =
+        [
+            new(requestType, "Maintenance Request", EntityKind.Document),
+            new(orderType, "Work Order", EntityKind.Document),
+            new(completionType, "Work Order Completion", EntityKind.Document,
+                List: new ListMetadataDto([new("outcome", "Outcome", DataType.String)]))
+        ];
+        var records = new Dictionary<string, DocumentDto>
+        {
+            [requestType] = new(requestId, "Maintenance Request MR-2026-000011", new RecordPayload(new Dictionary<string, JsonElement>
+            {
+                ["subject"] = JsonSerializer.SerializeToElement("Broken window latch")
+            }), DocumentStatus.Posted, false),
+            [orderType] = new(orderId, "Work Order WO-2026-000008", new RecordPayload(new Dictionary<string, JsonElement>
+            {
+                ["request_id"] = JsonSerializer.SerializeToElement(requestId)
+            }), DocumentStatus.Posted, false),
+            [completionType] = new(completionId, "Work Order Completion WOC-2026-000008", new RecordPayload(new Dictionary<string, JsonElement>
+            {
+                ["work_order_id"] = JsonSerializer.SerializeToElement(orderId),
+                ["closed_at_utc"] = JsonSerializer.SerializeToElement("2024-05-08"),
+                ["outcome"] = JsonSerializer.SerializeToElement(outcome),
+                ["resolution_notes"] = JsonSerializer.SerializeToElement("Work order was reviewed and closed after the on-site visit.")
+            }), DocumentStatus.Posted, false)
+        };
+        var graph = new RelationshipGraphDto(
+            [new("request", EntityKind.Document, requestType, requestId, records[requestType].Display!),
+                new("order", EntityKind.Document, orderType, orderId, records[orderType].Display!, Depth: 1),
+                new("completion", EntityKind.Document, completionType, completionId, records[completionType].Display!, Depth: 2)],
+            [new("order", "request", "created_from"), new("completion", "order", "created_from")]);
+        var documents = new Mock<IAuthorizedDocumentReadService>(MockBehavior.Strict);
+        documents.Setup(value => value.GetAllMetadataAsync(It.IsAny<CancellationToken>())).ReturnsAsync(metadata);
+        foreach (var type in metadata)
+        {
+            var record = records[type.DocumentType];
+            documents.Setup(value => value.GetTypeMetadataAsync(type.DocumentType, It.IsAny<CancellationToken>())).ReturnsAsync(type);
+            documents.Setup(value => value.GetByIdAsync(type.DocumentType, record.Id, It.IsAny<CancellationToken>())).ReturnsAsync(record);
+            documents.Setup(value => value.GetRelationshipGraphAsync(type.DocumentType, record.Id,
+                    It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(graph);
+        }
+        await using var host = await Host.StartAsync(mode: "ollama", configure: services => AddInvoiceReads(services, documents.Object));
+        using var client = host.Client("alex");
+        client.Timeout = TimeSpan.FromMinutes(4);
+
+        using var response = await client.PostAsJsonAsync("/api/ai-assistant/chat", new AiAssistantRequest(
+            [new("user", "Has the work for this maintenance request been completed? Explain what confirms its status.")],
+            new("document", requestType, requestId), "America/New_York"));
+        var events = ReadEvents(await response.Content.ReadAsStringAsync());
+        var answer = string.Concat(events.Where(item => item.Type == "text").Select(item => item.Text));
+        var trace = answer + "\n" + string.Join('\n', host.State.ModelInputs);
+
+        Assert.True(events.All(item => item.Type != "error"), trace);
+        Assert.Contains(events, item => item.Type == "done");
+        var negative = Regex.IsMatch(answer, @"(?i)\b(unable\s*to\s*complete|not\s+(?:been\s+)?completed)\b");
+        var affirmative = Regex.IsMatch(answer, @"(?i)\byes\b|\bwork\s+(?:has\s+been|was|is)\s+completed\b");
+        Assert.True(negative != completed && affirmative == completed, trace);
+        documents.Verify(value => value.GetByIdAsync(completionType, completionId, It.IsAny<CancellationToken>()), Times.AtLeastOnce);
+    }
+
     [Fact]
     public async Task CompactReportEvidencePreservesPagingScopeAndExactAmounts()
     {
@@ -332,10 +409,12 @@ public sealed partial class AssistantHttpTests
         var target = new BusinessObjectRef(BusinessObjectKind.Document, "pm.receivable_payment", Guid.NewGuid());
         var author = Guid.NewGuid();
         var created = new DateTime(2026, 5, 10, 20, 43, 34, DateTimeKind.Utc);
+        var noteTexts = new[] { "Note #1", "Note #2", "Keep the date 2026-05-10 exactly as written." };
         var notes = new Mock<INoteService>(MockBehavior.Strict);
         notes.Setup(value => value.ListAsync(target, It.IsAny<int>(), null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new BusinessObjectPage<NoteDto>(
-                [new(Guid.NewGuid(), "Keep the date 2026-05-10 exactly as written.", 1, created, author, "Alex Carter", null, null)], null));
+                noteTexts.Select((text, index) => new NoteDto(Guid.NewGuid(), text, 1, created.AddSeconds(index),
+                    author, "Alex Carter", null, null)).ToArray(), null));
         var attachments = new Mock<IAttachmentService>(MockBehavior.Strict);
         attachments.Setup(value => value.ListAsync(target, It.IsAny<int>(), null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new BusinessObjectPage<AttachmentDto>(
@@ -360,10 +439,18 @@ public sealed partial class AssistantHttpTests
 
         Assert.True(events.All(item => item.Type != "error"), trace);
         Assert.Contains(events, item => item.Type == "done");
-        foreach (var kind in new[] { "timestamp", "bytes", "text" })
+        foreach (var value in events.Where(item => item.Type == "value").Select(item => item.Value!))
         {
-            Assert.True(events.Any(item => item.Value?.Kind == kind && answer.Contains(item.Value.Reference, StringComparison.Ordinal)), trace);
+            Assert.True(answer.Contains(value.Reference, StringComparison.Ordinal), trace);
         }
+        foreach (var text in noteTexts)
+        {
+            Assert.Contains(events, item => item.Value?.Value == text);
+        }
+        Assert.Contains("Alex Carter", answer);
+        Assert.DoesNotContain("unavailable", answer, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("not available", answer, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotMatch(@"\d{1,2}/\d{1,2}/\d{4}\s+\{\{ngb-value:", answer);
         Assert.DoesNotContain("704 KB", answer);
     }
 

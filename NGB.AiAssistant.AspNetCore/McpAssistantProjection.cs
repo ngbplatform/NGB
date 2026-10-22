@@ -200,6 +200,9 @@ internal static class McpAssistantProjection
     {
         var result = data.Deserialize<JsonObject>(Json)!;
         result["subject"] = "This read establishes only the returned record's identity and fields. "
+            + "For a direct reference field, read this record type's metadata to identify the lookup target's "
+            + "kind and type, then call ngb_get_record with that target and the field's UUID. "
+            + "Do not search a UUID as a record name or infer the target type from the field's name. "
             + "If its actual type differs from the user's reference to 'this' record and no direct reference "
             + "field identifies the requested record, stop and ask which record they mean. Do not search "
             + "for a replacement by entity category, shared address, parent or party. A unique search hit "
@@ -214,11 +217,18 @@ internal static class McpAssistantProjection
         {
             page.Limit,
             page.NextCursor,
+            endReached = page.NextCursor is null,
+            paging = "nextCursor is a continuation position, not proof that further events exist. "
+                + "A short or empty items array can result from access filtering and does not establish the end. "
+                + "Continue with afterOccurredAtUtc=nextCursor.occurredAtUtc and afterAuditEventId=nextCursor.auditEventId "
+                + "until nextCursor is null. "
+                + "If you stop before that, further events are unverified, not confirmed.",
             items = page.Items.Select(item => new
             {
                 item.AuditEventId,
                 occurredAt = item.OccurredAtUtc,
                 item.Actor,
+                actorRecorded = item.Actor is not null,
                 action = Label(item.ActionCode),
                 metadata = ReadJson(item.MetadataJson),
                 changes = item.Changes

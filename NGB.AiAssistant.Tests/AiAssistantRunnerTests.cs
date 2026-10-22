@@ -238,6 +238,9 @@ public sealed class AiAssistantRunnerTests
     [InlineData("05/10/2026 20:42:31")]
     [InlineData("05/10/2026, 20:42:31")]
     [InlineData("05/10/2026 16:42:31")]
+    [InlineData("05/10/2026 04:42:31 PM")]
+    [InlineData("05/10/2026, 04:42:31 PM")]
+    [InlineData("5/10/2026 4:42:31 PM")]
     public async Task AuditTimestampCopiesBindTheWholeDateAndTime(string answer)
     {
         var model = new ScriptedClient(
@@ -350,11 +353,9 @@ public sealed class AiAssistantRunnerTests
     }
 
     [Theory]
-    [InlineData("19:19:57")]
-    [InlineData("19:19:57 UTC")]
-    [InlineData("03:19:57 PM")]
     [InlineData("10/17/2026 at 19:19:57 UTC")]
     [InlineData("10/17/2026, 03:19:57 PM")]
+    [InlineData("10/17/2026 03:19:57 PM")]
     public async Task CopiedAuditTimesBindToTheVerifiedInstant(string displayed)
     {
         var result = new { createdAtUtc = "2026-10-17T19:19:57Z" };
@@ -374,7 +375,208 @@ public sealed class AiAssistantRunnerTests
             .Contents.OfType<FunctionResultContent>().Single();
         var timestamp = JsonSerializer.SerializeToElement(content.Result).GetProperty("data").GetProperty("createdAtUtc");
         Assert.Equal("America/New_York", timestamp.GetProperty("displayTimeZone").GetString());
+        Assert.Equal("10/17/2026, 03:19:57 PM", timestamp.GetProperty("formatted").GetString());
         Assert.Contains("full date and time", timestamp.GetProperty("displayUsage").GetString());
+    }
+
+    [Theory]
+    [InlineData("2026-01-17T19:19:57Z", "01/17/2026, 02:19:57 PM")]
+    [InlineData("2026-05-10T20:42:30Z", "05/10/2026, 04:42:30 PM")]
+    [InlineData("2026-10-22T00:19:57Z", "10/21/2026, 08:19:57 PM")]
+    public async Task TimestampEvidenceUsesTheUsersTimeZoneIncludingDaylightSaving(string instant, string formatted)
+    {
+        var model = new ScriptedClient(
+            [new(ChatRole.Assistant, [new FunctionCallContent("read", "read", null)])],
+            [new(ChatRole.Assistant, formatted)]);
+        var events = new List<AiAssistantEvent>();
+
+        await Runner(model, new Sessions(new SourceTool(new(new { occurredAt = instant }, [])))).RunAsync(
+            Question with { TimeZone = "America/New_York" }, Capture(events), default);
+
+        var content = model.Requests[1].Single(message => message.Role == ChatRole.Tool)
+            .Contents.OfType<FunctionResultContent>().Single();
+        var timestamp = JsonSerializer.SerializeToElement(content.Result).GetProperty("data").GetProperty("occurredAt");
+        Assert.Equal(formatted, timestamp.GetProperty("formatted").GetString());
+        Assert.Equal(instant, timestamp.GetProperty("raw").GetString());
+        var value = Assert.Single(events, item => item.Type == "value").Value!;
+        Assert.Equal(value.Reference, string.Concat(events.Where(item => item.Type == "text").Select(item => item.Text)));
+    }
+
+    [Theory]
+    [InlineData("July 27, 2025", true)]
+    [InlineData("July 28, 2025", false)]
+    public async Task ASpelledOutCalendarDateBindsOnlyToTheSameDate(string answer, bool matches)
+    {
+        var model = new ScriptedClient(
+            [new(ChatRole.Assistant, [new FunctionCallContent("read", "read", null)])],
+            [new(ChatRole.Assistant, answer)]);
+        var events = new List<AiAssistantEvent>();
+
+        await Runner(model, new Sessions(new SourceTool(new(new { receivedOn = "2025-07-27" }, []))))
+            .RunAsync(Question, Capture(events), default);
+
+        var value = Assert.Single(events, item => item.Type == "value").Value!;
+        Assert.Equal(matches ? value.Reference : answer,
+            string.Concat(events.Where(item => item.Type == "text").Select(item => item.Text)));
+    }
+
+    [Theory]
+    [InlineData("July 27, 2025.", true)]
+    [InlineData("2025-07-27.", true)]
+    [InlineData("2025-07-27.png", false)]
+    public async Task SentencePunctuationDoesNotPreventBindingAnExactDate(string answer, bool matches)
+    {
+        var model = new ScriptedClient(
+            [new(ChatRole.Assistant, [new FunctionCallContent("read", "read", null)])],
+            [new(ChatRole.Assistant, answer)]);
+        var events = new List<AiAssistantEvent>();
+
+        await Runner(model, new Sessions(new SourceTool(new(new { receivedOn = "2025-07-27" }, []))))
+            .RunAsync(Question, Capture(events), default);
+
+        var value = Assert.Single(events, item => item.Type == "value").Value!;
+        Assert.Equal(matches ? value.Reference + "." : answer,
+            string.Concat(events.Where(item => item.Type == "text").Select(item => item.Text)));
+    }
+
+    [Theory]
+    [InlineData("227.50")]
+    [InlineData("The amount is 227.50.")]
+    [InlineData("The amount is 227.50, received yesterday.")]
+    [InlineData("-227.5006")]
+    [InlineData("227,50")]
+    [InlineData("$227.50")]
+    [InlineData("$227.5006")]
+    [InlineData("227.5006 USD")]
+    [InlineData("EUR 227.5006")]
+    public async Task UnsupportedNumericAnswersRetryWithoutPublishingTheDraftOrReadingAgain(string draft)
+    {
+        var reads = 0;
+        var model = new ScriptedClient(
+            [new(ChatRole.Assistant, [new FunctionCallContent("read", "read", null)])],
+            [new(ChatRole.Assistant, draft)],
+            [new(ChatRole.Assistant, "Amount: 227.5006. Currency was not supplied.")]);
+        var tool = AIFunctionFactory.Create(() => new { amount = 227.5006m, reads = ++reads }, "read");
+        var events = new List<AiAssistantEvent>();
+
+        await Runner(model, new Sessions(tool)).RunAsync(Question, Capture(events), default);
+
+        Assert.Equal(1, reads);
+        Assert.Equal(3, model.Requests.Count);
+        Assert.Empty(model.Options[2].Tools!);
+        Assert.Equal(ChatToolMode.None, model.Options[2].ToolMode);
+        Assert.Contains("numeric evidence check", model.Requests[2][0].Text);
+        Assert.Contains("227.5006", model.Requests[2][^1].Text);
+        Assert.Equal("Amount: 227.5006. Currency was not supplied.",
+            string.Concat(events.Where(item => item.Type == "text").Select(item => item.Text)));
+        Assert.Equal("done", events[^1].Type);
+    }
+
+    [Fact]
+    public async Task ASecondUnsupportedNumericAnswerFailsWithoutPublishingEitherDraft()
+    {
+        var model = new ScriptedClient(
+            [new(ChatRole.Assistant, [new FunctionCallContent("read", "read", null)])],
+            [new(ChatRole.Assistant, "$227.50")],
+            [new(ChatRole.Assistant, "$227.5006")]);
+        var tool = new SourceTool(new(new { amount = 227.5006m }, []));
+        var events = new List<AiAssistantEvent>();
+
+        var error = await Assert.ThrowsAsync<AiAssistantException>(() =>
+            Runner(model, new Sessions(tool)).RunAsync(Question, Capture(events), default));
+
+        Assert.Equal("unverified_answer", error.Code);
+        Assert.Equal(3, model.Requests.Count);
+        Assert.DoesNotContain(events, item => item.Type is "text" or "done");
+    }
+
+    [Theory]
+    [InlineData("227.5006", null, "227,5006")]
+    [InlineData("227.5006", null, "The amount is 227.5006.")]
+    [InlineData("-227.5006", null, "The amount is -227.5006.")]
+    [InlineData("-227.5006", null, "-227,5006")]
+    [InlineData("1227.5006", null, "1,227.5006")]
+    [InlineData("1227.5006", null, "1.227,5006")]
+    [InlineData("227.5006", "USD", "$227.5006")]
+    [InlineData("227.5006", "USD", "USD227.5006")]
+    [InlineData("227.5006", "USD", "227.5006USD")]
+    [InlineData("-227.5006", "USD", "-$227.5006")]
+    [InlineData("227.5006", "EUR", "227,5006 EUR")]
+    [InlineData("227.5006", null, "Rounded: 227.50 (exact: 227.5006).")]
+    [InlineData("0.338", null, "33.8%")]
+    [InlineData("0", null, "0.00")]
+    public async Task ExactFormattingAndSourceSuppliedCurrenciesDoNotNeedAnotherModelCall(
+        string source, string? currency, string answer)
+    {
+        var model = new ScriptedClient(
+            [new(ChatRole.Assistant, [new FunctionCallContent("read", "read", null)])],
+            [new(ChatRole.Assistant, answer)]);
+        var tool = new SourceTool(new(new { value = decimal.Parse(source, CultureInfo.InvariantCulture), currency }, []));
+        var events = new List<AiAssistantEvent>();
+
+        await Runner(model, new Sessions(tool)).RunAsync(Question, Capture(events), default);
+
+        Assert.Equal(2, model.Requests.Count);
+        Assert.Equal(answer, string.Concat(events.Where(item => item.Type == "text").Select(item => item.Text)));
+    }
+
+    [Theory]
+    [InlineData("Release 1.2 uses protocol 3.4.", "Release 1.2 uses protocol 3.4.")]
+    [InlineData("Release 2.3.4 is installed.", "Installed version: 2.3.4.")]
+    [InlineData("Date: 27.07.2025.", "The recorded date is 27.07.2025.")]
+    public async Task NumericChecksDoNotReinterpretVersionNumbersOrDottedDates(string source, string answer)
+    {
+        var model = new ScriptedClient(
+            [new(ChatRole.Assistant, [new FunctionCallContent("read", "read", null)])],
+            [new(ChatRole.Assistant, answer)]);
+        var tool = new SourceTool(new(new { count = 7, description = source }, []));
+        var events = new List<AiAssistantEvent>();
+
+        await Runner(model, new Sessions(tool)).RunAsync(Question, Capture(events), default);
+
+        Assert.Equal(2, model.Requests.Count);
+        Assert.Equal(answer, string.Concat(events.Where(item => item.Type == "text").Select(item => item.Text)));
+    }
+
+    [Theory]
+    [InlineData("USD227.50")]
+    [InlineData("227.50USD")]
+    [InlineData("$227.50")]
+    [InlineData("-$227.5006")]
+    [InlineData("-USD227.5006")]
+    public async Task AVerifiedCurrencyDoesNotAllowAnIncorrectAmount(string draft)
+    {
+        var model = new ScriptedClient(
+            [new(ChatRole.Assistant, [new FunctionCallContent("read", "read", null)])],
+            [new(ChatRole.Assistant, draft)],
+            [new(ChatRole.Assistant, "227.5006 USD")]);
+        var tool = new SourceTool(new(new { amount = 227.5006m, currency = "USD" }, []));
+        var events = new List<AiAssistantEvent>();
+
+        await Runner(model, new Sessions(tool)).RunAsync(Question, Capture(events), default);
+
+        Assert.Equal(3, model.Requests.Count);
+        Assert.Empty(model.Options[2].Tools!);
+        Assert.Equal("227.5006 USD", string.Concat(events.Where(item => item.Type == "text").Select(item => item.Text)));
+    }
+
+    [Fact]
+    public async Task FailedReadsAndFilterChoicesCannotEstablishAnAmountOrCurrency()
+    {
+        var model = new ScriptedClient(
+            [new(ChatRole.Assistant, [new FunctionCallContent("failed", "read", new Dictionary<string, object?> { ["id"] = 1 })])],
+            [new(ChatRole.Assistant, [new FunctionCallContent("successful", "read", new Dictionary<string, object?> { ["id"] = 2 })])],
+            [new(ChatRole.Assistant, "$227.50")],
+            [new(ChatRole.Assistant, "227.5006")]);
+        var tool = new SequenceTool(
+            new(new { amount = 227.50m, currency = "USD" }, []) { IsError = true },
+            new(new { amount = 227.5006m, filters = new { currency = "USD" }, options = new[] { "USD" } }, []));
+        var events = new List<AiAssistantEvent>();
+
+        await Runner(model, new Sessions(tool)).RunAsync(Question, Capture(events), default);
+
+        Assert.Equal(4, model.Requests.Count);
+        Assert.Equal("227.5006", string.Concat(events.Where(item => item.Type == "text").Select(item => item.Text)));
     }
 
     [Fact]
@@ -387,6 +589,25 @@ public sealed class AiAssistantRunnerTests
         var events = new List<AiAssistantEvent>();
         await Runner(model, new Sessions(new SourceTool(new(result, [])))).RunAsync(Question, Capture(events), default);
         Assert.Equal("19:19:57", string.Concat(events.Where(item => item.Type == "text").Select(item => item.Text)));
+    }
+
+    [Theory]
+    [InlineData("03:19:57 PM")]
+    [InlineData("19:19:57 UTC")]
+    [InlineData("10/18/2026 03:19:57 PM")]
+    [InlineData("October 18, 2026 at 03:19:57 PM")]
+    public async Task PartialTimestampMatchesDoNotInsertADateOrChangeTheDay(string copied)
+    {
+        var result = new { occurredAtUtc = "2026-10-17T19:19:57Z" };
+        var model = new ScriptedClient(
+            [new(ChatRole.Assistant, [new FunctionCallContent("read", "read", null)])],
+            [new(ChatRole.Assistant, copied)]);
+        var events = new List<AiAssistantEvent>();
+
+        await Runner(model, new Sessions(new SourceTool(new(result, [])))).RunAsync(
+            Question with { TimeZone = "America/New_York" }, Capture(events), default);
+
+        Assert.Equal(copied, string.Concat(events.Where(item => item.Type == "text").Select(item => item.Text)));
     }
 
     [Fact]
@@ -419,6 +640,8 @@ public sealed class AiAssistantRunnerTests
         Assert.Contains(values, item => item.Kind == "bytes" && item.Value == "723275");
         var content = model.Requests[1].Single(message => message.Role == ChatRole.Tool).Contents.OfType<FunctionResultContent>().Single();
         var data = JsonSerializer.SerializeToElement(content.Result).GetProperty("data");
+        Assert.Equal(result.items[0].text, data.GetProperty("items")[0].GetProperty("text").GetString());
+        Assert.Equal(result.items[0].fileName, data.GetProperty("items")[0].GetProperty("fileName").GetString());
         Assert.Equal(result.nextCursor.occurredAtUtc, data.GetProperty("nextCursor").GetProperty("occurredAtUtc").GetString());
         Assert.Equal(result.items[0].createdAtUtc, data.GetProperty("items")[0].GetProperty("createdAtUtc").GetProperty("raw").GetString());
         Assert.Equal("UTC", data.GetProperty("items")[0].GetProperty("createdAtUtc").GetProperty("displayTimeZone").GetString());
@@ -795,6 +1018,7 @@ public sealed class AiAssistantRunnerTests
     {
         var model = new ScriptedClient(
             [new(ChatRole.Assistant, [new TextContent("I will check."), new FunctionCallContent("call-1", "read", null)])],
+            [],
             []);
         var events = new List<AiAssistantEvent>();
 
@@ -802,8 +1026,52 @@ public sealed class AiAssistantRunnerTests
             Runner(model, new Sessions(AIFunctionFactory.Create(() => 7, "read"))).RunAsync(Question, Capture(events), default));
 
         Assert.Equal("empty_response", error.Code);
+        Assert.Equal(3, model.Requests.Count);
         Assert.DoesNotContain(events, item => item.Type == "done");
         Assert.DoesNotContain(events, item => item.Type == "text");
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData(" \n\t ")]
+    public async Task EmptyFinalAnswerRetriesOnceWithExistingEvidence(string empty)
+    {
+        var invoked = 0;
+        var model = new ScriptedClient(
+            [new(ChatRole.Assistant, [new FunctionCallContent("read", "read", null)])],
+            [new(ChatRole.Assistant, empty)],
+            [new(ChatRole.Assistant, "Seven records.")]);
+        var tool = AIFunctionFactory.Create(() => new { count = 7, reads = ++invoked }, "read");
+        var events = new List<AiAssistantEvent>();
+
+        await Runner(model, new Sessions(tool), new() { MaxToolCalls = 1 })
+            .RunAsync(Question, Capture(events), default);
+
+        Assert.Equal(1, invoked);
+        Assert.Equal(3, model.Requests.Count);
+        Assert.Contains("count", model.Requests[2][^1].Text);
+        Assert.Empty(model.Options[2].Tools!);
+        Assert.Equal("Seven records.", string.Concat(events.Where(item => item.Type == "text").Select(item => item.Text)));
+        Assert.Equal("done", events[^1].Type);
+    }
+
+    [Fact]
+    public async Task EmptyInitialAnswerRetriesBeforeReadingApplicationData()
+    {
+        var invoked = 0;
+        var model = new ScriptedClient(
+            [],
+            [new(ChatRole.Assistant, [new FunctionCallContent("read", "read", null)])],
+            [new(ChatRole.Assistant, "Seven records.")]);
+        var tool = AIFunctionFactory.Create(() => new { count = 7, reads = ++invoked }, "read");
+        var events = new List<AiAssistantEvent>();
+
+        await Runner(model, new Sessions(tool)).RunAsync(Question, Capture(events), default);
+
+        Assert.Equal(1, invoked);
+        Assert.NotEmpty(model.Options[1].Tools!);
+        Assert.Equal("Seven records.", string.Concat(events.Where(item => item.Type == "text").Select(item => item.Text)));
+        Assert.Equal("done", events[^1].Type);
     }
 
     [Fact]

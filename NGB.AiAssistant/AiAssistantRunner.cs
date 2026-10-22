@@ -30,12 +30,12 @@ public sealed class AiAssistantRunner(
         retains the original measure, population and output format. "Decide yourself" delegates the
         pending choice, not a new search. Preserve the task through reads until explicitly replaced.
         Follow-ups may narrow a result, request its components or ask for a link.
-        Resolve "this" or "current" against the selected record's actual type. A direct reference field
-        may identify the requested subject. A shared parent, address or party does not: do not search
-        sibling records to guess which one the user meant, even if the search returns only one match.
-        If the requested type differs and no direct reference identifies it, briefly name the current
-        record's type and ask which record the user means, by its business name or number, never an internal ID.
-        Do not search generic entity labels or use an unfiltered list to guess which record "this" refers to.
+        Resolve "this" or "current" by reading the selected record and its direct references first.
+        Use a direct reference to the requested subject; a different page type alone is not ambiguity.
+        A shared parent, address or party cannot identify a sibling, even if only one match exists.
+        Without a direct reference, name the current type and ask which subject of the requested
+        type the user means, by name or number. Preserve their requested type and measure; do not
+        substitute an unrelated account or document. Never guess through searches or unfiltered lists.
         For example, "Has this shipment arrived?" on an invoice with only a customer reference must
         end with "This is an invoice. Which shipment do you mean?", not a search for that customer's shipments.
         A question about a selected report row needs that row and the report's criteria. An editor's
@@ -84,10 +84,10 @@ public sealed class AiAssistantRunner(
           An explicitly requested small sample may be read without filters.
           When returned fields answer the question, present them. Read individual records only for requested
           information missing from the list, not to recheck that the server applied its declared filters.
-        - Business status: use the selected type's declared fields, statuses and authorized results.
-          Establish the intended subject first; a type mismatch needs clarification, not relationship exploration.
-          Once identified, follow its related records to establish the outcome. Do not assume every type
-          has the same lifecycle or requires a separate document to establish an outcome.
+        - Business status: identify the subject before reading authorized related records; clarify type mismatches.
+          Use actual fields and outcomes, not an assumed lifecycle or requirement for a separate completion.
+          A closed process or "Completion" document does not prove success. If the outcome says work
+          could not be completed, answer that it was not completed, even when the process is closed.
         Correct invalid inputs from the schema or metadata. Do not repeat an unchanged failed call.
         An invalid call does not establish that its declared capability is unavailable.
         To explain a report category, expand the returned row's childrenPath using request.groupPath,
@@ -294,9 +294,9 @@ public sealed class AiAssistantRunner(
                 + JsonSerializer.Serialize(request.Context, Json)
                 + (request.Context.Kind == NgbSourceKinds.Report
                     ? ""
-                    : "\nReferences to 'this record' identify exactly this record. If its actual type differs "
-                        + "from the requested type and it has no direct reference to the intended record, ask "
-                        + "which record the user means. Do not search for a replacement by entity category or shared parent. "
+                    : "\nRead this record and its direct references to resolve the requested subject. "
+                        + "If neither identifies it, ask which subject of the requested type the user means. "
+                        + "Do not guess through searches or a shared parent. "
                         + "This is record context, not a selected report row. It supplies no report date or row values. "
                         + "For a question about a report row's calculated value, ask for the report and row; "
                         + "do not infer them from this record or offer an assumed calculation.")));
@@ -317,11 +317,14 @@ public sealed class AiAssistantRunner(
         var finalizing = false;
         var recoveredIncompleteResponse = false;
         var retriedUnterminatedResponse = false;
+        var retriedEmptyResponse = false;
+        var retriedNumericAnswer = false;
         var failedCalls = new HashSet<string>(StringComparer.Ordinal);
         var repeatedCalls = 0;
         var sources = new Dictionary<string, AiAssistantSource>(StringComparer.Ordinal);
         var cache = new Dictionary<string, object?>(StringComparer.Ordinal);
         var values = new AiAssistantValues(zone);
+        var numericEvidence = new AiAssistantNumericEvidence();
         var publishedValues = new HashSet<string>(StringComparer.Ordinal);
 
         while (true)
@@ -418,7 +421,6 @@ public sealed class AiAssistantRunner(
                 throw new AiAssistantException("incomplete_response", "The model stopped before completing the answer. Please retry.");
             }
 
-            messages.AddRange(response.Messages);
             var requested = response.Messages
                 .SelectMany(message => message.Contents)
                 .OfType<FunctionCallContent>()
@@ -426,19 +428,45 @@ public sealed class AiAssistantRunner(
 
             if (requested.Length == 0)
             {
-                if (responseCharacters == 0)
+                var answer = string.Concat(updates
+                    .SelectMany(update => update.Contents)
+                    .OfType<TextContent>()
+                    .Select(text => text.Text));
+
+                if (string.IsNullOrWhiteSpace(answer))
+                {
+                    if (!retriedEmptyResponse)
+                    {
+                        retriedEmptyResponse = true;
+                        logger?.LogInformation("Assistant returned no answer; retrying once from retained evidence.");
+                        continue;
+                    }
+
                     throw new AiAssistantException("empty_response", "The model returned no answer. Please try again.");
+                }
+
+                var bound = values.Bind(answer);
+                if (numericEvidence.Correction(bound) is { } correction)
+                {
+                    if (retriedNumericAnswer)
+                        throw new AiAssistantException("unverified_answer", "The answer's numbers or currency could not be verified. Please try again.");
+
+                    retriedNumericAnswer = true;
+                    finalizing = true;
+                    messages[0] = new ChatMessage(ChatRole.System, messages[0].Text + "\n" + correction);
+                    logger?.LogInformation("Assistant numeric evidence check failed; retrying once without further reads.");
+
+                    continue;
+                }
 
                 // A tool round can contain planning text. Publish only the final answer, after
                 // confirming that this response does not request another application read.
-                var answer = string.Concat(updates.SelectMany(update => update.Contents).OfType<TextContent>().Select(text => text.Text));
                 if (session is IAiAssistantSourceResolver resolver)
                 {
                     var candidates = request.Messages
                         .SelectMany(message => message.Sources ?? [])
                         .DistinctBy(source => source.Reference)
-                        .Where(source => !sources.ContainsKey(source.Reference)
-                            && answer.Contains(source.Reference, StringComparison.Ordinal));
+                        .Where(source => !sources.ContainsKey(source.Reference) && answer.Contains(source.Reference, StringComparison.Ordinal));
 
                     foreach (var candidate in candidates)
                     {
@@ -458,7 +486,6 @@ public sealed class AiAssistantRunner(
                     }
                 }
 
-                var bound = values.Bind(answer);
                 if (bound.Length > limits.MaxOutputCharacters)
                     throw new AiAssistantException("response_limit", "The answer exceeded the configured limit. Narrow the question.");
 
@@ -476,6 +503,8 @@ public sealed class AiAssistantRunner(
 
                 return;
             }
+
+            messages.AddRange(response.Messages);
 
             if (finalizing)
                 throw new AiAssistantException("tool_limit", "The assistant could not establish the requested result from the available reads.");
@@ -603,7 +632,10 @@ public sealed class AiAssistantRunner(
                 results.Add(new FunctionResultContent(call.CallId, bounded));
 
                 if (supplied && result is not AiAssistantToolResult { IsError: true })
+                {
+                    numericEvidence.Add(result is AiAssistantToolResult successful ? successful.Data : result);
                     cache.Add(key, bounded);
+                }
             }
 
             messages.Add(new(ChatRole.Tool, results));

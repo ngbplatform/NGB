@@ -1,5 +1,6 @@
 using System.Net.Http.Json;
 using System.Text.Json;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using NGB.Application.Abstractions.Services;
@@ -7,12 +8,64 @@ using NGB.Contracts.Common;
 using NGB.Contracts.Metadata;
 using NGB.Contracts.Reporting;
 using NGB.Contracts.Services;
+using NGB.Mcp;
 using Xunit;
 
 namespace NGB.AiAssistant.AspNetCore.IntegrationTests;
 
 public sealed partial class AssistantHttpTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task NumericEvidenceIsCheckedBeforePublishingTheHttpAnswer(bool repeatedError)
+    {
+        const string type = "sample.payment";
+        var id = Guid.NewGuid();
+        var documents = new Mock<IAuthorizedDocumentReadService>(MockBehavior.Strict);
+        documents.Setup(value => value.GetTypeMetadataAsync(type, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DocumentTypeMetadataDto(type, "Payment", EntityKind.Document));
+        documents.Setup(value => value.GetByIdAsync(type, id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DocumentDto(id, "Payment PAY-0042", new RecordPayload(
+                new Dictionary<string, JsonElement> { ["amount"] = JsonSerializer.SerializeToElement(227.5006m) }),
+                DocumentStatus.Posted, false));
+        var model = new WorkflowModel((round, _) => round switch
+        {
+            0 => ToolCall("payment", McpToolNames.GetRecord, new()
+            {
+                ["kind"] = "document", ["typeCode"] = type, ["id"] = id
+            }),
+            1 => Answer("The amount is $227.50."),
+            _ => Answer(repeatedError ? "The amount is $227.5006." : "The amount is 227.5006.")
+        });
+        await using var host = await Host.StartAsync(configure: services =>
+        {
+            AddInvoiceReads(services, documents.Object);
+            services.AddSingleton<IChatClient>(model);
+        });
+        using var client = host.Client("alex");
+
+        using var response = await client.PostAsJsonAsync("/api/ai-assistant/chat", new AiAssistantRequest(
+            [new("user", "What is this payment's amount?")], new("document", type, id)));
+        var events = ReadEvents(await response.Content.ReadAsStringAsync());
+        var answer = string.Concat(events.Where(item => item.Type == "text").Select(item => item.Text));
+
+        Assert.DoesNotContain('$', answer);
+        if (repeatedError)
+        {
+            Assert.Empty(answer);
+            Assert.Equal("unverified_answer", Assert.Single(events, item => item.Type == "error").Code);
+            Assert.DoesNotContain(events, item => item.Type == "done");
+        }
+        else
+        {
+            Assert.Equal("The amount is 227.5006.", answer);
+            Assert.DoesNotContain(events, item => item.Type == "error");
+            Assert.Contains(events, item => item.Type == "done");
+        }
+        documents.Verify(value => value.GetByIdAsync(type, id, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
     [NativeOllamaFact]
     public Task NativeOllamaKeepsTheRequestedMeasureAfterAQuarterClarification()
         => VerifyClarifiedTotalAsync(delegateChoice: false);
@@ -276,6 +329,48 @@ public sealed partial class AssistantHttpTests
         Assert.True(events.All(item => item.Type != "error"), trace);
         Assert.True(answer.Contains("INV-0014", StringComparison.Ordinal), trace);
         Assert.True(answer.Replace(",", "", StringComparison.Ordinal).Contains("1993", StringComparison.Ordinal), trace);
+        Assert.DoesNotContain("2795", answer.Replace(",", "", StringComparison.Ordinal));
+        documents.Verify(value => value.GetByIdAsync(type, currentId, It.IsAny<CancellationToken>()), Times.Once);
+        documents.Verify(value => value.GetByIdAsync(type, oldId, It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [NativeOllamaFact]
+    public async Task NativeOllamaPreservesPaymentPrecisionWithoutBorrowingCurrency()
+    {
+        const string type = "pm.receivable_payment";
+        var oldId = Guid.NewGuid();
+        var currentId = Guid.NewGuid();
+        var documents = new Mock<IAuthorizedDocumentReadService>(MockBehavior.Strict);
+        documents.Setup(value => value.GetTypeMetadataAsync(type, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DocumentTypeMetadataDto(type, "Receivable Payment", EntityKind.Document));
+        documents.Setup(value => value.GetByIdAsync(type, currentId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DocumentDto(currentId, "Receivable Payment RP-2026-000012", new RecordPayload(
+                new Dictionary<string, JsonElement>
+                {
+                    ["amount"] = JsonSerializer.SerializeToElement(227.5006m),
+                    ["received_on"] = JsonSerializer.SerializeToElement("2025-07-27")
+                }),
+                DocumentStatus.Posted, false));
+        await using var host = await Host.StartAsync(mode: "ollama", configure: services => AddInvoiceReads(services, documents.Object));
+        using var client = host.Client("alex");
+        client.Timeout = TimeSpan.FromMinutes(4);
+
+        using var response = await client.PostAsJsonAsync("/api/ai-assistant/chat", new AiAssistantRequest(
+        [
+            new("user", "What are this payment's amount and received date?") { Context = new("document", type, oldId) },
+            new("assistant", "This receivable payment has an amount of $2,795.00 and was received on September 16, 2025."),
+            new("user", "And what are this payment's amount and received date?")
+        ], new("document", type, currentId)));
+        var events = ReadEvents(await response.Content.ReadAsStringAsync());
+        var answer = string.Concat(events.Where(item => item.Type == "text").Select(item => item.Text));
+        var trace = answer + "\n" + string.Join('\n', host.State.ModelInputs);
+
+        Assert.True(events.All(item => item.Type != "error"), trace);
+        Assert.True(answer.Contains("227.5006", StringComparison.Ordinal), trace);
+        var receivedOn = Assert.Single(events, item => item.Value?.Value == "2025-07-27").Value!;
+        Assert.True(answer.Contains(receivedOn.Reference, StringComparison.Ordinal), trace);
+        Assert.DoesNotContain("$", answer);
+        Assert.DoesNotContain("USD", answer);
         Assert.DoesNotContain("2795", answer.Replace(",", "", StringComparison.Ordinal));
         documents.Verify(value => value.GetByIdAsync(type, currentId, It.IsAny<CancellationToken>()), Times.Once);
         documents.Verify(value => value.GetByIdAsync(type, oldId, It.IsAny<CancellationToken>()), Times.Never);
