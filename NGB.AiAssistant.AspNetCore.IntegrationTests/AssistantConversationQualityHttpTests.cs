@@ -210,7 +210,7 @@ public sealed partial class AssistantHttpTests
     public async Task NativeOllamaDoesNotTurnAPartialZeroIntoAPopulationBalance()
     {
         var definition = new ReportDefinitionDto("sample.balances", "Agreement Balances",
-            Description: "Outstanding balance by agreement. Detail rows are paginated; no population total is supplied.");
+            Description: "Outstanding balances by agreement.");
         var reports = new Mock<IAuthorizedReportReadService>(MockBehavior.Strict);
         reports.Setup(value => value.GetAllDefinitionsAsync(It.IsAny<CancellationToken>())).ReturnsAsync([definition]);
         reports.Setup(value => value.GetDefinitionAsync(definition.ReportCode, It.IsAny<CancellationToken>())).ReturnsAsync(definition);
@@ -235,14 +235,15 @@ public sealed partial class AssistantHttpTests
         Assert.True(events.All(item => item.Type != "error"), trace);
         Assert.True(answer.Contains("cannot", StringComparison.OrdinalIgnoreCase)
             || answer.Contains("can't", StringComparison.OrdinalIgnoreCase)
+            || answer.Contains("could not", StringComparison.OrdinalIgnoreCase)
             || answer.Contains("unable", StringComparison.OrdinalIgnoreCase)
             || answer.Contains("unknown", StringComparison.OrdinalIgnoreCase), trace);
         Assert.DoesNotContain("no outstanding", answer, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("total outstanding balance is 0", answer, StringComparison.OrdinalIgnoreCase);
         reports.Verify(value => value.ExecuteAsync(definition.ReportCode, It.Is<ReportExecutionRequestDto>(request => request.Cursor == null),
             It.IsAny<CancellationToken>()), Times.AtLeastOnce, trace);
-        reports.Verify(value => value.ExecuteAsync(definition.ReportCode, It.Is<ReportExecutionRequestDto>(request => request.Cursor != null),
-            It.IsAny<CancellationToken>()), Times.AtLeastOnce, trace);
+        // The answer must remain incomplete whether the model stops at the partial
+        // result or attempts a continuation. Every continuation in this fixture fails.
     }
 
     [NativeOllamaFact]

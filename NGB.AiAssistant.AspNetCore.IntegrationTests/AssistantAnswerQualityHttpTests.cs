@@ -251,6 +251,11 @@ public sealed partial class AssistantHttpTests
             || answer.Contains("unable", StringComparison.OrdinalIgnoreCase)
             || answer.Contains("can't", StringComparison.OrdinalIgnoreCase)
             || answer.Contains("not available", StringComparison.OrdinalIgnoreCase), trace);
+        Assert.True(answer.Length < 500, trace);
+        Assert.DoesNotContain('?', answer);
+        Assert.DoesNotContain("lease_id", answer);
+        Assert.DoesNotContain("pm.receivables", answer);
+        Assert.DoesNotContain("specify", answer, StringComparison.OrdinalIgnoreCase);
         reports.Verify(value => value.GetDefinitionAsync(definition.ReportCode, It.IsAny<CancellationToken>()), Times.AtLeastOnce);
         reports.Verify(value => value.ExecuteAsync(It.IsAny<string>(), It.IsAny<ReportExecutionRequestDto>(), It.IsAny<CancellationToken>()), Times.Never);
     }

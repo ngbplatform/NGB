@@ -73,7 +73,19 @@ internal sealed class AiAssistantValues(TimeZoneInfo? timeZone = null)
         else
         {
             yield return value.Value;
-            if (value.Kind == "date")
+            if (value.Kind == "text" && EmbeddedDate.IsMatch(value.Value))
+            {
+                // Recover a copied literal whose embedded dates were formatted by the
+                // model. Bind only a complete, unambiguous match to a supplied value.
+                foreach (var format in new[] { "MM/dd/yyyy", "M/d/yyyy" })
+                {
+                    yield return EmbeddedDate.Replace(value.Value, match =>
+                        DateOnly.TryParseExact(match.Value, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date)
+                            ? date.ToString(format, CultureInfo.InvariantCulture)
+                            : match.Value);
+                }
+            }
+            else if (value.Kind == "date")
             {
                 var date = DateOnly.ParseExact(value.Value, "yyyy-MM-dd", CultureInfo.InvariantCulture);
                 yield return date.ToString("M/d/yyyy", CultureInfo.InvariantCulture);
@@ -186,6 +198,17 @@ internal sealed class AiAssistantValues(TimeZoneInfo? timeZone = null)
         // reference for missing metadata or need to calculate a human-readable size.
         if (kind == "bytes")
             return new JsonObject { ["raw"] = node.DeepClone(), ["display"] = item.Reference, ["formatted"] = FormatBytes(value) };
+
+        if (kind == "timestamp")
+        {
+            return new JsonObject
+            {
+                ["display"] = item.Reference,
+                ["displayTimeZone"] = (timeZone ?? TimeZoneInfo.Utc).Id,
+                ["displayUsage"] = "Copy display verbatim for the full date and time. Do not shorten or convert raw; use it only in tool arguments.",
+                ["raw"] = node.DeepClone()
+            };
+        }
 
         // Raw values remain available for subsequent tool arguments. The display reference
         // is resolved only from the event sent by this request, never from model content.

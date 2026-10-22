@@ -370,6 +370,11 @@ public sealed class AiAssistantRunnerTests
         var answer = string.Concat(events.Where(item => item.Type == "text").Select(item => item.Text));
         Assert.Equal(value.Reference, answer);
         Assert.Equal(result.createdAtUtc, value.Value);
+        var content = model.Requests[1].Single(message => message.Role == ChatRole.Tool)
+            .Contents.OfType<FunctionResultContent>().Single();
+        var timestamp = JsonSerializer.SerializeToElement(content.Result).GetProperty("data").GetProperty("createdAtUtc");
+        Assert.Equal("America/New_York", timestamp.GetProperty("displayTimeZone").GetString());
+        Assert.Contains("full date and time", timestamp.GetProperty("displayUsage").GetString());
     }
 
     [Fact]
@@ -416,6 +421,7 @@ public sealed class AiAssistantRunnerTests
         var data = JsonSerializer.SerializeToElement(content.Result).GetProperty("data");
         Assert.Equal(result.nextCursor.occurredAtUtc, data.GetProperty("nextCursor").GetProperty("occurredAtUtc").GetString());
         Assert.Equal(result.items[0].createdAtUtc, data.GetProperty("items")[0].GetProperty("createdAtUtc").GetProperty("raw").GetString());
+        Assert.Equal("UTC", data.GetProperty("items")[0].GetProperty("createdAtUtc").GetProperty("displayTimeZone").GetString());
         var size = data.GetProperty("items")[0].GetProperty("sizeBytes");
         Assert.Equal(723275L, size.GetProperty("raw").GetInt64());
         Assert.Equal("723,275 bytes", size.GetProperty("formatted").GetString());
@@ -452,6 +458,46 @@ public sealed class AiAssistantRunnerTests
         Assert.Equal("2026-05-10T20:43:34Z", timestamp.Value);
         var answer = string.Concat(events.Where(item => item.Type == "text").Select(item => item.Text));
         Assert.Equal(literal.Reference + "\n" + timestamp.Reference, answer);
+    }
+
+    [Theory]
+    [InlineData("Screenshot 2026-10-02 at 5.46.52 PM.png")]
+    [InlineData("Screenshot 10/02/2026 at 5.46.52 PM.png")]
+    [InlineData("Screenshot 10/2/2026 at 5.46.52 PM.png")]
+    public async Task FormattedDatesInsideCopiedFilenamesBindToTheOriginalLiteral(string copied)
+    {
+        const string filename = "Screenshot 2026-10-02 at 5.46.52 PM.png";
+        var result = new { changes = new[] { new { field = "Attachment File Name", after = filename } } };
+        var model = new ScriptedClient(
+            [new(ChatRole.Assistant, [new FunctionCallContent("read", "read", null)])],
+            [new(ChatRole.Assistant, "Attachment File Name: " + copied)]);
+        var events = new List<AiAssistantEvent>();
+
+        await Runner(model, new Sessions(new SourceTool(new(result, [])))).RunAsync(Question, Capture(events), default);
+
+        var literal = Assert.Single(events, item => item.Value?.Kind == "text").Value!;
+        Assert.Equal(filename, literal.Value);
+        Assert.Equal("Attachment File Name: " + literal.Reference,
+            string.Concat(events.Where(item => item.Type == "text").Select(item => item.Text)));
+    }
+
+    [Fact]
+    public async Task AmbiguousFormattedFilenameDoesNotBindToAnotherAttachment()
+    {
+        var result = new[]
+        {
+            new { fileName = "Export 2026-10-02.csv" },
+            new { fileName = "Export 10/02/2026.csv" }
+        };
+        var model = new ScriptedClient(
+            [new(ChatRole.Assistant, [new FunctionCallContent("read", "read", null)])],
+            [new(ChatRole.Assistant, "Export 10/02/2026.csv")]);
+        var events = new List<AiAssistantEvent>();
+
+        await Runner(model, new Sessions(new SourceTool(new(result, [])))).RunAsync(Question, Capture(events), default);
+
+        Assert.Equal("Export 10/02/2026.csv",
+            string.Concat(events.Where(item => item.Type == "text").Select(item => item.Text)));
     }
 
     [Fact]

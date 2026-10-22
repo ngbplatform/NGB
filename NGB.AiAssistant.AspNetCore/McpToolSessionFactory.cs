@@ -199,7 +199,22 @@ internal sealed class McpToolSessionFactory(
                     .Select(ReadError)
                     .FirstOrDefault(value => value is not null);
 
-                return new AiAssistantToolResult(new { error = true, content = text }, [], IsError: true)
+                var invalidInput = error?.Code == "invalid_input";
+
+                return new AiAssistantToolResult(new
+                    {
+                        error = error?.Code ?? "read_failed",
+                        message = error?.Message,
+                        content = error is null ? text : null,
+                        inputSchema = invalidInput ? tool.JsonSchema : (JsonElement?)null,
+                        recovery = invalidInput
+                            ? "The submitted arguments are invalid, not the capability. Correct the indicated path using the input schema "
+                                + "and definition, preserving the requested scope. Do not repeat the same arguments or report the operation as unsupported."
+                            : "This read failed and supplies no business evidence. Do not retry it with different paging arguments "
+                                + "or restart the same selection. Retain other successful evidence; a failed page leaves the population incomplete."
+                    },
+                    [],
+                    IsError: true)
                 {
                     ErrorCode = error?.Code
                 };

@@ -19,7 +19,8 @@ internal static class McpAssistantProjection
         + "Do not use unfiltered pages or text search to simulate the missing filter. "
         + "An explicitly requested sample or unfiltered list is different from a filtered business question. "
         + "Text search finds supplied record names or numbers. Field filters map declared codes directly "
-        + "to string values, not objects. Request includeTotal for an exact matching record count.";
+        + "to string values, not objects. Use an explicitly supplied ID in its matching field filter, "
+        + "not as the listed record's own ID or a text search. Request includeTotal for an exact matching record count.";
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
@@ -36,6 +37,7 @@ internal static class McpAssistantProjection
             McpToolNames.ExecuteReport => Report(data.Deserialize<ReportExecutionResponseDto>(Json)!, arguments),
             McpToolNames.ListMetadata => MetadataPage(data.Deserialize<MetadataPage>(Json)!),
             McpToolNames.ListReports => Reports(data.Deserialize<ReportsResult>(Json)!),
+            McpToolNames.GetRecord => Record(data),
             McpToolNames.ListRecords => Records(data, arguments),
             McpToolNames.Search => Search(data.Deserialize<SearchResult>(Json)!, arguments),
             McpToolNames.GetAuditHistory => Audit(data.Deserialize<AuditLogPageDto>(Json)!),
@@ -53,6 +55,7 @@ internal static class McpAssistantProjection
                 kind = "document",
                 typeCode = document.DocumentType,
                 name = document.DisplayName,
+                hasNumber = document.Presentation?.HasNumber,
                 fields = Fields(document.List),
                 formFields = FormFields(document.Form),
                 filters = document.List?.Filters ?? [],
@@ -112,6 +115,7 @@ internal static class McpAssistantProjection
             execution = new
             {
                 tool = McpToolNames.ExecuteReport,
+                paging = "Page controls belong inside request: request.limit is a number and request.cursor is a string. Neither is a top-level argument or a business parameter.",
                 parameters = "request.parameters maps parameter codes to strings, including boolean and numeric values. Dates use yyyy-MM-dd.",
                 filters = "request.filters maps field codes to objects containing value, not bare values. Use each lookup's declared kind and type.",
                 groupPath = "To expand a returned row, copy its childrenPath to request.groupPath. "
@@ -124,7 +128,8 @@ internal static class McpAssistantProjection
                 + "not missing user input. Do not ask the user to choose one record or substitute that record's total. "
                 + "Each lookup needs an identity of its declared kind and type. A current-page ID from another type "
                 + "is not that lookup value. If no explicit name or verified relationship identifies the requested "
-                + "record, ask the user which record they mean before executing the report."
+                + "record, ask the user which record they mean before any further reads. Do not search or list "
+                + "possible replacements, use the current record's display as a search for another type, or run reports for candidates."
         };
 
     private static object MetadataPage(MetadataPage page)
@@ -140,7 +145,9 @@ internal static class McpAssistantProjection
                     .ToDictionary(group => group.Key, group => group.Count())
                 : null,
             evidence = "Items and typeCounts describe available type definitions, not stored business records. "
-                + "They cannot establish a record count, an empty selection or a business total."
+                + "They cannot establish a record count, an empty selection or a business total. "
+                + "For a list request, read the matching type's metadata next, then map every criterion to "
+                + "its declared filters. A supplied ID belongs to its stated entity, not the type being listed."
         };
 
     private static object Reports(ReportsResult page)
@@ -164,6 +171,8 @@ internal static class McpAssistantProjection
             result.Truncated,
             result.UnavailableSources,
             evidence = "These matches establish record identities, not business measures or calculated states. "
+                + "When a supplied name or number has no match, do not substitute the current page's record "
+                + "or another search hit. Report only what this search establishes, preserving its completeness limits. "
                 + "For a business count, balance or total, use the matching identity as input to an existing report: "
                 + "discover reports with ngb_list_reports and read the selected definition. Do not enumerate these hits to calculate a total. "
                 + "For a simple count of records matching a name, use ngb_list_records with search and includeTotal=true."
@@ -176,10 +185,26 @@ internal static class McpAssistantProjection
         result["evidence"] = "A missing or null total means the exact record count is unknown. "
             + "Limit is a page bound, not a count. HasMore or a cursor establishes only that additional pages exist. "
             + "The returned rows cover this request's search and filters only; they do not establish an exhaustive result for other criteria. "
+            + "In particular, an empty direct relationship lookup does not establish that a parent has no "
+            + "records through its descendants. Include descendants only when the filter contract supports it. "
+            + "Neither an empty record list nor the absence of active records establishes a zero financial balance. "
             + "If a requested criterion has no declared filter, explain that limitation instead of presenting "
             + "matching sample rows as the requested selection. A sample is appropriate only when explicitly requested. "
             + "Use the returned fields to answer the question. Read individual records only for requested information "
             + "missing from these rows, not to verify that the server applied its declared filters.";
+
+        return result;
+    }
+
+    private static object Record(JsonElement data)
+    {
+        var result = data.Deserialize<JsonObject>(Json)!;
+        result["subject"] = "This read establishes only the returned record's identity and fields. "
+            + "If its actual type differs from the user's reference to 'this' record and no direct reference "
+            + "field identifies the requested record, stop and ask which record they mean. Do not search "
+            + "for a replacement by entity category, shared address, parent or party. A unique search hit "
+            + "would still not establish the intended subject. Use the record's display to identify it; "
+            + "only its number field establishes its own business number, not digits in a related display.";
 
         return result;
     }
@@ -192,7 +217,7 @@ internal static class McpAssistantProjection
             items = page.Items.Select(item => new
             {
                 item.AuditEventId,
-                item.OccurredAtUtc,
+                occurredAt = item.OccurredAtUtc,
                 item.Actor,
                 action = Label(item.ActionCode),
                 metadata = ReadJson(item.MetadataJson),
