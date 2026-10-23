@@ -20,7 +20,13 @@ public sealed class AiAssistantOptions
     public int MaxToolResultBytes { get; set; } = 16 * 1024;
     public int MaxToolCalls { get; set; } = 12;
     public int MaxTools { get; set; } = 40;
-    public int MaxOutputTokens { get; set; } = 2048;
+
+    /// <summary>Initial per-round token budget, capped by MaxOutputTokens. Keeps short reads and answers economical.</summary>
+    public int InitialOutputTokens { get; set; } = 2048;
+
+    /// <summary>Hard per-round token ceiling for final answers and one recovery from an exhausted initial budget.</summary>
+    public int MaxOutputTokens { get; set; } = 8 * 1024;
+
     public int MaxOutputCharacters { get; set; } = 16 * 1024;
     public int RequestTimeoutSeconds { get; set; } = 180;
     public int ConcurrentRequests { get; set; } = 4;
@@ -37,6 +43,7 @@ public sealed class AiAssistantOptions
            && MaxToolResultBytes <= MaxContextBytes
            && MaxToolCalls is > 0 and <= MaximumSupportedToolCalls
            && MaxTools is > 0 and <= MaximumSupportedTools
+           && InitialOutputTokens is > 0 and <= MaximumSupportedOutputTokens
            && MaxOutputTokens is > 0 and <= MaximumSupportedOutputTokens
            && MaxOutputCharacters is > 0 and <= MaximumSupportedContextBytes
            && RequestTimeoutSeconds is > 0 and <= MaximumSupportedTimeoutSeconds

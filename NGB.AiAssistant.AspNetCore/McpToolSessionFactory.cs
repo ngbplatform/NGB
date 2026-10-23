@@ -4,6 +4,7 @@ using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Options;
 using Microsoft.Net.Http.Headers;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
@@ -16,7 +17,8 @@ namespace NGB.AiAssistant.AspNetCore;
 internal sealed class McpToolSessionFactory(
     IHttpContextAccessor context,
     IHttpClientFactory clients,
-    IServiceProvider services)
+    IServiceProvider services,
+    IOptions<AiAssistantHttpOptions> options)
     : IAiAssistantToolSessionFactory
 {
     internal const string ClientName = "NGB.AiAssistant.Mcp";
@@ -59,7 +61,7 @@ internal sealed class McpToolSessionFactory(
             return new Session(client, tools
                 .Where(tool => tool.ProtocolTool.Annotations?.ReadOnlyHint == true
                     && tool.ProtocolTool.Meta?[NgbMcpToolMetadata.CompatibilityOnly]?.GetValue<bool>() != true)
-                .Select(tool => (AIFunction)new ReadTool(tool, knownTypes))
+                .Select(tool => (AIFunction)new ReadTool(tool, knownTypes, options.Value.ReportPageSize))
                 .ToArray());
         }
         catch
@@ -100,7 +102,10 @@ internal sealed class McpToolSessionFactory(
         }
     }
 
-    private sealed class ReadTool(McpClientTool tool, HashSet<(string Kind, string TypeCode)> knownTypes)
+    private sealed class ReadTool(
+        McpClientTool tool,
+        HashSet<(string Kind, string TypeCode)> knownTypes,
+        int reportPageSize)
         : AIFunction, IAiAssistantPagedTool
     {
         private readonly AssistantReportContinuations _continuations = new();
@@ -343,7 +348,7 @@ internal sealed class McpToolSessionFactory(
                 ["type"] = "string",
                 ["enum"] = new JsonArray("full", "totals"),
                 ["description"] = "Use totals when the question needs only existing report total/subtotal rows; "
-                    + "detail rows are omitted without calculating new totals. Omit request.limit to use a bounded 200-row page. "
+                    + "detail rows are omitted without calculating new totals. Omit request.limit to use the maximum permitted page size. "
                     + "Follow nextCursor until the requested total is returned. "
                     + "Use full (default) for entries or category breakdowns. Continuations retain this view."
             };
@@ -351,8 +356,10 @@ internal sealed class McpToolSessionFactory(
             return JsonSerializer.SerializeToElement(schema, Json);
         }
 
-        private static int DefaultReportPageSize(IDictionary<string, object?> arguments)
-            => StringArgument(arguments, "resultView") == "totals" ? 200 : 10;
+        private int DefaultReportPageSize(IDictionary<string, object?> arguments)
+            => StringArgument(arguments, "resultView") == "totals"
+                ? McpReadOptions.MaximumReportPageSize
+                : reportPageSize;
 
         private static McpReadError? ReadError(string value)
         {

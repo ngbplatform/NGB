@@ -264,6 +264,46 @@ public sealed class ProviderContractTests
         Assert.Contains(requests[1].Messages.SelectMany(message => message.Content), content => content.ToolResult?.ToolUseId == call.CallId);
     }
 
+    [Fact]
+    public async Task BedrockTransmitsBothOutputBudgetsAndMapsTruncationSeparatelyFromCompletion()
+    {
+        var runtime = new Mock<IAmazonBedrockRuntime>();
+        var budgets = new List<int?>();
+        runtime.Setup(client => client.ConverseStreamAsync(It.IsAny<ConverseStreamRequest>(), It.IsAny<CancellationToken>()))
+            .Returns((ConverseStreamRequest request, CancellationToken _) =>
+            {
+                budgets.Add(request.InferenceConfig.MaxTokens);
+                var reason = budgets.Count == 1 ? "max_tokens" : "end_turn";
+                var events = new (string, string)[]
+                {
+                    ("messageStart", "{\"role\":\"assistant\"}"),
+                    ("contentBlockDelta", "{\"contentBlockIndex\":0,\"delta\":{\"text\":\"Answer\"}}"),
+                    ("contentBlockStop", "{\"contentBlockIndex\":0}"),
+                    ("messageStop", JsonSerializer.Serialize(new { stopReason = reason }))
+                };
+                var bytes = events.SelectMany(item => BedrockEvent(item.Item1, item.Item2)).ToArray();
+                return Task.FromResult(new ConverseStreamResponse { Stream = new ConverseStreamOutput(new MemoryStream(bytes)) });
+            });
+        var services = new ServiceCollection();
+        services.AddSingleton(runtime.Object);
+        services.AddNgbBedrockChatClient(options =>
+        {
+            options.Region = "us-east-1";
+            options.Model = "contract-model";
+        });
+        await using var provider = services.BuildServiceProvider();
+        await using var scope = provider.CreateAsyncScope();
+        var client = scope.ServiceProvider.GetRequiredService<IChatClient>();
+        ChatMessage[] messages = [new(ChatRole.User, "Show the complete table.")];
+
+        var truncated = await client.GetStreamingResponseAsync(messages, new() { MaxOutputTokens = 2048 }).ToChatResponseAsync();
+        var complete = await client.GetStreamingResponseAsync(messages, new() { MaxOutputTokens = 8192 }).ToChatResponseAsync();
+
+        Assert.Equal(new int?[] { 2048, 8192 }, budgets);
+        Assert.Equal(ChatFinishReason.Length, truncated.FinishReason);
+        Assert.Equal(ChatFinishReason.Stop, complete.FinishReason);
+    }
+
     [Theory]
     [InlineData("Ollama")]
     [InlineData("OpenAI")]

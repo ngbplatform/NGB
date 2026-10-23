@@ -323,16 +323,39 @@ public sealed partial class AssistantHttpTests
     private static ChatResponseUpdate Answer(string text)
         => new(ChatRole.Assistant, text) { FinishReason = ChatFinishReason.Stop };
 
-    private sealed class WorkflowModel(Func<int, ChatMessage[], ChatResponseUpdate> next) : IChatClient
+    private sealed class WorkflowModel(Func<int, ChatMessage[], ChatResponseUpdate> next, int? requiredAnswerTokens = null) : IChatClient
     {
         private int _round;
+        private ChatResponseUpdate? _pendingAnswer;
+
+        internal List<ChatOptions> Options { get; } = [];
+        internal List<ChatMessage[]> Requests { get; } = [];
+        internal int TruncatedAnswers { get; private set; }
 
         public async IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
             IEnumerable<ChatMessage> messages, ChatOptions? options = null,
             [EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            yield return next(_round++, messages.ToArray());
+            Options.Add(options!.Clone());
+            var input = messages.ToArray();
+            Requests.Add(input);
+            var response = _pendingAnswer ?? next(_round++, input);
+            if (response.FinishReason == ChatFinishReason.Stop
+                && requiredAnswerTokens is { } required
+                && options.MaxOutputTokens < required)
+            {
+                // Emulate the provider's output ceiling; this is not a tokenizer.
+                // A recovery must preserve evidence and increase the supplied budget.
+                _pendingAnswer = response;
+                TruncatedAnswers++;
+                yield return new(ChatRole.Assistant, "Truncated report draft") { FinishReason = ChatFinishReason.Length };
+            }
+            else
+            {
+                yield return response;
+            }
+
             await Task.CompletedTask;
         }
 

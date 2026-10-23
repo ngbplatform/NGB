@@ -132,8 +132,11 @@ public sealed partial class AssistantHttpTests
         Assert.All(executions, request => Assert.Equal(200, request.Limit));
     }
 
-    [Fact]
-    public async Task AllAgingPagesRetainTheirBucketsAndExactAmountsWithinDefaultBudgets()
+    [Theory]
+    [InlineData(null, true)]
+    [InlineData(12, true)]
+    [InlineData(null, false)]
+    public async Task AllAgingPagesRetainTheirBucketsAndExactAmountsWithBoundedOutputRecovery(int? pageSize, bool allowLongAnswer)
     {
         const string code = "sample.aging";
         const int chargeCount = 40;
@@ -232,11 +235,17 @@ public sealed partial class AssistantHttpTests
             }
 
             return Answer(string.Join('\n', answer));
-        });
+        }, requiredAnswerTokens: 3000);
+        var limits = new AiAssistantOptions();
+        if (!allowLongAnswer)
+            limits.MaxOutputTokens = limits.InitialOutputTokens;
         await using var host = await Host.StartAsync(configure: services =>
         {
             AddReportReads(services, reports.Object);
             services.AddSingleton<IChatClient>(model);
+            services.Configure<AiAssistantOptions>(options => options.MaxOutputTokens = limits.MaxOutputTokens);
+            if (pageSize is { } configuredPageSize)
+                services.Configure<AiAssistantHttpOptions>(options => options.ReportPageSize = configuredPageSize);
         });
         using var client = host.Client("alex");
 
@@ -246,11 +255,33 @@ public sealed partial class AssistantHttpTests
         var events = ReadEvents(await response.Content.ReadAsStringAsync());
         var answer = string.Concat(events.Where(item => item.Type == "text").Select(item => item.Text));
 
-        Assert.DoesNotContain(events, item => item.Type == "error");
-        Assert.Contains(events, item => item.Type == "done");
-        Assert.Contains("RC-2026-000001", answer);
-        Assert.Contains("RC-2026-000040", answer);
-        Assert.Equal(5, executions.Count);
+        var expectedPageSize = pageSize ?? new AiAssistantHttpOptions().ReportPageSize;
+        Assert.Equal((int)Math.Ceiling((double)chargeCount / (expectedPageSize - 1)), executions.Count);
+        Assert.All(executions, request => Assert.Equal(expectedPageSize, request.Limit));
+        Assert.Equal(1, model.TruncatedAnswers);
+        Assert.All(model.Options, options => Assert.True(options.MaxOutputTokens <= limits.MaxOutputTokens));
+        Assert.DoesNotContain("Truncated report draft", answer);
+
+        if (allowLongAnswer)
+        {
+            Assert.DoesNotContain(events, item => item.Type == "error");
+            Assert.Contains(events, item => item.Type == "done");
+            var retainedEvidence = string.Join('\n', model.Requests[^1].Select(message => message.Text));
+            for (var index = 1; index <= chargeCount; index++)
+            {
+                Assert.Contains($"RC-2026-{index:D6}", answer);
+                Assert.Contains($"RC-2026-{index:D6}", retainedEvidence);
+            }
+
+            Assert.DoesNotContain("Truncated report draft", retainedEvidence);
+            Assert.Equal(limits.MaxOutputTokens, model.Options[^1].MaxOutputTokens);
+            Assert.Empty(model.Options[^1].Tools!);
+        }
+        else
+        {
+            Assert.Equal("response_limit", Assert.Single(events, item => item.Type == "error").Code);
+            Assert.DoesNotContain(events, item => item.Type is "text" or "done");
+        }
     }
 
     private static Mock<IAuthorizedReportReadService> PagedReportReads(ReportDefinitionDto definition)

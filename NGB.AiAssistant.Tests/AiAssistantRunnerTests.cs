@@ -7,7 +7,7 @@ using Xunit;
 
 namespace NGB.AiAssistant.Tests;
 
-public sealed class AiAssistantRunnerTests
+public sealed partial class AiAssistantRunnerTests
 {
     private static readonly AiAssistantRequest Question = new([new("user", "Show my records")]);
 

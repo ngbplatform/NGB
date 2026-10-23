@@ -12,6 +12,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using NGB.Core.Features;
+using NGB.Mcp;
 using NGB.Mcp.AspNetCore;
 using NGB.Runtime.DependencyInjection;
 using NGB.Tools.Http;
@@ -40,6 +41,7 @@ public static class DependencyInjection
 
         services.AddOptions<AiAssistantHttpOptions>()
             .Bind(configuration.GetSection(AiAssistantOptions.SectionName))
+            .Validate(options => options.ReportPageSize is > 0 and <= McpReadOptions.MaximumReportPageSize, "Invalid Assistant report page size.")
             .Validate(options => options.McpLoopbackPort is null or > 0 and <= 65535, "Invalid MCP loopback port.")
             .ValidateOnStart();
 

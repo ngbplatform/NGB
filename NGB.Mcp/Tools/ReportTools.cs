@@ -56,8 +56,8 @@ internal sealed class ExecuteReportTool(IAuthorizedReportReadService reports, IR
 
     public async Task<ReportExecutionResponseDto> ExecuteAsync(ReportReadRequest request, CancellationToken ct)
     {
-        if (request.Request.Limit is < 1 or > 200)
-            throw new McpReadException("invalid_input", "Report page size must be between 1 and 200.");
+        if (request.Request.Limit is < 1 or > McpReadOptions.MaximumReportPageSize)
+            throw new McpReadException("invalid_input", $"Report page size must be between 1 and {McpReadOptions.MaximumReportPageSize}.");
 
         using var lease = await budget.AcquireAsync(ct);
 

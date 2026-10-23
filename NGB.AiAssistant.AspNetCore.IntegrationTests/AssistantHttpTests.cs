@@ -243,6 +243,9 @@ public sealed partial class AssistantHttpTests(ITestOutputHelper output)
     [Theory]
     [InlineData("AiAssistant:MaxToolCalls", "0")]
     [InlineData("AiAssistant:McpLoopbackPort", "65536")]
+    [InlineData("AiAssistant:InitialOutputTokens", "0")]
+    [InlineData("AiAssistant:ReportPageSize", "0")]
+    [InlineData("AiAssistant:ReportPageSize", "201")]
     public async Task InvalidLimitsFailStartup(string key, string value)
     {
         await Assert.ThrowsAnyAsync<Microsoft.Extensions.Options.OptionsValidationException>(() =>

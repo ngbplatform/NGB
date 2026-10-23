@@ -328,7 +328,7 @@ public sealed class AiAssistantRunner(
         var chatOptions = new ChatOptions
         {
             Tools = session.Tools.Cast<AITool>().ToList(),
-            MaxOutputTokens = limits.MaxOutputTokens,
+            MaxOutputTokens = Math.Min(limits.InitialOutputTokens, limits.MaxOutputTokens),
             AllowMultipleToolCalls = false,
             AllowBackgroundResponses = false
         };
@@ -369,6 +369,7 @@ public sealed class AiAssistantRunner(
             {
                 roundOptions.Tools = [];
                 roundOptions.ToolMode = ChatToolMode.None;
+                roundOptions.MaxOutputTokens = limits.MaxOutputTokens;
                 const string finalInstructions = "Finish now using only the successful evidence still present. "
                     + "No further reads are available for this turn. If the requested result is not established, "
                     + "use at most two sentences: name the requested result and period that could not be determined, "
@@ -386,13 +387,16 @@ public sealed class AiAssistantRunner(
             }
 
             logger?.LogInformation(
-                "Assistant round {Round}: {ContextBytes} context bytes, {ToolCalls} reads, finalizing {Finalizing}.",
+                "Assistant round {Round}: {ContextBytes} context bytes, {ToolCalls} reads, finalizing {Finalizing}, output budget {OutputTokens} tokens.",
                 ++rounds,
                 AiAssistantContextBudget.Measure(roundMessages),
                 calls,
-                finalizing);
+                finalizing,
+                roundOptions.MaxOutputTokens);
 
             await publish(new("status", "Preparing an answer…"), ct);
+
+            ct.ThrowIfCancellationRequested();
 
             var updates = new List<ChatResponseUpdate>();
             var modelStarted = Stopwatch.GetTimestamp();
@@ -437,23 +441,39 @@ public sealed class AiAssistantRunner(
                 continue;
             }
 
-            if (response.FinishReason == ChatFinishReason.Length && !recoveredIncompleteResponse)
+            if (response.FinishReason == ChatFinishReason.Length)
             {
+                var canDisableReasoning = roundOptions.Reasoning?.Effort != ReasoningEffort.None
+                    && response.Messages.SelectMany(message => message.Contents).OfType<TextReasoningContent>().Any();
+
+                if (recoveredIncompleteResponse
+                    || roundOptions.MaxOutputTokens >= limits.MaxOutputTokens && !canDisableReasoning)
+                {
+                    throw new AiAssistantException("response_limit",
+                        "The complete answer exceeds the configured output limit. Ask for fewer entries or columns.");
+                }
+
                 recoveredIncompleteResponse = true;
                 finalizing = true;
-                if (response.Messages.SelectMany(message => message.Contents).OfType<TextReasoningContent>().Any())
+                if (canDisableReasoning)
                 {
                     // Keep the normal reasoning mode for reads. Recovery has only the
                     // retained evidence and must not repeat the exhausted thinking loop.
                     chatOptions.Reasoning = new ReasoningOptions { Effort = ReasoningEffort.None };
                 }
 
-                logger?.LogInformation("Assistant response reached the output limit; retrying a concise final answer from retained evidence.");
+                // Discard the truncated draft, including any incomplete calls. Regenerate
+                // once from retained evidence; never exceed the configured hard ceiling.
+                logger?.LogInformation(
+                    "Assistant response reached {OutputTokens} output tokens; recovering once with a {RecoveryTokens}-token ceiling and reasoning disabled {ReasoningDisabled}.",
+                    roundOptions.MaxOutputTokens,
+                    limits.MaxOutputTokens,
+                    canDisableReasoning);
+
                 continue;
             }
 
             if (response.FinishReason is null
-                || response.FinishReason == ChatFinishReason.Length
                 || response.FinishReason == ChatFinishReason.ContentFilter)
             {
                 throw new AiAssistantException("incomplete_response", "The model stopped before completing the answer. Please retry.");

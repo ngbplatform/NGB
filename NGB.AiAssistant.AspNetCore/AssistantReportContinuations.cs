@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using NGB.Mcp;
 
 namespace NGB.AiAssistant.AspNetCore;
 
@@ -50,7 +51,7 @@ internal sealed class AssistantReportContinuations
             var retainedLimit = limit.DeepClone();
             if (limit is JsonValue proposedLimit
                 && proposedLimit.TryGetValue<int>(out var size)
-                && size is > 0 and <= 200
+                && size is > 0 and <= McpReadOptions.MaximumReportPageSize
                 && original["limit"] is JsonValue savedLimit
                 && savedLimit.TryGetValue<int>(out var previousSize))
             {

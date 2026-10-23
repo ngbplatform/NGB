@@ -14,6 +14,9 @@ public sealed class McpReadOptions
     /// </summary>
     public const int MaximumSupportedJsonDepth = 32;
 
+    /// <summary>Maximum report page requested through MCP. Existing application paging limits still apply.</summary>
+    public const int MaximumReportPageSize = 200;
+
     /// <summary>Positive byte budget for a successful tool result, including structured content and JSON text.</summary>
     public int MaxResponseBytes { get; set; } = 1024 * 1024;
 
