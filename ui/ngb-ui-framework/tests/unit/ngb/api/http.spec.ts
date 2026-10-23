@@ -86,6 +86,18 @@ describe('api http', () => {
     expect(fetchMock).toHaveBeenCalledOnce()
   })
 
+  it.each(['rejected', 'missing'] as const)('preserves unauthorized errors when stream token refresh is %s', async outcome => {
+    if (outcome === 'rejected') authMocks.forceRefreshAccessToken.mockRejectedValueOnce(new Error('Session expired'))
+    else authMocks.forceRefreshAccessToken.mockResolvedValueOnce(null)
+    fetchMock.mockResolvedValueOnce(jsonResponse({ title: 'Sign in required' }, 401))
+
+    await expect(httpPostStream('/api/events', {})).rejects.toMatchObject({
+      name: 'ApiError', status: 401, message: 'Sign in required',
+    })
+    expect(fetchMock).toHaveBeenCalledOnce()
+    expect(authMocks.forceRefreshAccessToken).toHaveBeenCalledOnce()
+  })
+
   it('rejects an absent stream body with a transport error', async () => {
     fetchMock.mockResolvedValue(new Response(null, { headers: { 'content-type': 'text/event-stream' } }))
 

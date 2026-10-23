@@ -58,9 +58,29 @@ it('formats timestamps in the user time zone without shifting date-only values',
 })
 
 it('preserves invalid dates and timestamps without a known offset', () => {
-  const result = renderAssistantMarkdown('2026-02-30; 2026-05-10T20:43:34', [], 'UTC')
+  const result = renderAssistantMarkdown('2026-02-30; 2026-05-10T20:43:34; 2026-05-10T25:00:00Z', [], 'UTC')
   expect(result).toContain('2026-02-30')
   expect(result).toContain('2026-05-10T20:43:34')
+  expect(result).toContain('2026-05-10T25:00:00Z')
+})
+
+it('does not interpret invalid byte sizes as numbers', () => {
+  const reference = '{{ngb-value:abcdef012345-0}}'
+  const result = renderAssistantMarkdown(reference, [], 'UTC', [{ reference, kind: 'bytes', value: '-42' }])
+
+  expect(result).toContain('Size unavailable')
+  expect(result).not.toContain('-42')
+})
+
+it('rejects record sources without identifiers and malformed URLs', () => {
+  vi.stubGlobal('window', { location: { origin: 'https://app.example' } })
+  const source = { kind: 'catalog' as const, typeCode: 'example.customer', title: 'Missing record' }
+
+  expect(assistantSourcePath(source)).toBeNull()
+  const result = renderAssistantMarkdown('[record](ngb-source:catalog:example.customer) `https://[`', [source])
+  expect(result).not.toContain('href=')
+  expect(result).not.toContain('https://')
+  expect(result).toContain('Link unavailable')
 })
 
 it('renders Markdown tables in a keyboard-accessible scroll region and does not append discovered sources', () => {

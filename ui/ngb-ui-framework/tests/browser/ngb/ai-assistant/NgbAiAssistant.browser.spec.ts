@@ -9,6 +9,7 @@ import { getAssistantSettings, streamAssistant } from '../../../../src/ngb/ai-as
 import { getFeatures } from '../../../../src/ngb/features/api'
 import { configureNgbNavigation, NgbSourceKinds } from '../../../../src/navigation'
 import { configureNgbEditor, type EditorRoutingConfig } from '../../../../src/index'
+import { useFeatureStore } from '../../../../src/ngb/features/useFeatureStore'
 
 vi.mock('../../../../src/ngb/ai-assistant/api', () => ({ getAssistantSettings: vi.fn(), streamAssistant: vi.fn() }))
 vi.mock('../../../../src/ngb/features/api', () => ({ getFeatures: vi.fn() }))
@@ -57,15 +58,28 @@ async function mountShell(initialPath = '/catalogs/pm.property') {
   })
   await router.push(initialPath)
   await router.isReady()
+  const pinia = createPinia()
   const view = await render(NgbSiteShell, {
     props: { moduleTitle: 'Property Management', productTitle: 'NGB', pageTitle: 'Properties & Units', pinned: [], recent: [], nodes: [], selectedId: null, onNavigate: navigate },
     slots: { default: '<button type="button">Application action</button>' },
-    global: { plugins: [createPinia(), router] },
+    global: { plugins: [pinia, router] },
   })
   await view.getByRole('button', { name: 'AI Assistant', exact: true }).click()
   await expect.element(view.getByRole('textbox', { name: 'Ask a question' })).toBeVisible()
-  return { view, navigate, router }
+  return { view, navigate, router, pinia }
 }
+
+test('closes the assistant and clears its conversation when the deployment feature is disabled', async () => {
+  await page.viewport(1440, 900)
+  const { view, pinia } = await mountShell()
+  await view.getByRole('button', { name: 'What reports can I run?' }).click()
+  await expect.element(view.getByText('Seven', { exact: true })).toBeVisible()
+
+  useFeatureStore(pinia).current = []
+
+  await expect.element(view.getByRole('textbox', { name: 'Ask a question' })).not.toBeInTheDocument()
+  await expect.element(view.getByRole('button', { name: 'AI Assistant', exact: true })).not.toBeInTheDocument()
+})
 
 test('desktop panel preserves application interaction, streams safe Markdown and follows real sources', async () => {
   vi.mocked(streamAssistant).mockImplementation(async (_, event) => {

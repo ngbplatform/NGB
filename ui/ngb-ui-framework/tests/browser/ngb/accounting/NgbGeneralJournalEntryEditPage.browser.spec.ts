@@ -607,6 +607,24 @@ test('loads an existing entry, hydrates lookup labels, and wires share, audit, b
   expect(gjeEditMocks.navigateBack.mock.calls[0]?.[2]).toBe('/accounting/general-journal-entries')
 })
 
+test('opens a linked audit view and removes only its query flag when closed', async () => {
+  gjeEditMocks.getEntry.mockResolvedValueOnce(clone(makeDetails({ id: 'gje-audit', number: 'JE-AUDIT' })))
+  const { router, view } = await renderPage('/accounting/general-journal-entries/gje-audit?view=audit&back=retained')
+
+  await expect.element(view.getByText('Audit entity: General Journal Entry JE-AUDIT')).toBeVisible()
+  await view.getByRole('button', { name: 'Audit close' }).click()
+
+  await vi.waitFor(() => expect(router.currentRoute.value.query).toEqual({ back: 'retained' }))
+  await expect.element(view.getByText('Audit entity: General Journal Entry JE-AUDIT')).not.toBeInTheDocument()
+})
+
+test('does not open an audit view for an unsaved journal entry', async () => {
+  const { view } = await renderPage('/accounting/general-journal-entries/new?view=audit')
+
+  await expect.element(view.getByRole('button', { name: 'Audit close' })).not.toBeInTheDocument()
+  expect(gjeEditMocks.getEntry).not.toHaveBeenCalled()
+})
+
 test('saves draft changes before submit, then advances through approve and post workflow states', async () => {
   await page.viewport(1280, 900)
 

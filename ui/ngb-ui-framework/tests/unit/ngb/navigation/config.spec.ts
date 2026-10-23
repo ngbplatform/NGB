@@ -66,6 +66,8 @@ describe('semantic page context', () => {
     location('/catalogs/example.customer/00000000-0000-0000-0000-000000000000'),
     location('/accounting/general-journal-entries/new'),
     location(`/reports/example.summary/${id}`),
+    location(`/catalogs/example.customer/${id}/effects`),
+    location(`/reports/example.summary/${id}/print`),
     location('/catalogs/example.customer', { panel: 'new', id }),
     location('/catalogs/example.customer', { panel: 'edit', id: 'not-a-record-id' }),
     location('/catalogs/example.customer', { panel: 'edit' }),
@@ -108,6 +110,15 @@ describe('semantic page context', () => {
 })
 
 describe('shared record routing', () => {
+  it.each([
+    ['catalog.editor', {}],
+    ['catalog.editor', { resourceCode: 'example.customer' }],
+    ['report.view', {}],
+    ['generalJournalEntry.editor', {}],
+  ])('does not invent a target for incomplete %s context', (code, context) => {
+    expect(resolveNgbNavigationTarget({ code }, context)).toBeNull()
+  })
+
   it('copies only selected report criteria and rejects criteria for a different report', () => {
     const request = { parameters: { as_of_utc: '2026-10-17' }, filters: { building_id: { value: id } }, limit: 500 }
     const ctx = encodeReportRouteContextParam({ reportCode: 'example.summary', request })!
