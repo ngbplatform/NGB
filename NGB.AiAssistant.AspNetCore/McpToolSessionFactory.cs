@@ -105,16 +105,31 @@ internal sealed class McpToolSessionFactory(
     {
         private readonly AssistantReportContinuations _continuations = new();
         private readonly HashSet<(string? Kind, string? TypeCode, string Cursor)> _unfilteredCursors = new();
+        private readonly JsonElement _schema = CreateSchema(tool);
 
         public override string Name => tool.Name;
         public override string Description => tool.Description;
-        public override JsonElement JsonSchema => tool.JsonSchema;
+        public override JsonElement JsonSchema => _schema;
 
         protected override async ValueTask<object?> InvokeCoreAsync(
             AIFunctionArguments arguments,
             CancellationToken cancellationToken)
         {
             var requested = new Dictionary<string, object?>(arguments, StringComparer.Ordinal);
+
+            if (tool.Name == McpToolNames.ExecuteReport
+                && requested.ContainsKey("resultView")
+                && StringArgument(requested, "resultView") is not ("full" or "totals"))
+            {
+                return new AiAssistantToolResult(new
+                    {
+                        error = "invalid_input",
+                        message = "resultView must be full or totals. It selects returned evidence, not report calculations."
+                    },
+                    [],
+                    IsError: true);
+            }
+
             if (tool.Name == McpToolNames.ExecuteReport && !_continuations.TryResolve(requested, out requested))
             {
                 return new AiAssistantToolResult(new
@@ -188,11 +203,17 @@ internal sealed class McpToolSessionFactory(
             {
                 // Preserve an explicitly requested page. The MCP service validates its
                 // bound; the runner reduces it only if the actual result is too large.
-                report["limit"] ??= 10;
+                report["limit"] ??= DefaultReportPageSize(requested);
                 requested["request"] = report;
             }
 
-            var result = await tool.CallAsync(requested, cancellationToken: cancellationToken);
+            // resultView belongs only to the assistant's evidence projection. The
+            // authorized report service receives its existing request unchanged.
+            var applicationArguments = new Dictionary<string, object?>(requested, StringComparer.Ordinal);
+            if (tool.Name == McpToolNames.ExecuteReport)
+                applicationArguments.Remove("resultView");
+
+            var result = await tool.CallAsync(applicationArguments, cancellationToken: cancellationToken);
             var text = result.Content.OfType<TextContentBlock>().Select(с => с.Text).ToArray();
             
             if (result.IsError == true)
@@ -296,7 +317,8 @@ internal sealed class McpToolSessionFactory(
                 && arguments.TryGetValue("request", out var value)
                 && JsonSerializer.SerializeToNode(value, Json) is JsonObject report)
             {
-                var limit = JsonSerializer.SerializeToElement(selection["limit"] ?? JsonValue.Create(10), Json);
+                var limit = JsonSerializer.SerializeToElement(
+                    selection["limit"] ?? JsonValue.Create(DefaultReportPageSize(requested)), Json);
                 if (limit.ValueKind != JsonValueKind.Number || !limit.TryGetInt32(out var size) || size <= 1)
                     return false;
 
@@ -309,6 +331,28 @@ internal sealed class McpToolSessionFactory(
 
             return false;
         }
+
+        private static JsonElement CreateSchema(McpClientTool tool)
+        {
+            if (tool.Name != McpToolNames.ExecuteReport)
+                return tool.JsonSchema;
+
+            var schema = JsonNode.Parse(tool.JsonSchema.GetRawText())!.AsObject();
+            schema["properties"]!["resultView"] = new JsonObject
+            {
+                ["type"] = "string",
+                ["enum"] = new JsonArray("full", "totals"),
+                ["description"] = "Use totals when the question needs only existing report total/subtotal rows; "
+                    + "detail rows are omitted without calculating new totals. Omit request.limit to use a bounded 200-row page. "
+                    + "Follow nextCursor until the requested total is returned. "
+                    + "Use full (default) for entries or category breakdowns. Continuations retain this view."
+            };
+
+            return JsonSerializer.SerializeToElement(schema, Json);
+        }
+
+        private static int DefaultReportPageSize(IDictionary<string, object?> arguments)
+            => StringArgument(arguments, "resultView") == "totals" ? 200 : 10;
 
         private static McpReadError? ReadError(string value)
         {

@@ -118,6 +118,9 @@ internal static class McpAssistantProjection
             execution = new
             {
                 tool = McpToolNames.ExecuteReport,
+                resultView = "For overall totals use resultView=totals and omit request.limit. This returns existing total rows only, "
+                    + "with bounded pages. For entries or category breakdowns use full and read all required pages. "
+                    + "Present the returned category assignments and amounts; do not invent category subtotals absent from the report.",
                 paging = "Page controls belong inside request: request.limit is a number and request.cursor is a string. Neither is a top-level argument or a business parameter.",
                 parameters = "request.parameters maps parameter codes to strings, including boolean and numeric values. Dates use yyyy-MM-dd.",
                 filters = "request.filters maps field codes to objects containing value, not bare values. Use each lookup's declared kind and type.",
@@ -282,7 +285,15 @@ internal static class McpAssistantProjection
     }
 
     private static object Report(ReportExecutionResponseDto report, IDictionary<string, object?> arguments)
-        => new
+    {
+        var totalsOnly = arguments.TryGetValue("resultView", out var view)
+            && JsonSerializer.SerializeToElement(view, Json).ValueEquals("totals");
+
+        var rows = totalsOnly
+            ? report.Sheet.Rows.Where(row => row.RowKind is ReportRowKind.Total or ReportRowKind.Subtotal).ToArray()
+            : report.Sheet.Rows;
+
+        return new
         {
             criteria = arguments,
             report.Offset,
@@ -293,40 +304,56 @@ internal static class McpAssistantProjection
             evidence = "Rows and totals apply only to the criteria of this execution. Empty rows do not "
                 + "by themselves establish a zero balance; use an explicit measure or a definition that "
                 + "establishes that meaning. Partial detail rows cannot establish a complete aggregate. "
-                + "A total for one related record does not establish a total for its parent or all records.",
+                + "A total for one related record does not establish a total for its parent or all records. "
+                + "When hasMore is true, continue with nextCursor if the requested rows or measure are still missing. "
+                + "A report may return its grand total only on the last page. Missing totals on an earlier page do not mean they are unsupported.",
+            resultView = totalsOnly ? "totals" : "full",
+            omittedRows = totalsOnly ? report.Sheet.Rows.Count - rows.Count : (int?)null,
+            projection = totalsOnly
+                ? "Only existing total/subtotal rows are shown. Other rows were omitted, not absent. "
+                    + "Paging describes the complete application report. No totals were calculated by the assistant adapter."
+                : null,
             report.Sheet.Meta?.Title,
             report.Sheet.Meta?.Subtitle,
             report.Sheet.Meta?.IsPivot,
             report.Sheet.Meta?.HasColumnGroups,
             sheetDiagnostics = report.Sheet.Meta?.Diagnostics,
             columns = report.Sheet.Columns.Select(column => new { column.Code, column.Title, column.DataType, column.SemanticRole }),
-            headerRows = report.Sheet.HeaderRows is { } headers ? Rows(headers) : null,
-            rows = Rows(report.Sheet.Rows),
-            drilldown = report.Sheet.Rows.Any(row => row.ChildrenPath is not null)
+            headerRows = report.Sheet.HeaderRows is { } headers ? Rows(headers, []) : null,
+            rows = Rows(rows, report.Sheet.Columns),
+            drilldown = rows.Any(row => row.ChildrenPath is not null)
                 ? "This result contains expandable rows. To read a row's contributing entries, call ngb_execute_report "
                     + "with the same reportCode, filters and parameters, copy that row's childrenPath into request.groupPath, "
                     + "and omit request.cursor and request.offset. Layout customization flags do not disable this expansion."
                 : null,
             report.Diagnostics
         };
+    }
 
-    private static object Rows(IReadOnlyList<ReportSheetRowDto> rows)
+    private static object Rows(IReadOnlyList<ReportSheetRowDto> rows, IReadOnlyList<ReportSheetColumnDto> columns)
         => rows.Select(row => new
         {
             row.RowKind,
-            row.OutlineLevel,
-            row.IsExpanded,
+            outlineLevel = row.OutlineLevel != 0 ? row.OutlineLevel : (int?)null,
+            isExpanded = !row.IsExpanded ? false : (bool?)null,
             row.GroupKey,
             row.SemanticRole,
             row.ChildrenPath,
-            cells = row.Cells.Select(cell => new
+            cells = row.Cells.Select((cell, index) => new
             {
                 cell.Value,
-                cell.Display,
-                cell.ValueType,
+                display = IsRawDisplay(cell) ? null : cell.Display,
+                valueType = row.Cells.Count == columns.Count && cell.ValueType == columns[index].DataType
+                    ? null
+                    : cell.ValueType,
                 cell.SemanticRole,
-                cell.ColSpan,
-                cell.RowSpan
+                colSpan = cell.ColSpan != 1 ? cell.ColSpan : (int?)null,
+                rowSpan = cell.RowSpan != 1 ? cell.RowSpan : (int?)null
             })
         });
+
+    private static bool IsRawDisplay(ReportCellDto cell)
+        => cell.Value is { } value && cell.Display == (value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : value.GetRawText());
 }

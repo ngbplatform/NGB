@@ -25,7 +25,8 @@ internal sealed class AssistantReportContinuations
         }
 
         if (!_requests.TryGetValue(cursor, out var saved)
-            || !JsonNode.DeepEquals(proposed["reportCode"], saved["reportCode"]))
+            || !JsonNode.DeepEquals(proposed["reportCode"], saved["reportCode"])
+            || (proposed["resultView"] is { } view && !JsonNode.DeepEquals(view, saved["resultView"] ?? JsonValue.Create("full"))))
         {
             return false;
         }
@@ -41,8 +42,23 @@ internal sealed class AssistantReportContinuations
         }
 
         var restored = saved.DeepClone().AsObject();
+
         if (request["limit"] is { } limit)
-            restored["request"]!["limit"] = limit.DeepClone();
+        {
+            // Keep the page size already proven to fit. A model may repeat its
+            // original larger limit after the runner adapted an oversized page.
+            var retainedLimit = limit.DeepClone();
+            if (limit is JsonValue proposedLimit
+                && proposedLimit.TryGetValue<int>(out var size)
+                && size is > 0 and <= 200
+                && original["limit"] is JsonValue savedLimit
+                && savedLimit.TryGetValue<int>(out var previousSize))
+            {
+                retainedLimit = JsonValue.Create(Math.Min(size, previousSize));
+            }
+
+            restored["request"]!["limit"] = retainedLimit;
+        }
 
         resolved = restored.Deserialize<Dictionary<string, object?>>(Json)!;
 

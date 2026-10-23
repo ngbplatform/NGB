@@ -101,7 +101,8 @@ public sealed partial class AssistantHttpTests
                 return ToolCall("next", McpToolNames.ExecuteReport, new()
                 {
                     ["reportCode"] = code,
-                    ["request"] = new { cursor = handle, limit = 5 }
+                    // Repeating the original limit must retain the smaller page that fit.
+                    ["request"] = new { cursor = handle, limit = 20 }
                 });
             }
 
@@ -129,6 +130,7 @@ public sealed partial class AssistantHttpTests
     [Theory]
     [InlineData("different")]
     [InlineData("unknown-cursor")]
+    [InlineData("different-view")]
     public async Task ReportContinuationCannotChangeScopeOrInventACursor(string alteration)
     {
         const string code = "sample.selection";
@@ -147,6 +149,14 @@ public sealed partial class AssistantHttpTests
             if (round == 1)
             {
                 var handle = LatestToolData(input).GetProperty("data").GetProperty("nextCursor").GetString();
+                if (alteration == "different-view")
+                    return ToolCall("invalid", McpToolNames.ExecuteReport, new()
+                    {
+                        ["reportCode"] = code,
+                        ["resultView"] = "totals",
+                        ["request"] = new { cursor = handle }
+                    });
+
                 return ToolCall("invalid", McpToolNames.ExecuteReport, new()
                 {
                     ["reportCode"] = code,
