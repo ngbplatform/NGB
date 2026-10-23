@@ -141,6 +141,7 @@ public sealed partial class AssistantHttpTests
         var answer = string.Concat(events.Where(item => item.Type == "text").Select(item => item.Text));
         var trace = answer + "\n" + string.Join('\n', host.State.ModelInputs);
 
+        output.WriteLine(trace);
         Assert.True(events.All(item => item.Type != "error"), trace);
         Assert.True(answer.Contains("cannot", StringComparison.OrdinalIgnoreCase)
             || answer.Contains("can't", StringComparison.OrdinalIgnoreCase)

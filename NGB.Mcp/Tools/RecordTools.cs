@@ -3,6 +3,7 @@ using NGB.Accounting.Documents;
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.BusinessObjects;
 using NGB.Contracts.Common;
+using NGB.Contracts.Metadata;
 
 namespace NGB.Mcp.Tools;
 
@@ -33,12 +34,24 @@ internal sealed class GetRecordTool(
         ReadValidation.RequireId(request.Id);
         ReadValidation.RequireRecordKind(request.Kind, request.TypeCode);
 
+        string typeName;
+        FormMetadataDto? form;
+        ListMetadataDto? list;
+
         if (request.Kind == McpSourceKind.Catalog)
-            await catalogs.GetTypeMetadataAsync(request.TypeCode, ct);
+        {
+            var metadata = await catalogs.GetTypeMetadataAsync(request.TypeCode, ct);
+            (typeName, form, list) = (metadata.DisplayName, metadata.Form, metadata.List);
+        }
         else if (request.Kind is McpSourceKind.Document or McpSourceKind.GeneralJournalEntry)
-            await documents.GetTypeMetadataAsync(request.TypeCode, ct);
+        {
+            var metadata = await documents.GetTypeMetadataAsync(request.TypeCode, ct);
+            (typeName, form, list) = (metadata.DisplayName, metadata.Form, metadata.List);
+        }
         else
+        {
             throw new McpReadException("invalid_input", "The requested kind is not a record.");
+        }
 
         var target = new BusinessObjectRef(request.Kind switch
             {
@@ -65,7 +78,27 @@ internal sealed class GetRecordTool(
             throw new McpReadException("result_too_large", "The record exceeds detail-read limits. Use a paginated report or record list.");
         }
 
-        return result with { Source = ReadValidation.Source(request.Kind, request.TypeCode, request.Id, links) };
+        var formLookups = form?.Sections
+            .SelectMany(section => section.Rows)
+            .SelectMany(row => row.Fields)
+            .Where(field => field.Lookup is not null)
+            .Select(field => new RecordLookupField(field.Key, field.Label, field.Lookup!))
+            ?? [];
+
+        var listLookups = list?.Columns
+            .Where(column => column.Lookup is not null)
+            .Select(column => new RecordLookupField(column.Key, column.Label, column.Lookup!))
+            ?? [];
+
+        return result with
+        {
+            Source = ReadValidation.Source(request.Kind, request.TypeCode, request.Id, links),
+            TypeName = typeName,
+            LookupFields = formLookups
+                .Concat(listLookups)
+                .DistinctBy(field => field.Key, StringComparer.Ordinal)
+                .ToArray()
+        };
     }
 }
 

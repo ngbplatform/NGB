@@ -437,6 +437,7 @@ public sealed partial class AssistantHttpTests
         var answer = string.Concat(events.Where(item => item.Type == "text").Select(item => item.Text));
         var trace = JsonSerializer.Serialize(events) + "\n" + string.Join('\n', host.State.ModelInputs);
 
+        output.WriteLine(trace);
         Assert.True(events.All(item => item.Type != "error"), trace);
         Assert.Contains(events, item => item.Type == "done");
         foreach (var value in events.Where(item => item.Type == "value").Select(item => item.Value!))

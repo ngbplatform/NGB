@@ -13,7 +13,10 @@ namespace NGB.AiAssistant.AspNetCore;
 /// <summary>Removes UI layout overhead from authorized MCP results without changing their business scope.</summary>
 internal static class McpAssistantProjection
 {
-    private const string RecordFiltering = "Only filters listed here support structured selection. "
+    private const string RecordFiltering = "These filters govern record lists only, not reports. "
+        + "Missing fields or filters do not establish that a calculated balance, count or total is unavailable. "
+        + "For those measures, discover reports with ngb_list_reports and inspect matching definitions before concluding. "
+        + "Only filters listed here support structured record-list selection. "
         + "Compare every requested criterion with these filters before reading a page. "
         + "If a requested field has no filter, this list cannot answer that selection. "
         + "Do not use unfiltered pages or text search to simulate the missing filter. "
@@ -124,12 +127,17 @@ internal static class McpAssistantProjection
             scope = "Required filters restrict the report scope. Do not omit them or substitute a different scope. "
                 + "A requirement of this report is not necessarily a requirement of the user's task. "
                 + "If this scope or measure does not match the question, inspect other relevant reports. "
+                + "Once the report listing is complete and relevant definitions have been checked, if none supports "
+                + "the requested measure and subject, stop and explain that limitation in at most two business-language "
+                + "sentences. Omit unrelated report requirements and internal field names or flags. Do not search for substitute "
+                + "records, enumerate business records or read document effects to reconstruct an unsupported measure. "
                 + "When the user asks for all records, a mandatory single-record filter is a scope mismatch, "
                 + "not missing user input. Do not ask the user to choose one record or substitute that record's total. "
                 + "Each lookup needs an identity of its declared kind and type. A current-page ID from another type "
-                + "is not that lookup value. If no explicit name or verified relationship identifies the requested "
-                + "record, ask the user which record they mean before any further reads. Do not search or list "
-                + "possible replacements, use the current record's display as a search for another type, or run reports for candidates."
+                + "is not that lookup value; matching UUID syntax does not make identities interchangeable. "
+                + "Ask for a record only when this report matches the user's measure and scope but needs a genuinely "
+                + "unspecified subject. Do not search or list possible replacements, use the current record's display "
+                + "as a search for another type, or run reports for candidates."
         };
 
     private static object MetadataPage(MetadataPage page)
@@ -157,7 +165,12 @@ internal static class McpAssistantProjection
             page.Offset,
             page.Limit,
             page.HasMore,
-            definitions = "Report summaries do not declare required inputs or scope restrictions. Read the selected report's definition before deciding whether it can answer the question. Match lookup inputs to search results by the declared kind and type, not by field labels.",
+            definitions = "Report summaries do not declare required inputs or scope restrictions. "
+                + "Read relevant definitions before deciding whether they can answer the question. "
+                + "Match lookup inputs by their declared kind and type, not by field labels or UUID syntax. "
+                + "hasMore=false ends this listing: do not request further offsets. If this complete listing and "
+                + "its relevant definitions establish no matching measure and scope, explain the limitation and stop. "
+                + "Searching stored records or substituting another entity cannot add a missing report capability.",
             count = page is { HasMore: false, Offset: 0 }
                 ? (int?)page.Items.Count
                 : null
@@ -171,6 +184,8 @@ internal static class McpAssistantProjection
             result.Truncated,
             result.UnavailableSources,
             evidence = "These matches establish record identities, not business measures or calculated states. "
+                + "For a request only to find a record or give its link, a matching identity and display are sufficient: "
+                + "answer from this result without fetching record details or adding unrequested fields. "
                 + "When a supplied name or number has no match, do not substitute the current page's record "
                 + "or another search hit. Report only what this search establishes, preserving its completeness limits. "
                 + "For a business count, balance or total, use the matching identity as input to an existing report: "
@@ -200,8 +215,11 @@ internal static class McpAssistantProjection
     {
         var result = data.Deserialize<JsonObject>(Json)!;
         result["subject"] = "This read establishes only the returned record's identity and fields. "
-            + "For a direct reference field, read this record type's metadata to identify the lookup target's "
-            + "kind and type, then call ngb_get_record with that target and the field's UUID. "
+            + "typeName identifies the actual record type. lookupFields declares direct reference targets from its metadata. "
+            + "Use each declared lookup's kind and type with that field's value; a document lookup with multiple types "
+            + "still needs the actual target type. A UUID without a matching lookup declaration does not identify its target type. "
+            + "Never try that UUID under different types or search it to discover a different record. "
+            + "When lookupFields is absent, read metadata to establish the target before following a reference. "
             + "Do not search a UUID as a record name or infer the target type from the field's name. "
             + "If its actual type differs from the user's reference to 'this' record and no direct reference "
             + "field identifies the requested record, stop and ask which record they mean. Do not search "

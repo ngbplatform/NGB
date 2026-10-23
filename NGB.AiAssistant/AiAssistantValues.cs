@@ -10,6 +10,7 @@ internal sealed class AiAssistantValues(TimeZoneInfo? timeZone = null)
     private const int MaximumValues = 512;
 
     private static readonly Regex EmbeddedDate = new(@"\d{4}-\d{2}-\d{2}", RegexOptions.CultureInvariant | RegexOptions.NonBacktracking);
+    private static readonly Regex Reference = new(@"\{\{ngb-value:[^{}]+\}\}", RegexOptions.CultureInvariant | RegexOptions.NonBacktracking);
 
     private readonly string _prefix = Guid.NewGuid().ToString("N")[..12];
     private readonly Dictionary<(string Kind, string Value), AiAssistantValue> _values = new();
@@ -63,6 +64,30 @@ internal sealed class AiAssistantValues(TimeZoneInfo? timeZone = null)
             TimeSpan.FromSeconds(1));
     }
 
+    internal string? Correction(string answer)
+    {
+        var known = _values.Values
+            .Select(value => value.Reference)
+            .ToHashSet(StringComparer.Ordinal);
+
+        var unknown = Reference.Matches(answer)
+            .Select(match => match.Value)
+            .Where(reference => !known.Contains(reference))
+            .Distinct(StringComparer.Ordinal)
+            .Take(5)
+            .ToArray();
+
+        if (unknown.Length == 0)
+            return null;
+
+        return "The draft contains display references that were not supplied by this turn's successful reads: "
+            + JsonSerializer.Serialize(unknown)
+            + ". Answer again from the current successful read results. Copy their display references exactly "
+            + "or use their exact raw values. References from earlier assistant answers cannot supply current values. "
+            + "If the requested value is not established, say that it is unavailable. Do not invent a reference "
+            + "or mention this check.";
+    }
+
     private IEnumerable<string> LiteralValues(AiAssistantValue value)
     {
         if (value.Kind == "bytes")
@@ -91,6 +116,8 @@ internal sealed class AiAssistantValues(TimeZoneInfo? timeZone = null)
                 yield return date.ToString("M/d/yyyy", CultureInfo.InvariantCulture);
                 yield return date.ToString("MM/dd/yyyy", CultureInfo.InvariantCulture);
                 yield return date.ToString("MMMM d, yyyy", CultureInfo.InvariantCulture);
+                yield return date.ToString("d MMMM yyyy", CultureInfo.InvariantCulture);
+                yield return date.ToString("d. MMMM yyyy", CultureInfo.InvariantCulture);
             }
             else if (value.Kind == "timestamp")
             {

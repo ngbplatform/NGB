@@ -186,7 +186,9 @@ internal sealed class McpToolSessionFactory(
                 && requested.TryGetValue("request", out var reportRequest)
                 && JsonSerializer.SerializeToNode(reportRequest, Json) is JsonObject report)
             {
-                report["limit"] = JsonSerializer.SerializeToNode(PageSize(report["limit"], 200), Json);
+                // Preserve an explicitly requested page. The MCP service validates its
+                // bound; the runner reduces it only if the actual result is too large.
+                report["limit"] ??= 10;
                 requested["request"] = report;
             }
 
@@ -294,7 +296,7 @@ internal sealed class McpToolSessionFactory(
                 && arguments.TryGetValue("request", out var value)
                 && JsonSerializer.SerializeToNode(value, Json) is JsonObject report)
             {
-                var limit = JsonSerializer.SerializeToElement(PageSize(selection["limit"], 200), Json);
+                var limit = JsonSerializer.SerializeToElement(selection["limit"] ?? JsonValue.Create(10), Json);
                 if (limit.ValueKind != JsonValueKind.Number || !limit.TryGetInt32(out var size) || size <= 1)
                     return false;
 

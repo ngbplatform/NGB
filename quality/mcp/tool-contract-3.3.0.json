@@ -4451,6 +4451,88 @@
               ],
               "additionalProperties": false,
               "default": null
+            },
+            "typeName": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "default": null
+            },
+            "lookupFields": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": "object",
+                "properties": {
+                  "key": {
+                    "type": "string"
+                  },
+                  "label": {
+                    "type": "string"
+                  },
+                  "lookup": {
+                    "type": "object",
+                    "required": [
+                      "kind"
+                    ],
+                    "anyOf": [
+                      {
+                        "properties": {
+                          "kind": {
+                            "const": "catalog"
+                          },
+                          "catalogType": {
+                            "type": "string"
+                          },
+                          "displayTemplate": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "default": null
+                          }
+                        },
+                        "required": [
+                          "catalogType"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "properties": {
+                          "kind": {
+                            "const": "document"
+                          },
+                          "documentTypes": {
+                            "$ref": "#/properties/data/properties/generalJournalEntry/properties/accountContexts/items/properties/dimensionRules/items/properties/lookup/anyOf/1/properties/documentTypes"
+                          }
+                        },
+                        "required": [
+                          "documentTypes"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "properties": {
+                          "kind": {
+                            "const": "coa"
+                          }
+                        },
+                        "additionalProperties": false
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "key",
+                  "label",
+                  "lookup"
+                ],
+                "additionalProperties": false
+              },
+              "default": null
             }
           },
           "additionalProperties": false

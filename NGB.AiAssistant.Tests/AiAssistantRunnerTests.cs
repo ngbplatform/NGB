@@ -169,6 +169,7 @@ public sealed class AiAssistantRunnerTests
     [Fact]
     public async Task ContextPressureShortensOldAnswersWithoutLosingTheOriginalTask()
     {
+        var limits = new AiAssistantOptions { MaxInputBytes = 28000, MaxContextBytes = 28000 };
         var model = new ScriptedClient([new ChatResponseUpdate(ChatRole.Assistant, "Current answer.")]);
         var previous = new AiAssistantSource("document", "sample.invoice", Guid.NewGuid(), "Invoice INV-0042");
         var request = new AiAssistantRequest([
@@ -176,7 +177,8 @@ public sealed class AiAssistantRunnerTests
             new("assistant", new string('y', 7000) + "Which period?") { Sources = [previous] },
             new("user", "Current question")], new("document", "pm.lease", Guid.NewGuid()));
 
-        await Runner(model, new Sessions(), new() { MaxContextBytes = 26000 }).RunAsync(request, Ignore, default);
+        Assert.True(limits.IsValid());
+        await Runner(model, new Sessions(), limits).RunAsync(request, Ignore, default);
 
         Assert.Equal([ChatRole.System, ChatRole.User, ChatRole.Assistant, ChatRole.User], model.Requests[0].Select(message => message.Role));
         Assert.Contains(new string('x', 7000), model.Requests[0][1].Text);
@@ -184,13 +186,15 @@ public sealed class AiAssistantRunnerTests
         Assert.Contains("Earlier answer shortened", model.Requests[0][2].Text);
         Assert.Contains("Which period?", model.Requests[0][2].Text);
         Assert.Contains(previous.Reference, model.Requests[0][2].Text);
-        Assert.Contains("Current question", model.Requests[0][^1].Text);
+        Assert.Contains("\n\nCurrent question", model.Requests[0][^1].Text);
         Assert.Contains(request.Context!.Id!.Value.ToString(), model.Requests[0][^1].Text);
+        Assert.InRange(JsonSerializer.SerializeToUtf8Bytes(model.Requests[0]).Length, 1, limits.MaxContextBytes);
     }
 
     [Fact]
     public async Task ContextCompactionDoesNotExpandShorterHistoricalAnswers()
     {
+        var limits = new AiAssistantOptions { MaxInputBytes = 28000, MaxContextBytes = 28000 };
         var model = new ScriptedClient([new ChatResponseUpdate(ChatRole.Assistant, "Current answer.")]);
         var shortAnswer = new string('s', 1025);
         var request = new AiAssistantRequest([
@@ -200,12 +204,14 @@ public sealed class AiAssistantRunnerTests
             new("assistant", new string('y', 7000) + "Which report?"),
             new("user", "Decide yourself.")]);
 
-        await Runner(model, new Sessions(), new() { MaxContextBytes = 26000 }).RunAsync(request, Ignore, default);
+        Assert.True(limits.IsValid());
+        await Runner(model, new Sessions(), limits).RunAsync(request, Ignore, default);
 
         Assert.Equal(shortAnswer, model.Requests[0][2].Text);
         Assert.Contains("Earlier answer shortened", model.Requests[0][4].Text);
         Assert.Contains("Which report?", model.Requests[0][4].Text);
         Assert.Contains("Q1 2026", model.Requests[0][3].Text);
+        Assert.InRange(JsonSerializer.SerializeToUtf8Bytes(model.Requests[0]).Length, 1, limits.MaxContextBytes);
     }
 
     [Fact]
@@ -259,22 +265,26 @@ public sealed class AiAssistantRunnerTests
     [Fact]
     public async Task OversizedToolBatchKeepsItsLatestEvidenceAndExplicitlyMarksEarlierOmissions()
     {
+        const int evidenceLength = 9000;
+        var limits = new AiAssistantOptions { MaxContextBytes = 32 * 1024 };
         var calls = Enumerable.Range(1, 3).Select(page => (AIContent)new FunctionCallContent($"call-{page}", "read",
             new Dictionary<string, object?> { ["page"] = page })).ToList();
         var model = new ScriptedClient(
             [new(ChatRole.Assistant, calls)],
             [new(ChatRole.Assistant, "Only partial evidence is available.")]);
-        var tool = AIFunctionFactory.Create((int page) => new { page, evidence = new string('x', 6000) }, "read");
+        var tool = AIFunctionFactory.Create((int page) => new { page, evidence = new string('x', evidenceLength) }, "read");
 
-        await Runner(model, new Sessions(tool), new() { MaxContextBytes = 24000 }).RunAsync(Question, Ignore, default);
+        Assert.True(limits.IsValid());
+        await Runner(model, new Sessions(tool), limits).RunAsync(Question, Ignore, default);
 
         var evidence = model.Requests[1][^1].Text;
         Assert.Contains("evidence_omitted", evidence);
         Assert.Contains("\"callId\":\"call-3\"", evidence);
-        Assert.Contains(new string('x', 6000), evidence);
+        Assert.Contains(new string('x', evidenceLength), evidence);
         Assert.DoesNotContain(model.Requests[1].SelectMany(message => message.Contents), content => content is FunctionCallContent);
         Assert.Empty(model.Options[1].Tools!);
         Assert.Contains("Finish now", model.Requests[1][0].Text);
+        Assert.InRange(JsonSerializer.SerializeToUtf8Bytes(model.Requests[1]).Length, 1, limits.MaxContextBytes);
     }
 
     [Fact]
@@ -405,6 +415,12 @@ public sealed class AiAssistantRunnerTests
     [Theory]
     [InlineData("July 27, 2025", true)]
     [InlineData("July 28, 2025", false)]
+    [InlineData("27 July 2025", true)]
+    [InlineData("27. July 2025", true)]
+    [InlineData("28 July 2025", false)]
+    [InlineData("28. July 2025", false)]
+    [InlineData("27. June 2025", false)]
+    [InlineData("27. July 2026", false)]
     public async Task ASpelledOutCalendarDateBindsOnlyToTheSameDate(string answer, bool matches)
     {
         var model = new ScriptedClient(
@@ -449,6 +465,11 @@ public sealed class AiAssistantRunnerTests
     [InlineData("$227.5006")]
     [InlineData("227.5006 USD")]
     [InlineData("EUR 227.5006")]
+    [InlineData("−227.5006")]
+    [InlineData("$**227.5006**")]
+    [InlineData("**227.5006** USD")]
+    [InlineData("EUR `227.5006`")]
+    [InlineData("−**227.5006**")]
     public async Task UnsupportedNumericAnswersRetryWithoutPublishingTheDraftOrReadingAgain(string draft)
     {
         var reads = 0;
@@ -505,6 +526,15 @@ public sealed class AiAssistantRunnerTests
     [InlineData("227.5006", null, "Rounded: 227.50 (exact: 227.5006).")]
     [InlineData("0.338", null, "33.8%")]
     [InlineData("0", null, "0.00")]
+    [InlineData("1457", null, "The rent amount is 1,457.00.")]
+    [InlineData("153.9794", null, "Payment RP-2026-000014: 153.9794.")]
+    [InlineData("1457", null, "The rent amount is 1 457.00.")]
+    [InlineData("1457", null, "Сумма: 1 457,00.")]
+    [InlineData("-227.5006", null, "−227.5006")]
+    [InlineData("-227.5006", "USD", "−$227.5006")]
+    [InlineData("-227.5006", "USD", "−$**227.5006**")]
+    [InlineData("-227.5006", null, "−**227.5006**")]
+    [InlineData("227.5006", "USD", "$**227.5006**")]
     public async Task ExactFormattingAndSourceSuppliedCurrenciesDoNotNeedAnotherModelCall(
         string source, string? currency, string answer)
     {
@@ -544,6 +574,9 @@ public sealed class AiAssistantRunnerTests
     [InlineData("$227.50")]
     [InlineData("-$227.5006")]
     [InlineData("-USD227.5006")]
+    [InlineData("−$227.5006")]
+    [InlineData("−USD227.5006")]
+    [InlineData("−$**227.5006**")]
     public async Task AVerifiedCurrencyDoesNotAllowAnIncorrectAmount(string draft)
     {
         var model = new ScriptedClient(
@@ -577,6 +610,66 @@ public sealed class AiAssistantRunnerTests
 
         Assert.Equal(4, model.Requests.Count);
         Assert.Equal("227.5006", string.Concat(events.Where(item => item.Type == "text").Select(item => item.Text)));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task UnverifiedDisplayReferencesAreCorrectedBeforePublishing(bool repeatedError)
+    {
+        const string stale = "{{ngb-value:earlier-turn-0}}";
+        var request = new AiAssistantRequest([
+            new("user", "When was the previous payment received?"),
+            new("assistant", $"Received on {stale}."),
+            new("user", "And this payment?")]);
+        var model = new ScriptedClient(
+            [new(ChatRole.Assistant, [new FunctionCallContent("read", "read", null)])],
+            [new(ChatRole.Assistant, $"Received on {stale}.")],
+            [new(ChatRole.Assistant, repeatedError ? $"Received on {stale}." : "Received on 2025-08-12.")]);
+        var tool = new SourceTool(new(new { receivedOn = "2025-08-12" }, []));
+        var events = new List<AiAssistantEvent>();
+
+        if (repeatedError)
+        {
+            var error = await Assert.ThrowsAsync<AiAssistantException>(() =>
+                Runner(model, new Sessions(tool)).RunAsync(request, Capture(events), default));
+
+            Assert.Equal("unverified_answer", error.Code);
+            Assert.DoesNotContain(events, item => item.Type is "text" or "done");
+        }
+        else
+        {
+            await Runner(model, new Sessions(tool)).RunAsync(request, Capture(events), default);
+
+            var value = Assert.Single(events, item => item.Type == "value").Value!;
+            Assert.Equal("2025-08-12", value.Value);
+            Assert.Equal($"Received on {value.Reference}.",
+                string.Concat(events.Where(item => item.Type == "text").Select(item => item.Text)));
+            Assert.Equal("done", events[^1].Type);
+        }
+
+        Assert.Equal(3, model.Requests.Count);
+        Assert.Empty(model.Options[2].Tools!);
+    }
+
+    [Fact]
+    public async Task FailedReadsDoNotPublishDisplayValuesOrVerifiedSources()
+    {
+        var source = new AiAssistantSource("document", "sample.payment", Guid.NewGuid(), "Payment PAY-0042");
+        var model = new ScriptedClient(
+            [new(ChatRole.Assistant, [new FunctionCallContent("read", "read", null)])],
+            [new(ChatRole.Assistant, "The payment could not be read.")]);
+        var tool = new SourceTool(new(new { error = "unavailable", receivedOn = "2025-08-12" }, [source], IsError: true));
+        var events = new List<AiAssistantEvent>();
+
+        await Runner(model, new Sessions(tool)).RunAsync(Question, Capture(events), default);
+
+        Assert.DoesNotContain(events, item => item.Type is "value" or "source");
+        var result = Assert.Single(model.Requests[1].SelectMany(message => message.Contents).OfType<FunctionResultContent>());
+        var supplied = JsonSerializer.Serialize(result.Result);
+        Assert.Contains("unavailable", supplied);
+        Assert.DoesNotContain("ngb-value:", supplied);
+        Assert.DoesNotContain(source.Reference, supplied);
     }
 
     [Fact]
@@ -840,8 +933,35 @@ public sealed class AiAssistantRunnerTests
 
         Assert.Equal(0, invoked);
         Assert.Empty(model.Options[1].Tools!);
+        Assert.Null(model.Options[1].Reasoning);
         Assert.DoesNotContain("Unfinished", string.Concat(events.Select(item => item.Text)));
         Assert.Contains(events, item => item.Type == "done");
+    }
+
+    [Fact]
+    public async Task ExhaustedReasoningRecoversOnceFromEvidenceWithoutStartingAnotherThinkingLoop()
+    {
+        var reads = 0;
+        var model = new ScriptedClient(
+            [new(ChatRole.Assistant, [new FunctionCallContent("read", "read", null)])],
+            [new(ChatRole.Assistant, [new TextReasoningContent("Unfinished reasoning about the result.")])
+                { FinishReason = ChatFinishReason.Length }],
+            [new(ChatRole.Assistant, "Amount: 227.5006.")]);
+        var tool = AIFunctionFactory.Create(() => new { amount = 227.5006m, reads = ++reads }, "read");
+        var events = new List<AiAssistantEvent>();
+
+        await Runner(model, new Sessions(tool)).RunAsync(Question, Capture(events), default);
+
+        Assert.Equal(1, reads);
+        Assert.Equal(3, model.Requests.Count);
+        Assert.Null(model.Options[0].Reasoning);
+        Assert.Null(model.Options[1].Reasoning);
+        Assert.Equal(ReasoningEffort.None, model.Options[2].Reasoning?.Effort);
+        Assert.Empty(model.Options[2].Tools!);
+        Assert.Contains("227.5006", JsonSerializer.Serialize(model.Requests[2]));
+        Assert.DoesNotContain("Unfinished reasoning", JsonSerializer.Serialize(model.Requests[2]));
+        Assert.Equal("Amount: 227.5006.", string.Concat(events.Where(item => item.Type == "text").Select(item => item.Text)));
+        Assert.Equal("done", events[^1].Type);
     }
 
     [Theory]

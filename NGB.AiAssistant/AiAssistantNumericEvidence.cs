@@ -8,11 +8,11 @@ namespace NGB.AiAssistant;
 internal sealed class AiAssistantNumericEvidence
 {
     private static readonly Regex Number = new(
-        @"(?<![\w./:-])[+-]?[0-9]+(?:[.,\u00a0\u202f][0-9]+)*(?![\w/:-]|\.\w|,[0-9])",
+        @"(?<![\w./:-])[+\-\u2212]?[0-9]+(?:[.,\u00a0\u202f][0-9]+| [0-9]{3}(?![0-9]))*(?![\w/:-]|\.\w|,[0-9])",
         RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
 
     private static readonly Regex Currency = new(
-        @"(?<before>\p{Sc}|\b[A-Z]{3})\s*[+-]?[0-9]|[0-9]\s*(?<after>\p{Sc}|[A-Z]{3}\b)",
+        @"(?<before>\p{Sc}|\b[A-Z]{3})[\s*_`]*[+\-\u2212]?[0-9]|[0-9][\s*_`]*(?<after>\p{Sc}|[A-Z]{3}\b)",
         RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
 
     private static readonly IReadOnlyDictionary<string, string[]> CurrencySymbols = CultureInfo
@@ -57,7 +57,7 @@ internal sealed class AiAssistantNumericEvidence
                 ? match.Groups["before"].Value
                 : match.Groups["after"].Value;
 
-            var replacement = match.Groups["before"].Success && match.Index > 0 && prose[match.Index - 1] is '-' or '+'
+            var replacement = match.Groups["before"].Success && match.Index > 0 && prose[match.Index - 1] is '-' or '+' or '−'
                 ? ""
                 : " ";
 
@@ -65,6 +65,13 @@ internal sealed class AiAssistantNumericEvidence
                 ? match.Value.Replace(label, replacement, StringComparison.Ordinal)
                 : match.Value;
         });
+
+        numericProse = Regex.Replace(
+            numericProse,
+            @"([+\-\u2212])[*_`]+(?=[0-9])",
+            "$1",
+            RegexOptions.CultureInvariant,
+            TimeSpan.FromSeconds(1));
 
         var matches = Number.Matches(numericProse).Cast<Match>().ToArray();
         var exact = matches.SelectMany(match => Parse(match.Value)).Where(_numbers.Contains).ToHashSet();
@@ -148,20 +155,25 @@ internal sealed class AiAssistantNumericEvidence
 
     private static IEnumerable<decimal> Parse(string text)
     {
+        text = text.Replace('−', '-');
+
         // Accept decimal comma and decimal point, with strictly grouped thousands.
         // A single separator followed by three digits is ambiguous; either exact
         // interpretation may be supported by the source, without changing the answer.
         foreach (var separator in new[] { '.', ',' })
         {
             var group = separator == '.' ? ',' : '.';
-            var pattern = @"^[+-]?(?:[0-9]+|[0-9]{1,3}(?:[" + Regex.Escape(group.ToString())
-                + @"\u00a0\u202f][0-9]{3})+)(?:" + Regex.Escape(separator.ToString()) + @"[0-9]+)?$";
+            var pattern = @"^[+-]?(?:[0-9]+|[0-9]{1,3}(?:["
+                + Regex.Escape(group.ToString())
+                + @" \u00a0\u202f][0-9]{3})+)(?:"
+                + Regex.Escape(separator.ToString()) + @"[0-9]+)?$";
 
             if (!Regex.IsMatch(text, pattern, RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1)))
                 continue;
 
             var normalized = text
                 .Replace(group.ToString(), "", StringComparison.Ordinal)
+                .Replace(" ", "", StringComparison.Ordinal)
                 .Replace("\u00a0", "", StringComparison.Ordinal)
                 .Replace("\u202f", "", StringComparison.Ordinal)
                 .Replace(separator, '.');

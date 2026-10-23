@@ -24,6 +24,32 @@ public sealed class ProviderContractTests
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
+    public async Task OllamaCanDisableReasoningForABoundedAnswerRecovery(bool streaming)
+    {
+        var handler = new RecordingHandler([
+            """
+            {"model":"contract-model","message":{"role":"assistant","content":"Done."},"done":true,"done_reason":"stop"}
+
+            """]);
+        await using var services = Register("Ollama", handler).BuildServiceProvider();
+        await using var scope = services.CreateAsyncScope();
+        var client = scope.ServiceProvider.GetRequiredService<IChatClient>();
+        var options = new ChatOptions { Reasoning = new ReasoningOptions { Effort = ReasoningEffort.None } };
+        ChatMessage[] messages = [new(ChatRole.User, "Answer from the retained evidence.")];
+
+        var response = streaming
+            ? await client.GetStreamingResponseAsync(messages, options).ToChatResponseAsync()
+            : await client.GetResponseAsync(messages, options);
+
+        Assert.Equal("Done.", response.Text);
+        using var body = JsonDocument.Parse(Assert.Single(handler.Requests).Body);
+        Assert.False(body.RootElement.GetProperty("think").GetBoolean());
+        Assert.Equal(ReasoningEffort.None, options.Reasoning.Effort);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
     public async Task OllamaPreservesReasoningAndMatchesEachToolResultToItsName(bool streaming)
     {
         var handler = new RecordingHandler([

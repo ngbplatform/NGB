@@ -217,6 +217,7 @@ public sealed partial class AssistantHttpTests
         var answer = string.Concat(events.Where(item => item.Type == "text").Select(item => item.Text));
         var trace = answer + "\n" + string.Join('\n', host.State.ModelInputs);
 
+        output.WriteLine(trace);
         Assert.True(events.All(item => item.Type != "error"), trace);
         Assert.True(answer.Contains("payment", StringComparison.OrdinalIgnoreCase), trace);
         Assert.True(answer.Contains('?') || answer.Contains("specify", StringComparison.OrdinalIgnoreCase)
@@ -569,13 +570,23 @@ public sealed partial class AssistantHttpTests
         var answer = string.Concat(events.Where(item => item.Type == "text").Select(item => item.Text));
         var trace = answer + "\n" + string.Join('\n', host.State.ModelInputs);
 
+        output.WriteLine(trace);
         Assert.True(events.All(item => item.Type != "error"), trace);
         Assert.DoesNotContain('?', answer);
         Assert.DoesNotContain("account_id", answer);
         Assert.DoesNotContain("lease_id", answer);
+        Assert.DoesNotContain("is_vendor", answer);
         Assert.DoesNotMatch(@"(?i)\b(?:please\s+provide|(?:can|could|would)\s+you\s+provide|you\s+(?:need|have)\s+to\s+provide)\b", answer);
         Assert.DoesNotContain("0.00", answer);
         Assert.True(answer.Length < 500, trace);
+        var requestedCalls = host.State.ModelInputs
+            .Select(input => JsonSerializer.Deserialize<JsonElement>(input).GetProperty("response").Deserialize<ChatResponse>()!)
+            .SelectMany(response => response.Messages)
+            .SelectMany(message => message.Contents)
+            .OfType<FunctionCallContent>()
+            .ToArray();
+        Assert.DoesNotContain(requestedCalls, call => call.Name is McpToolNames.ExecuteReport or McpToolNames.Search);
+        Assert.Single(requestedCalls, call => call.Name == McpToolNames.ListReports);
         reports.Verify(value => value.ExecuteAsync(It.IsAny<string>(), It.IsAny<ReportExecutionRequestDto>(),
             It.IsAny<CancellationToken>()), Times.Never, trace);
     }

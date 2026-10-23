@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.IdentityModel.Tokens.Jwt;
 using System.Net;
 using System.Net.Http.Headers;
@@ -38,10 +39,11 @@ using NGB.Runtime.CurrentActor;
 using NGB.Runtime.Security;
 using NGB.Testing.Mcp;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace NGB.AiAssistant.AspNetCore.IntegrationTests;
 
-public sealed partial class AssistantHttpTests
+public sealed partial class AssistantHttpTests(ITestOutputHelper output)
 {
     private const string PaymentDisplay = "Receivable Payment RP-2026-000014 8/24/2025";
     private static readonly AiAssistantRequest Question = new([new("user", "Who am I?")]);
@@ -143,7 +145,7 @@ public sealed partial class AssistantHttpTests
         public NativeOllamaFactAttribute()
         {
             if (Environment.GetEnvironmentVariable("NGB_RUN_OLLAMA_TESTS") != "1")
-                Skip = "Requires native Ollama with qwen3.5:9b; set NGB_RUN_OLLAMA_TESTS=1 to run.";
+                Skip = "Requires local Ollama; set NGB_RUN_OLLAMA_TESTS=1 to run.";
         }
     }
 
@@ -523,6 +525,13 @@ public sealed partial class AssistantHttpTests
             ChatOptions? options = null,
             [EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
+            if (bool.TryParse(Environment.GetEnvironmentVariable("NGB_OLLAMA_TEST_THINK"), out var think))
+            {
+                options = options?.Clone() ?? new ChatOptions();
+                options.RawRepresentationFactory = _ => new OllamaSharp.Models.Chat.ChatRequest { Think = think };
+            }
+
+            var started = Stopwatch.GetTimestamp();
             var updates = new List<ChatResponseUpdate>();
             await foreach (var update in base.GetStreamingResponseAsync(messages, options, cancellationToken))
             {
@@ -532,6 +541,7 @@ public sealed partial class AssistantHttpTests
 
             state.ModelInputs.Add(System.Text.Json.JsonSerializer.Serialize(new
             {
+                elapsedMilliseconds = Stopwatch.GetElapsedTime(started).TotalMilliseconds,
                 request = messages.Where(message => message.Role != ChatRole.System),
                 response = updates.ToChatResponse()
             }));
@@ -677,7 +687,11 @@ public sealed partial class AssistantHttpTests
                 state.ProviderRegistered = true;
                 if (mode.StartsWith("ollama", StringComparison.Ordinal))
                 {
-                    services.AddNgbOllamaChatClient(_ => { });
+                    services.AddNgbOllamaChatClient(options =>
+                    {
+                        if (Environment.GetEnvironmentVariable("NGB_OLLAMA_TEST_MODEL") is { Length: > 0 } model)
+                            options.Model = model;
+                    });
                     var registration = services.Single(item => item.ServiceType == typeof(IChatClient));
                     services.Remove(registration);
                     services.AddScoped<IChatClient>(provider => new ObservedModel(

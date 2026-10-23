@@ -20,11 +20,15 @@ public sealed record MetadataResult(
 
 public sealed record McpRecordSource(McpSourceKind Kind, string TypeCode, Guid Id, string? OpenInNgb);
 
+public sealed record RecordLookupField(string Key, string Label, LookupSourceDto Lookup);
+
 public sealed record RecordResult(
     CatalogItemDto? Catalog = null,
     DocumentDto? Document = null,
     GeneralJournalEntryDetailsDto? GeneralJournalEntry = null,
-    McpRecordSource? Source = null);
+    McpRecordSource? Source = null,
+    string? TypeName = null,
+    IReadOnlyList<RecordLookupField>? LookupFields = null);
 
 public sealed record RecordsResult(
     PageResponseDto<CatalogItemDto>? Catalogs = null,
