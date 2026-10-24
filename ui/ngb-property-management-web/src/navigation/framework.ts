@@ -1,4 +1,4 @@
-import type { NgbNavigationConfig, NgbNavigationTarget } from '@ngbplatform/ui'
+import { NgbSourceKinds, type NgbNavigationConfig, type NgbNavigationTarget } from '@ngbplatform/ui'
 
 import { buildPmOpenItemsPath } from '../router/pmRoutePaths'
 
@@ -13,6 +13,12 @@ function queryFromTarget(target: NgbNavigationTarget): string {
 
 export function createPmNavigationConfig(): NgbNavigationConfig {
   return {
+    resolvePageContext(location) {
+      if (location.path !== '/catalogs/pm.property' || location.query.panel) return undefined
+      const value = location.query.buildingId
+      const id = Array.isArray(value) ? value[0] : value
+      return id ? { kind: NgbSourceKinds.Catalog, typeCode: 'pm.property', id } : undefined
+    },
     resolveTarget(target) {
       if (target.code === 'pm.receivables.reconciliation') {
         const paymentId = String(target.parameters?.paymentId ?? '').trim()

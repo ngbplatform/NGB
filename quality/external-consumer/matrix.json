@@ -1,9 +1,9 @@
 {
-  "schemaVersion": 1,
-  "source": "3.1.0",
-  "target": "3.2.0",
-  "sourceFixture": "quality/upgrade-certification/fixtures/3.1.0",
-  "sourceManifest": "quality/upgrade-certification/source-3.1.0.json",
+  "schemaVersion": 2,
+  "source": "3.2.0",
+  "target": "3.3.0",
+  "sourceFixture": "quality/upgrade-certification/fixtures/3.2.0",
+  "sourceManifest": "quality/upgrade-certification/source-3.2.0.json",
   "baselines": "packaging/nuget/baselines.json",
   "infrastructure": {
     "postgres": "postgres:18.3-alpine",
@@ -23,7 +23,8 @@
       "migrations",
       "hangfire",
       "notes",
-      "attachments"
+      "attachments",
+      "mcp-opt-in"
     ],
     "localRegressionOnly": [
       "document-lifecycle",
@@ -38,7 +39,7 @@
   "profiles": {
     "clean-starter": {
       "source": null,
-      "target": "3.2.0",
+      "target": "3.3.0",
       "minio": false,
       "assertions": [
         "isolation",
@@ -53,7 +54,7 @@
     },
     "generated-extension": {
       "source": null,
-      "target": "3.2.0",
+      "target": "3.3.0",
       "minio": false,
       "assertions": [
         "isolation",
@@ -68,8 +69,8 @@
       ]
     },
     "core-upgrade": {
-      "source": "3.1.0",
-      "target": "3.2.0",
+      "source": "3.2.0",
+      "target": "3.3.0",
       "minio": false,
       "assertions": [
         "isolation",
@@ -83,12 +84,14 @@
         "pendingJobAndIdempotentEffect",
         "targetBrowserSmoke",
         "layering",
-        "healthAndLogs"
+        "healthAndLogs",
+        "mcpOptInAfterUpgrade",
+        "mcpReadOnlySnapshot"
       ]
     },
     "notes-upgrade": {
-      "source": "3.1.0",
-      "target": "3.2.0",
+      "source": "3.2.0",
+      "target": "3.3.0",
       "minio": false,
       "assertions": [
         "isolation",
@@ -104,12 +107,14 @@
         "contentPreserved",
         "contentAuthorization",
         "layering",
-        "healthAndLogs"
+        "healthAndLogs",
+        "mcpOptInAfterUpgrade",
+        "mcpReadOnlySnapshot"
       ]
     },
     "attachments-upgrade": {
-      "source": "3.1.0",
-      "target": "3.2.0",
+      "source": "3.2.0",
+      "target": "3.3.0",
       "minio": true,
       "assertions": [
         "isolation",
@@ -125,7 +130,9 @@
         "contentPreserved",
         "contentAuthorization",
         "layering",
-        "healthAndLogs"
+        "healthAndLogs",
+        "mcpOptInAfterUpgrade",
+        "mcpReadOnlySnapshot"
       ]
     }
   },
@@ -327,6 +334,37 @@
         "canonical-payload",
         "npm-integrity",
         "clean-runtime-smoke"
+      ]
+    },
+    {
+      "id": "mcp-contract",
+      "blocks": "candidate",
+      "command": "node quality/mcp/verify-contract.mjs",
+      "assertions": [
+        "versionedSchemas",
+        "protocolAndAuthorization",
+        "boundedReadOnlyTools"
+      ]
+    },
+    {
+      "id": "mcp-external",
+      "blocks": "candidate",
+      "command": "node quality/mcp/verify-external.mjs <sealed-feed> <evidence-directory>",
+      "assertions": [
+        "sourceFreePackages",
+        "realKeycloakPkce",
+        "currentUserRevocation",
+        "readOnlyDatabaseSnapshots"
+      ]
+    },
+    {
+      "id": "mcp-verticals",
+      "blocks": "candidate",
+      "command": "node quality/mcp/verify-verticals.mjs",
+      "assertions": [
+        "actualFourApiHosts",
+        "installedSurfaceParity",
+        "nativeMcpClient"
       ]
     }
   ]

@@ -1,4 +1,5 @@
 using System.Text;
+using NGB.Api.Search;
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Metadata;
 using NGB.Contracts.Reporting;
@@ -10,7 +11,7 @@ using NGB.PropertyManagement.Definitions;
 using NGB.Runtime.Catalogs;
 using NGB.Runtime.Documents;
 using NGB.Runtime.Security;
-using NGB.Tools.Exceptions;
+using NGB.Runtime.Search;
 
 namespace NGB.PropertyManagement.Api.Services;
 
@@ -25,74 +26,23 @@ public sealed class CommandPaletteSearchService(
     private const string DocumentsCode = "documents";
     private const string CatalogsCode = "catalogs";
     private const string ReportsCode = "reports";
-    private const int MaxQueryLength = 256;
     
     public async Task<CommandPaletteSearchResponseDto> SearchAsync(
         CommandPaletteSearchRequestDto request,
         CancellationToken ct)
     {
-        var query = NormalizeQuery(request.Query);
-        if (query is null)
-            return new CommandPaletteSearchResponseDto([]);
+        var result = await NgbSearchPipeline.ExecuteAsync(
+            request.Query,
+            request.Limit,
+            CommandPaletteSearchScope.Parse(request.Scope),
+            30,
+            (query, limit, token) => SearchDocumentsAsync(query, limit, request.Context, token),
+            (query, limit, token) => SearchCatalogsAsync(query, limit, request.Context, token),
+            SearchReportsAsync,
+            logger,
+            ct);
 
-        var scope = NormalizeScope(request.Scope);
-        var limit = Math.Min(request.Limit <= 0 ? 20 : request.Limit, 30);
-
-        var groups = new List<CommandPaletteGroupDto>(capacity: 3);
-
-        if (scope is null or DocumentsCode)
-        {
-            var documentsGroup = await SafeGroupAsync(DocumentsCode, () => SearchDocumentsAsync(query, limit, request.Context, ct), ct);
-            if (documentsGroup is not null)
-                groups.Add(documentsGroup);
-        }
-
-        if (scope is null or CatalogsCode)
-        {
-            var catalogsGroup = await SafeGroupAsync(CatalogsCode, () => SearchCatalogsAsync(query, limit, request.Context, ct), ct);
-            if (catalogsGroup is not null)
-                groups.Add(catalogsGroup);
-        }
-
-        if (scope is null or ReportsCode)
-        {
-            var reportsGroup = await SafeGroupAsync(ReportsCode, () => SearchReportsAsync(query, limit, ct), ct);
-            if (reportsGroup is not null)
-                groups.Add(reportsGroup);
-        }
-
-        return new CommandPaletteSearchResponseDto(groups);
-    }
-
-    private static string? NormalizeQuery(string? query)
-    {
-        if (string.IsNullOrWhiteSpace(query))
-            return null;
-
-        if (query.Length > MaxQueryLength)
-            throw new NgbArgumentOutOfRangeException(nameof(query), query.Length, $"Search text can contain up to {MaxQueryLength} characters.");
-
-        return query.Trim();
-    }
-
-    private async Task<CommandPaletteGroupDto?> SafeGroupAsync(
-        string providerCode,
-        Func<Task<CommandPaletteGroupDto?>> action,
-        CancellationToken ct)
-    {
-        try
-        {
-            return await action();
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "Command palette provider {ProviderCode} failed.", providerCode);
-            return null;
-        }
+        return new CommandPaletteSearchResponseDto(result.Groups);
     }
 
     private async Task<CommandPaletteGroupDto?> SearchDocumentsAsync(
@@ -361,18 +311,6 @@ public sealed class CommandPaletteSearchService(
 
         return result;
     }
-
-    private static string? NormalizeScope(string? scope)
-        => (scope ?? string.Empty).Trim().ToLowerInvariant() switch
-        {
-            "" => null,
-            ":" or "document" or DocumentsCode => DocumentsCode,
-            "@" or "catalog" or CatalogsCode => CatalogsCode,
-            "#" or "report" or ReportsCode => ReportsCode,
-            "/" or "page" or "pages" => "pages",
-            ">" or "command" or "commands" => "commands",
-            var value => value,
-        };
 
     private static string[] ResolveAliases(string code, string label)
         => code switch

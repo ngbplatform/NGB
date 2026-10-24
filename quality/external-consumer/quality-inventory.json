@@ -59,7 +59,14 @@
       "quality/external-consumer/execution.mjs",
       "quality/external-consumer/environment.mjs",
       "quality/external-consumer/dependency-cache.mjs",
-      "quality/external-consumer/quality-suite.mjs"
+      "quality/external-consumer/quality-suite.mjs",
+      "quality/mcp/verify-contract.mjs",
+      "quality/mcp/verify-external.mjs",
+      "quality/mcp/verify-verticals.mjs",
+      "quality/mcp/external",
+      "quality/mcp/McpTestServices.cs",
+      "quality/mcp/VerticalMcpContract.cs",
+      "quality/mcp/VerticalMcpPerformance.cs"
     ],
     "verification": [
       "node --test quality/external-consumer/process-contracts.test.mjs",

@@ -10,6 +10,7 @@ const readingChart = String.raw`flowchart TB
     Home --> Ecosystem["Ecosystem"]
     Home --> Platform["Platform"]
     Home --> DocumentWorkflows["Document Workflows 2.0"]
+    Home --> Mcp["MCP Server and AI Assistant"]
     Home --> Guides["Guides"]
     Home --> Reference["Reference"]
 
@@ -18,6 +19,7 @@ const readingChart = String.raw`flowchart TB
     Ecosystem --> EcosystemDetail["External evaluation, integration, ecosystem fit"]
     Platform --> PlatformDetail["Modules, source maps, deep dives, collaborator maps"]
     DocumentWorkflows --> DocumentWorkflowsDetail["Actions, Work Center, API, migration"]
+    Mcp --> McpDetail["Authorized read tools, shared assistant, providers and limits"]
     Guides --> GuidesDetail["Extension workflows and scenario guides"]
     Reference --> ReferenceDetail["Site guide, operational lookup, source indexes"]`
 </script>
@@ -53,6 +55,8 @@ This page is the complete navigation hub for the NGB Platform documentation site
 | I need to implement Document Actions or Work Center | [Document Actions and Work Center](/guides/document-actions-and-work-center) |
 | I need to configure or extend deployment-wide feature flags | [Feature Flags](/architecture/feature-flags) |
 | I need to enable attachments and notes or configure their storage | [Attachments & Notes](/architecture/attachments-and-notes) |
+| I need to connect an MCP client as the current application user | [MCP Server](/guides/mcp-server) |
+| I need to enable AI Assistant, configure its provider or diagnose a chat failure | [AI Assistant](/guides/ai-assistant) |
 | I am upgrading an existing 2.x solution to 3.0.0 | [Migration 2.0.0 → 3.0.0](/guides/migrating-to-3.0) |
 | I am upgrading an existing solution to 2.0.0 | [Migration 1.3.1 → 2.0.0](/guides/migrating-to-2.0) |
 | I need the Document Actions or Work Center HTTP contract | [Document Actions and Work Center API](/reference/document-actions-work-center-api) |
@@ -116,8 +120,31 @@ Use Start Here before deep-diving into individual modules.
 - [Idempotency and Concurrency](/architecture/idempotency-and-concurrency)
 - [Feature Flags](/architecture/feature-flags)
 - [Attachments & Notes](/architecture/attachments-and-notes)
+- [MCP Server architecture](/guides/mcp-server#architecture)
+- [AI Assistant request flow and permissions](/guides/ai-assistant#request-flow-and-permissions)
 
 Use Architecture when the question is “how the platform works” rather than “where a file lives”.
+
+## MCP Server
+
+The **MCP Server** top-level menu groups the [MCP Server guide](/guides/mcp-server)
+and [AI Assistant guide](/guides/ai-assistant). Together they cover:
+
+- [Architecture and project boundaries](/guides/mcp-server#architecture)
+- [Host setup](/guides/mcp-server#enable-an-existing-host)
+- [Authentication and client connection](/guides/mcp-server#authentication-and-client-connection)
+- [Tools](/guides/mcp-server#tools)
+- [Limits and continuation](/guides/mcp-server#bounds-and-continuation)
+- [Custom read contributors](/guides/mcp-server#custom-read-contributors)
+- [Enable the shared assistant](/guides/ai-assistant#enable-native-ollama)
+- [Provider composition, including Bedrock](/guides/ai-assistant#api-composition-and-providers)
+- [Assistant budgets and deployment](/guides/ai-assistant#limits-and-deployment)
+- [Update UI and API packages together](/guides/ai-assistant#update-ui-and-api-together)
+- [Assistant troubleshooting](/guides/ai-assistant#troubleshooting)
+
+MCP exposes authorized business reads to application users. AI Assistant uses
+those reads through a shared platform UI and a server-side model provider. These
+guides belong to the documentation site and are not served by MCP tools.
 
 ## Ecosystem
 
@@ -210,6 +237,7 @@ Use Platform when you need responsibility boundaries, verified anchors, executio
 
 - [Developer Workflows](/guides/developer-workflows)
 - [Extend an External Application](/guides/extend-external-application)
+- [MCP Server](/guides/mcp-server)
 - [Platform Extension Points](/guides/platform-extension-points)
 - [Add a Document with Accounting and Registers](/guides/add-document-with-accounting-and-registers)
 - [Add a Canonical Report](/guides/add-canonical-report-workflow)

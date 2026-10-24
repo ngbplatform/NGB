@@ -1,9 +1,10 @@
-import { page } from 'vitest/browser'
+import { page, userEvent } from 'vitest/browser'
 import { beforeEach, expect, test, vi } from 'vitest'
 import { render } from 'vitest-browser-vue'
 import { createPinia } from 'pinia'
 import { defineComponent, h, ref } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
+import { getFeatures } from '../../../src/ngb/features/api'
 
 import {
   NgbButton,
@@ -24,6 +25,8 @@ import {
   getConfiguredNgbReporting,
   useCommandPaletteStore,
 } from '../../../src/index'
+
+vi.mock('../../../src/ngb/features/api', () => ({ getFeatures: vi.fn() }))
 
 function createEditorFrameworkConfig() {
   return {
@@ -47,6 +50,10 @@ function createMetadataFrameworkConfig() {
 
 beforeEach(() => {
   window.localStorage.removeItem('ngb:test:package-entrypoint:palette')
+  vi.mocked(getFeatures).mockResolvedValue([
+    { code: 'Mcp', displayName: 'MCP Server', group: 'Integrations', enabled: true },
+    { code: 'AiAssistant', displayName: 'AI Assistant', group: 'Integrations', enabled: true },
+  ])
 })
 
 test('mounts the public package entrypoint, configures framework singletons, and opens the exported palette dialog', async () => {
@@ -181,10 +188,15 @@ test('mounts the public package entrypoint, configures framework singletons, and
   await view.getByRole('button', { name: 'Work Center' }).click()
   await expect.element(view.getByText('You’re all caught up', { exact: true })).toBeVisible()
   document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
+  await expect.poll(() => document.querySelector('[data-testid="drawer-panel"]')).toBeNull()
 
-  await view.getByRole('button', { name: 'Help' }).click()
-  await expect.element(view.getByText('Help is coming soon', { exact: true })).toBeVisible()
-  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
+  await expect.element(view.getByRole('button', { name: 'AI Assistant', exact: true })).toBeVisible()
+  view.getByRole('button', { name: 'AI Assistant', exact: true }).element().focus()
+  await userEvent.keyboard('{Enter}')
+  await expect.element(view.getByRole('complementary', { name: 'AI Assistant' })).toBeVisible()
+  await expect.element(view.getByRole('textbox', { name: 'Ask a question' })).toHaveFocus()
+  await view.getByRole('button', { name: 'Close assistant' }).click()
+  await expect.element(view.getByRole('button', { name: 'AI Assistant', exact: true })).toHaveFocus()
 
   await view.getByRole('button', { name: 'Settings' }).click()
   await expect.element(view.getByText('Work Center preferences', { exact: true })).toBeVisible()

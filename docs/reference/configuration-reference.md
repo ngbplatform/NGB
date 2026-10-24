@@ -50,6 +50,7 @@ For the migrator CLI, command-line flags are primary and selected environment va
 | Demo bootstrap | `PM_DEMO_SEED_ENABLED`, `PM_DEMO_DATASET`, `PM_DEMO_SEED_FROM`, `PM_DEMO_SEED_TO` | Local demo seeding behavior for PM |
 | Keycloak | `KEYCLOAK_PUBLIC_URL`, `KEYCLOAK_REALM`, `KEYCLOAK_PM_API_CLIENT_ID`, `KEYCLOAK_PM_WEB_CLIENT_ID` | Realm, client ids, admin bootstrap, and public URLs |
 | Content features | `FEATURE_ATTACHMENTS`, `FEATURE_NOTES`, `ATTACHMENTS_UPLOAD_EXPIRATION_ENABLED` | API feature availability and database-only expiration of pending uploads |
+| MCP | `FEATURE_MCP`, `MCP_ALLOW_LOCALHOST_HTTP`, optional `PM_API_PUBLIC_URL` | MCP availability, local HTTP opt-in and the shared public API base URL |
 | MinIO | `MINIO_IMAGE_REPOSITORY`, `MINIO_IMAGE_TAG`, `MINIO_IMAGE_DIGEST`, `MINIO_BUCKET`, `MINIO_INTERNAL_ENDPOINT`, `MINIO_PUBLIC_ENDPOINT`, `MINIO_CORS_ORIGINS` | Local storage image, bucket, service/browser endpoints and permitted browser origins |
 | Supporting tools | `PGADMIN_HTTP_HOST_PORT`, `PGADMIN_DEFAULT_EMAIL` | Optional local support tools |
 
@@ -61,7 +62,7 @@ The PM API host uses the following configuration keys in the verified developmen
 |---|---|---|
 | `ConnectionStrings:DefaultConnection` | `appsettings.Development.json`, `docker-compose.pm.yml` | Primary PostgreSQL application connection string |
 | `KeycloakSettings:Issuer` | `appsettings.Development.json`, `docker-compose.pm.yml` | JWT issuer / Keycloak realm URL |
-| `KeycloakSettings:ClientIds[]` | `appsettings.Development.json` | Accepted audiences for bearer tokens |
+| `KeycloakSettings:ClientIds[]` | `appsettings.Development.json` | Allowed client identifiers checked by the shared bearer validator against `aud`, `azp` or `client_id` |
 | `KeycloakSettings:RequireHttpsMetadata` | `docker-compose.pm.yml` | Local-development toggle for Keycloak metadata retrieval |
 | `ExternalLinksSettings:HealthUiUrl` | `appsettings.Development.json`, `docker-compose.pm.yml` | External menu link to Watchdog UI |
 | `ExternalLinksSettings:BackgroundJobsUiUrl` | `appsettings.Development.json`, `docker-compose.pm.yml` | External menu link to Hangfire dashboard |
@@ -90,6 +91,10 @@ The same keys are used by all four API hosts. Environment-variable equivalents u
 |---|---|---|
 | `FeatureManagement:Attachments` | `FEATURE_ATTACHMENTS` | Enable attachment operations; defaults to `false` |
 | `FeatureManagement:Notes` | `FEATURE_NOTES` | Enable notes independently of storage; defaults to `false` |
+| `FeatureManagement:Mcp` | `FEATURE_MCP` | Enable the MCP endpoint and OAuth metadata at API startup; defaults to `false` |
+| `FeatureManagement:AiAssistant` | `FEATURE_AI_ASSISTANT` | Enable the shared assistant panel and API; defaults to `false` and requires MCP |
+| `Mcp:AllowLocalhostHttp` | `MCP_ALLOW_LOCALHOST_HTTP` | Permit HTTP for loopback and reserved `*.localhost` hosts during local development; defaults to `false` |
+| `Ngb:Hosting:PublicApiUrl` | `PM_API_PUBLIC_URL` (optional) | Shared public API base URL; local Compose derives it from `PM_API_HTTPS_PORT` when absent. MCP appends its mapped route |
 | `Attachments:UploadExpirationEnabled` | `ATTACHMENTS_UPLOAD_EXPIRATION_ENABLED` | Keep pending upload expiration active when Attachments is disabled; defaults to `false` |
 | `Attachments:MinIO:InternalEndpoint` | `MINIO_INTERNAL_ENDPOINT` | S3 endpoint reached by the API for verification and server-side copy |
 | `Attachments:MinIO:PublicEndpoint` | `MINIO_PUBLIC_ENDPOINT` | Browser-reachable S3 endpoint used to sign upload/download URLs |
@@ -100,11 +105,42 @@ The same keys are used by all four API hosts. Environment-variable equivalents u
 
 The checked-in local `.env` files explicitly enable both features and upload expiration. MinIO credentials are injected through Compose; they are not stored in API `appsettings.Development.json`. An IDE launch needs equivalent environment variables or .NET User Secrets because ASP.NET Core does not read Compose `.env` files automatically.
 
+The four local `.env` files also enable MCP and its localhost HTTP option. Trade, Agency Billing and CRM use `TRADE_API_PUBLIC_URL`, `AB_API_PUBLIC_URL` and `CRM_API_PUBLIC_URL` respectively for an optional shared API URL override. Production uses the public HTTPS API URL and leaves localhost HTTP disabled. Use `FeatureManagement:Mcp` exclusively.
+
+MCP uses the existing API JWT bearer scheme (`Mcp:AuthenticationScheme`, default `Bearer`) and its configured issuer/audience/client validation. Clients send the current user's API access token in the `Authorization: Bearer <access_token>` header. No separate Keycloak client or MCP audience mapper is needed for that token. `Mcp:Audience` is obsolete and rejected; remove it. The canonical MCP resource URL describes the endpoint, not an additional token audience. See the [MCP setup guide](/guides/mcp-server#authentication-and-client-connection).
+
 Feature state is fixed at API startup. After changing `.env`, recreate the API container with `docker compose ... up -d`; restarting an existing container does not replace its environment. Reload the browser after updating all replicas. Administrator permissions do not override a disabled feature.
 
 Upload expiration runs inside the API host, not Hangfire. It changes database metadata and writes AuditLog events; it never deletes MinIO objects. MinIO configuration is required only when the Attachments feature is enabled, although the provided full Compose stacks still start storage.
 
 See [Feature Flags](/architecture/feature-flags) for rollout and registration, and [Attachments & Notes configuration](/architecture/attachments-and-notes#configuration) for all limits, lifetimes, storage requirements and production configuration.
+
+### AI Assistant
+
+All four checked-in API hosts register Ollama. Provider selection happens in API
+composition; adding another provider's settings alone does not switch it. These
+settings configure the existing Ollama registration:
+
+| API key | Compose `.env` key | Default / meaning |
+|---|---|---|
+| `AiAssistant:Ollama:Endpoint` | `AI_OLLAMA_ENDPOINT` | Adapter default `http://localhost:11434`; Compose uses `http://host.docker.internal:11434` |
+| `AiAssistant:Ollama:AllowInsecureHttp` | `AI_OLLAMA_ALLOW_INSECURE_HTTP` | `false`; local `.env` files explicitly permit the HTTP API-to-host connection |
+| `AiAssistant:Ollama:Model` | `AI_OLLAMA_MODEL` | `qwen3.5:9b` |
+| `AiAssistant:Ollama:ContextLength` | `AI_OLLAMA_CONTEXT_LENGTH` | `32768` tokens |
+| `AiAssistant:McpLoopbackPort` | Set directly in Compose | Unset by default; local Compose sets `443` for the API's internal MCP connection |
+| `AiAssistant:TrustDevelopmentServerCertificate` | Set directly in Compose | `false`; local Compose opts into trusting only the configured Kestrel certificate in Development |
+
+The remaining `AiAssistant` settings control request, tool, context and output
+budgets; see the complete [limits table](/guides/ai-assistant#limits-and-deployment).
+Use double underscores in API environment variables, for example
+`AiAssistant__MaxToolCalls` and `AiAssistant__MaxOutputTokens`. Compose `.env`
+entries only reach a container when the service's `environment` section maps them.
+
+Provider sections are `AiAssistant:OpenAI` (`Endpoint`, `Model`, `ApiKey`),
+`AiAssistant:Anthropic` (`Model`, `ApiKey`) and `AiAssistant:Bedrock` (`Region`,
+`Model`). Bedrock credentials use the AWS SDK credential chain. Keep all provider
+credentials on the server. See [provider composition](/guides/ai-assistant#api-composition-and-providers)
+and [package updates and troubleshooting](/guides/ai-assistant#update-ui-and-api-together).
 
 ### Reporting
 

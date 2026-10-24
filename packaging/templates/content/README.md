@@ -164,6 +164,66 @@ presigned upload/download endpoints. Enable `FeatureManagement:Attachments` only
 after storage validation passes. Use the platform parent-object authorization;
 do not expose buckets publicly or implement a separate application ACL.
 
+## Optional MCP endpoint
+
+The API includes the public `NGB.Platform.Mcp.AspNetCore` package and the
+`AddNgbMcp` / `MapNgbMcp` composition. MCP is disabled by default. To enable it in
+the local Compose API, set this in the private `.env` file and recreate the API:
+
+```dotenv
+FEATURE_MCP=true
+MCP_ALLOW_LOCALHOST_HTTP=true
+```
+
+Compose sets `Ngb__Hosting__PublicApiUrl` from `API_PUBLIC_URL`, defaulting to
+`http://localhost:5181`, and permits local HTTP only with
+`MCP_ALLOW_LOCALHOST_HTTP=true`. MCP derives `/mcp` from that shared API address.
+Production sets the common public HTTPS URL and
+keeps `Mcp__AllowLocalhostHttp=false`. `Mcp__Resource` is an optional full URL
+override for a separately exposed endpoint, not a required second API address.
+
+Use the existing user's API access token. MCP forwards authentication to the
+same API JWT bearer handler, including its issuer, signature, lifetime and
+configured audience/client checks. In Postman choose **Bearer Token** and paste
+the access token without the `Bearer ` prefix. No new Keycloak user, client or
+MCP audience mapper is needed to reuse that token. ID/refresh tokens, service
+accounts and inactive users are rejected. The normal Administrator policy
+remains effective. Remove obsolete `Mcp:Audience` settings.
+
+To obtain tokens through a client's interactive OAuth flow, use Authorization
+Code with PKCE S256 and an existing registration that allows its callback URI.
+This is separate from connecting with an already issued API access token.
+
+Connect a Streamable HTTP client to that URI. Protected Resource Metadata is
+available at `http://localhost:5181/.well-known/oauth-protected-resource/mcp`.
+Use the current SDK discovery flow or a supported compatibility client, then
+call `ngb_list_metadata` with `{ "limit": 10 }`. The empty starter exposes only
+installed platform definitions; custom modules extend generic reads automatically.
+
+For production, use a canonical public HTTPS resource URI and the existing
+trusted-proxy configuration. Set `Mcp:AllowedOrigins` only for actual browser
+clients. Configure `Mcp:PublicUiOrigin` and `Mcp:UiRoutes` only when your UI has
+those routes; absent routes return null links. The
+[MCP guide](https://docs.ngbplatform.com/guides/mcp-server) describes limits,
+permission checks, optional contributors, OAuth and client compatibility.
+
+## Optional AI Assistant
+
+The shared UI and API include AI Assistant, disabled by default. Enable both
+`FEATURE_MCP=true` and `FEATURE_AI_ASSISTANT=true` and run native Ollama on the
+host with the `qwen3.5:9b` model. Compose uses
+`AI_OLLAMA_ENDPOINT=http://host.docker.internal:11434`; explicitly set
+`AI_OLLAMA_ALLOW_INSECURE_HTTP=true` for this local API-to-host connection. An API
+running directly on the host uses `http://localhost:11434` without the opt-in.
+`AiAssistant:Ollama:AllowInsecureHttp` defaults to `false`; other HTTP endpoints
+also require explicit permission. Use HTTPS and leave the option disabled for
+production network connections.
+
+The assistant uses the existing user's MCP permissions. Conversations remain in
+browser memory. The developer can replace `AddNgbOllamaChatClient` with another
+`IChatClient` registration. See the [AI Assistant guide](https://docs.ngbplatform.com/guides/ai-assistant)
+for model providers, startup requirements, limits and deployment configuration.
+
 ## Upgrade and deploy
 
 Select a supported transition from the [upgrade guide](https://docs.ngbplatform.com/architecture/external-app-upgrades)

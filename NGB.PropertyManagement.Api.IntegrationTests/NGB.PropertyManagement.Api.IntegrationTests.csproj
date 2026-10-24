@@ -14,17 +14,18 @@
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.12"/>
-        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1"/>
+        <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.13" />
+        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
         <PackageReference Include="xunit" Version="2.9.3"/>
-        <PackageReference Include="xunit.runner.visualstudio" Version="4.0.0">
+        <PackageReference Include="xunit.runner.visualstudio" Version="4.0.1">
             <PrivateAssets>all</PrivateAssets>
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
         <PackageReference Include="FluentAssertions" Version="8.11.0"/>
+        <PackageReference Include="ModelContextProtocol" Version="2.2.0" />
         <PackageReference Include="Moq" Version="4.21.0"/>
-        <PackageReference Include="Testcontainers" Version="4.15.0"/>
-        <PackageReference Include="Testcontainers.PostgreSql" Version="4.15.0"/>
+        <PackageReference Include="Testcontainers" Version="4.16.0" />
+        <PackageReference Include="Testcontainers.PostgreSql" Version="4.16.0" />
         <PackageReference Include="Respawn" Version="7.0.0"/>
         <PackageReference Update="coverlet.collector" Version="10.1.0">
             <PrivateAssets>all</PrivateAssets>
@@ -37,9 +38,19 @@
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </None>
     </ItemGroup>
+
     <ItemGroup>
         <Compile Include="..\quality\integration\ReportPerformanceProbe.cs" Link="Infrastructure\ReportPerformanceProbe.cs"/>
         <Compile Include="..\quality\integration\PostgreSqlIntegrationFixtureBase.cs" Link="Infrastructure\PostgreSqlIntegrationFixtureBase.cs"/>
         <None Include="..\quality\integration\xunit.integration.runner.json" Link="xunit.runner.json" CopyToOutputDirectory="PreserveNewest"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <Compile Include="../quality/mcp/VerticalMcpContract.cs" Link="Infrastructure/VerticalMcpContract.cs" />
+        <Compile Include="../quality/mcp/VerticalMcpPerformance.cs" Link="Infrastructure/VerticalMcpPerformance.cs" />
+        <Compile Include="../quality/mcp/external/McpQueryProbe.cs" Link="Infrastructure/McpQueryProbe.cs" />
+        <None Include="../quality/mcp/vertical-performance-budgets.json" Link="mcp-vertical-performance-budgets.json" CopyToOutputDirectory="PreserveNewest" />
+        <Compile Include="../quality/mcp/external/KeycloakFixture.cs" Link="Infrastructure/McpKeycloakFixture.cs" />
+        <Compile Include="../quality/mcp/external/DatabaseSnapshot.cs" Link="Infrastructure/McpDatabaseSnapshot.cs" />
     </ItemGroup>
 </Project>

@@ -393,6 +393,11 @@ public static class RuntimeServiceCollectionExtensions
         services.TryAddScoped<PermissionAwareAdminService>();
         services.TryAddScoped<PermissionAwareCatalogService>();
         services.TryAddScoped<PermissionAwareDocumentService>();
+        services.TryAddScoped<IAuthorizedCatalogReadService>(sp => sp.GetRequiredService<PermissionAwareCatalogService>());
+        services.TryAddScoped<IAuthorizedDocumentReadService>(sp => sp.GetRequiredService<PermissionAwareDocumentService>());
+        services.TryAddScoped<IAuthorizedReportReadService, PermissionAwareReportReadService>();
+        services.TryAddScoped<INgbSearchService, Search.NgbSearchService>();
+        services.TryAddScoped<IAuthorizedGeneralJournalEntryReadService, PermissionAwareGeneralJournalEntryReadService>();
         services.TryAddScoped<PermissionAwareAuditLogQueryService>(sp => new PermissionAwareAuditLogQueryService(
             sp.GetRequiredService<AuditLogQueryService>(),
             sp.GetRequiredService<INgbAccessChecker>(),

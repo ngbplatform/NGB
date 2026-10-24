@@ -11,7 +11,7 @@ public sealed class PermissionAwareCatalogService(
     ICatalogService inner,
     INgbAccessChecker access,
     NgbSecurityCache cache)
-    : ICatalogService
+    : ICatalogService, IAuthorizedCatalogReadService
 {
     public async Task<IReadOnlyList<CatalogTypeMetadataDto>> GetAllMetadataAsync(CancellationToken ct)
     {

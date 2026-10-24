@@ -22,6 +22,7 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('@ngbplatform/ui', () => ({
+  NgbSourceKinds: { Catalog: 'catalog' },
   buildGeneralJournalEntriesPath: mocks.buildGeneralJournalEntriesPath,
   getDocumentById: mocks.getDocumentById,
   getDocumentEffects: mocks.getDocumentEffects,
@@ -86,6 +87,20 @@ describe('property-management editor framework', () => {
       .toBe('/receivables/reconciliation')
     expect(resolve({ code: 'pm.receivables.reconciliation', parameters: {} }, {} as never))
       .toBe('/receivables/reconciliation')
+  })
+
+  it.each([
+    ['/catalogs/pm.property', { buildingId: GUID }, GUID],
+    ['/catalogs/pm.property', { buildingId: [GUID, GUID_2] }, GUID],
+    ['/catalogs/pm.property', {}, undefined],
+    ['/catalogs/pm.property', { buildingId: [] }, undefined],
+    ['/catalogs/pm.property', { buildingId: GUID, panel: 'edit' }, undefined],
+    ['/documents/pm.lease', { buildingId: GUID }, undefined],
+  ])('resolves the selected building only on the properties list: %s %j', (path, query, expectedId) => {
+    const resolve = createPmNavigationConfig().resolvePageContext!
+    const result = resolve({ path, fullPath: path, query, params: {}, meta: {}, name: undefined })
+
+    expect(result).toEqual(expectedId ? { kind: 'catalog', typeCode: 'pm.property', id: expectedId } : undefined)
   })
 
   it('routes receivable and payable apply targets with normalized parameters', () => {

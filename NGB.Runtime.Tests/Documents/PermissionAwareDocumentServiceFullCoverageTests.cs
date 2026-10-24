@@ -153,7 +153,8 @@ public sealed class PermissionAwareDocumentServiceFullCoverageTests
         access.Setup(x => x.RequireAsync(NgbResourceKinds.Document, "doc", It.IsAny<string>(),
             It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
         access.Setup(x => x.GetSnapshotAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Snapshot(1, Key("doc", NgbPermissionActions.Lookup)));
+            .ReturnsAsync(Snapshot(1, Key("doc", NgbPermissionActions.Lookup),
+                Key("doc", NgbPermissionActions.View), Key("doc", NgbPermissionActions.ViewFlow)));
         using var memory = new MemoryCache(new MemoryCacheOptions());
         var sut = new PermissionAwareDocumentService(inner.Object, access.Object, Cache(memory));
 
@@ -179,7 +180,7 @@ public sealed class PermissionAwareDocumentServiceFullCoverageTests
         foreach (var action in new[]
                  {
                      NgbPermissionActions.View, NgbPermissionActions.Create, NgbPermissionActions.EditDraft,
-                     NgbPermissionActions.DeleteDraft, "custom", NgbPermissionActions.ViewFlow,
+                     NgbPermissionActions.DeleteDraft, "custom",
                      NgbPermissionActions.ViewEffects
                  })
         {
@@ -205,6 +206,72 @@ public sealed class PermissionAwareDocumentServiceFullCoverageTests
         (await sut.GetByIdsAcrossTypesAsync(["doc", "DOC"], [Guid.NewGuid()], default)).Should().BeEmpty();
         await ((Func<Task>)(() => sut.GetPageAsync("doc", new PageRequestDto(), default)))
             .Should().ThrowAsync<NgbPermissionDeniedException>();
+    }
+
+    [Fact]
+    public async Task Flow_RemovesForbiddenIntermediatesAndRecomputesVisibleDistances()
+    {
+        var rootId = Guid.NewGuid();
+        var nodes = new GraphNodeDto[]
+        {
+            new("root", EntityKind.Document, "doc", rootId, "Root"),
+            new("hidden", EntityKind.Document, "secret", Guid.NewGuid(), "Hidden", Depth: 1),
+            new("orphan", EntityKind.Document, "doc", Guid.NewGuid(), "Only through secret", Depth: 2),
+            new("catalog", EntityKind.Catalog, "customer", Guid.NewGuid(), "Customer", Depth: 1),
+            new("middle", EntityKind.Document, "doc", Guid.NewGuid(), "Middle", Depth: 2),
+            new("far", EntityKind.Document, "doc", Guid.NewGuid(), "Far", Depth: 2),
+            new("unknown", (EntityKind)999, "doc", Guid.NewGuid(), "Unsupported kind")
+        };
+        var graph = new RelationshipGraphDto(nodes,
+        [
+            new("root", "hidden", "source"),
+            new("hidden", "orphan", "source"),
+            new("hidden", "far", "source"),
+            new("root", "catalog", "reference"),
+            new("middle", "catalog", "reference"),
+            new("middle", "far", "source"),
+            new("far", "middle", "source"),
+            new("root", "unknown", "reference"),
+            new("missing", "root", "reference")
+        ]);
+        var inner = new Mock<IDocumentService>(MockBehavior.Strict);
+        inner.Setup(value => value.GetRelationshipGraphAsync("doc", rootId, 5, 100, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(graph);
+        var permissions = Snapshot(1, Key("doc", NgbPermissionActions.View), Key("doc", NgbPermissionActions.ViewFlow),
+            new NgbPermissionKey(NgbResourceKinds.Catalog, "customer", NgbPermissionActions.View));
+        var access = new Mock<INgbAccessChecker>(MockBehavior.Strict);
+        access.Setup(value => value.GetSnapshotAsync(It.IsAny<CancellationToken>())).ReturnsAsync(permissions);
+        using var memory = new MemoryCache(new MemoryCacheOptions());
+        var service = new PermissionAwareDocumentService(inner.Object, access.Object, Cache(memory));
+
+        var result = await service.GetRelationshipGraphAsync("doc", rootId, 5, 100, default);
+
+        result.Nodes.Select(node => node.NodeId).Should().Equal("root", "catalog", "middle", "far");
+        result.Nodes.Select(node => node.Depth).Should().Equal(0, 1, 2, 3);
+        result.Edges.Should().HaveCount(4);
+        result.Edges.Should().OnlyContain(edge => edge.FromNodeId != "hidden" && edge.ToNodeId != "hidden");
+        graph.Nodes.Single(node => node.NodeId == "far").Depth.Should().Be(2);
+    }
+
+    [Theory]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    public async Task Flow_RequiresBothRootViewAndFlowBeforeReading(bool view, bool flow)
+    {
+        var permissions = new List<NgbPermissionKey>();
+        if (view)
+            permissions.Add(Key("doc", NgbPermissionActions.View));
+        if (flow)
+            permissions.Add(Key("doc", NgbPermissionActions.ViewFlow));
+        var inner = new Mock<IDocumentService>(MockBehavior.Strict);
+        var access = new Mock<INgbAccessChecker>(MockBehavior.Strict);
+        access.Setup(value => value.GetSnapshotAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Snapshot(1, permissions.ToArray()));
+        using var memory = new MemoryCache(new MemoryCacheOptions());
+        var service = new PermissionAwareDocumentService(inner.Object, access.Object, Cache(memory));
+
+        await Assert.ThrowsAsync<NgbPermissionDeniedException>(() => service.GetRelationshipGraphAsync("doc", Guid.NewGuid(), 2, 10, default));
+        inner.VerifyNoOtherCalls();
     }
 
     private static DocumentTypeMetadataDto Metadata(

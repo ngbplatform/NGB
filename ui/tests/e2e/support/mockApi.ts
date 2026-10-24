@@ -544,6 +544,8 @@ export async function mockCommonPmApis(page: Page): Promise<void> {
   await page.route('**/api/features', route => fulfillJson(route, [
     { code: 'Attachments', displayName: 'Attachments', group: 'Attachments & Notes', enabled: true },
     { code: 'Notes', displayName: 'Notes', group: 'Attachments & Notes', enabled: true },
+    { code: 'Mcp', displayName: 'MCP Server', group: 'Integrations', enabled: false },
+    { code: 'AiAssistant', displayName: 'AI Assistant', group: 'Integrations', enabled: false },
   ]))
   await page.route('**/api/business-objects/content-summary**', route => fulfillJson(route, { attachments: 0, notes: 0 }))
   await page.route('**/api/security/me/access', async (route) => {

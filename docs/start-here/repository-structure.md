@@ -4,12 +4,21 @@ title: Repository Structure
 
 # Repository Structure
 
-The repository is a monorepo. Platform modules, vertical solutions, shared UI packages, Docker assets, and documentation live together.
+The repository is a monorepo. Platform modules, vertical solutions, shared UI packages,
+Docker assets, package tooling and documentation live together. Backend `NGB.*`
+project directories live at the repository root. `NGB.sln` contains the backend
+library, host and test projects; frontend and packaging tooling have separate
+entry points.
 
-A simplified top-level map looks like this:
+A simplified map follows. The headings are logical groups, not physical directories.
 
 ```text
-NGB.sln
+NGB/
+│
+├─ Backend solution and shared build configuration
+│  ├─ NGB.sln
+│  ├─ Directory.Build.props
+│  └─ NuGet.config
 │
 ├─ Platform core
 │  ├─ NGB.Core
@@ -33,32 +42,72 @@ NGB.sln
 │  ├─ NGB.Tools
 │  └─ NGB.Migrator.Core
 │
+├─ Shared content services
+│  ├─ NGB.Attachments
+│  ├─ NGB.Attachments.MinIO
+│  └─ NGB.Notes
+│
+├─ MCP Server and AI Assistant
+│  ├─ NGB.Mcp
+│  ├─ NGB.Mcp.AspNetCore
+│  ├─ NGB.AiAssistant
+│  ├─ NGB.AiAssistant.AspNetCore
+│  ├─ NGB.AiAssistant.Ollama
+│  ├─ NGB.AiAssistant.OpenAI
+│  ├─ NGB.AiAssistant.Anthropic
+│  └─ NGB.AiAssistant.Bedrock
+│
 ├─ Vertical solutions
+│  ├─ NGB.AgencyBilling.*
+│  ├─ NGB.CRM.*
 │  ├─ NGB.PropertyManagement.*
-│  ├─ NGB.Trade.*
-│  └─ NGB.AgencyBilling.*
+│  └─ NGB.Trade.*
 │
 ├─ UI workspace
 │  ├─ ui/ngb-ui-framework
+│  ├─ ui/ngb-agency-billing-web
+│  ├─ ui/ngb-crm-web
 │  ├─ ui/ngb-property-management-web
 │  ├─ ui/ngb-trade-web
-│  ├─ ui/ngb-agency-billing-web
-│  └─ ui/ngb-auth-theme
+│  ├─ ui/ngb-auth-theme
+│  └─ ui/scripts
 │
-├─ Docker
+├─ Docker environments
 │  ├─ docker/
+│  ├─ docker-compose.ab.yml
+│  ├─ docker-compose.crm.yml
 │  ├─ docker-compose.pm.yml
-│  ├─ docker-compose.trade.yml
-│  └─ docker-compose.ab.yml
+│  └─ docker-compose.trade.yml
 │
-├─ Documentation
-│  └─ docs/
+├─ Packages and external applications
+│  ├─ packaging/nuget
+│  ├─ packaging/templates
+│  ├─ packaging/PUBLISHING.md
+│  └─ ngb.mjs
 │
-└─ Tests
-   ├─ platform unit tests
-   ├─ platform integration tests
-   ├─ vertical unit tests
-   └─ vertical integration tests
+├─ Performance tests
+│  ├─ performance-tests/ngb-performance-tests-framework
+│  ├─ performance-tests/ngb-property-management-perf
+│  ├─ performance-tests/ngb-trade-perf
+│  ├─ performance-tests/ngb-agency-billing-perf
+│  └─ performance-tests/scripts
+│
+├─ Tests and verification
+│  ├─ NGB.*.Tests / NGB.*.IntegrationTests
+│  ├─ ui/**/tests / ui/tests
+│  ├─ quality/ai-assistant
+│  ├─ quality/mcp
+│  ├─ quality/integration
+│  ├─ quality/coverage
+│  ├─ quality/external-consumer
+│  ├─ quality/upgrade-certification
+│  ├─ quality/mutation
+│  ├─ run-backend-full-coverage.sh
+│  └─ run-frontend-full-coverage.sh
+│
+└─ Documentation and CI
+   ├─ docs/
+   └─ .github/workflows/
 ```
 
 ## How to read the monorepo
@@ -105,6 +154,15 @@ These projects compose or persist the platform:
 
 They do not define business meaning on their own. Their job is to surface, persist, schedule, or operate the platform.
 
+`NGB.Attachments` and `NGB.Notes` provide shared content capabilities;
+`NGB.Attachments.MinIO` implements the object-storage adapter.
+`NGB.Mcp` and `NGB.Mcp.AspNetCore` expose existing authorized application reads.
+`NGB.AiAssistant` orchestrates bounded model/tool turns, while
+`NGB.AiAssistant.AspNetCore` provides HTTP/SSE and the MCP client. The Ollama,
+OpenAI, Anthropic and Bedrock projects supply replaceable model adapters.
+See [Platform Projects](/reference/platform-projects), [MCP Server](/guides/mcp-server)
+and [AI Assistant](/guides/ai-assistant).
+
 ### 4. Vertical solutions
 
 Verticals add business-specific meaning without rewriting the platform. They define:
@@ -118,6 +176,12 @@ Verticals add business-specific meaning without rewriting the platform. They def
 - seeds;
 - API / watchdog / background-job hosts for that solution.
 
+All four verticals include definition, Runtime, PostgreSQL, API, Migrator,
+BackgroundJobs, Watchdog and test projects. PM, Trade and Agency Billing reference
+platform source projects. CRM consumes `NGB.Platform.*` NuGet packages and keeps
+project references within its own vertical. Build the matching local packages
+before testing unpublished platform changes through CRM.
+
 ### 5. Shared UI workspace
 
 The UI workspace proves that the platform is not backend-only. It contains:
@@ -126,6 +190,25 @@ The UI workspace proves that the platform is not backend-only. It contains:
 - metadata-driven web clients;
 - vertical web applications;
 - Keycloak theme assets.
+
+AI Assistant belongs to `ui/ngb-ui-framework`; its panel behavior is shared across
+verticals. CRM declares a versioned `@ngbplatform/ui` dependency and consumes the
+packaged UI in its isolated Docker build; a root UI workspace install can link the
+matching local workspace. The other demo web applications use the workspace source.
+
+### 6. Packaging and verification
+
+`packaging/nuget/projects.txt` lists the projects to pack, and
+`packaging/templates` contains the external-application starter. The root
+`ngb.mjs` delegates to the application CLI maintained with that starter.
+Follow [local package preparation](/start-here/run-locally#prepare-local-platform-packages)
+and [external application upgrades](/architecture/external-app-upgrades) when
+working across package boundaries.
+
+`quality/` contains MCP, assistant, integration, coverage, package-consumer,
+upgrade and mutation verification tooling. The root full-coverage scripts produce
+reports under `artifacts/coverage/`. Generated artifacts are ignored by Git.
+The separate `performance-tests` workspace contains k6 scenarios and diagnostics.
 
 ## Recommended code-reading order
 

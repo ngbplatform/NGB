@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { execFileSync, spawn } from 'node:child_process'
 import { createHash, randomBytes } from 'node:crypto'
 import { createWriteStream } from 'node:fs'
+import { createServer } from 'node:http'
 import { cp, mkdir, mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -50,6 +51,7 @@ const evidence = { schemaVersion: 1, profile, source: upgrade ? sourceVersion : 
 let browser
 let page
 let infrastructureStarted = false
+let mcpEnabled = false
 
 function run(command, args, cwd = application, env = {}) {
   return execFileSync(command, args, { cwd, env: { ...process.env, ...env }, stdio: 'inherit' })
@@ -111,6 +113,11 @@ function hostEnvironment(host) {
     Attachments__MinIO__SecretKey: secrets.minioApp,
     Attachments__MinIO__AllowInsecureHttp: 'true',
     ASPNETCORE_URLS: host === 'BackgroundJobs' ? 'http://127.0.0.1:5184' : 'http://127.0.0.1:5181',
+    ...(mcpEnabled ? {
+      FeatureManagement__Mcp: 'true',
+      Mcp__Resource: 'http://localhost:5181/mcp',
+      Mcp__AllowLocalhostHttp: 'true',
+    } : {}),
   }
 }
 function dotnetHost(host, args = [], live = false) {
@@ -333,12 +340,115 @@ function runtimeProbe(test, state) {
     NGB_CONNECTION_STRING: connectionString, NGB_PROBE_STATE: state,
   })
 }
-async function assertPersistentSnapshot(before, after, historyOnly) {
+async function assertPersistentSnapshot(before, after, historyOnly, assertion) {
   const sourceState = JSON.parse(await readFile(join(root, before), 'utf8'))
   const targetState = JSON.parse(await readFile(join(root, after), 'utf8'))
   const select = state => Object.fromEntries(Object.entries(state).filter(([name]) => !historyOnly || name.startsWith('migration_changelog__')))
   assert.deepEqual(select(targetState), select(sourceState), 'Persistent state or migration history changed unexpectedly.')
-  evidence.assertions[historyOnly ? 'migrationHistoryPreserved' : 'repeatedMigrationSnapshot'] = createHash('sha256').update(JSON.stringify(select(targetState))).digest('hex')
+  evidence.assertions[assertion ?? (historyOnly ? 'migrationHistoryPreserved' : 'repeatedMigrationSnapshot')] = createHash('sha256').update(JSON.stringify(select(targetState))).digest('hex')
+}
+
+async function verifyMcpUpgrade(state, content) {
+  const directory = join(application, `${project}.Api`)
+  const projectFile = join(directory, `${project}.Api.csproj`)
+  const projectText = await readFile(projectFile, 'utf8')
+  assert.ok(!projectText.includes('NGB.Platform.Mcp.AspNetCore'), 'The frozen 3.2 consumer must not contain MCP.')
+  await writeFile(projectFile, projectText.replace('</Project>',
+    '    <ItemGroup>\n        <PackageReference Include="NGB.Platform.Mcp.AspNetCore" Version="$(NgbPlatformVersion)" />\n    </ItemGroup>\n\n</Project>'))
+  const program = join(directory, 'Program.cs')
+  const programText = await readFile(program, 'utf8')
+  assert.ok(programText.includes('var app = builder.Build();') && programText.includes('app.MapControllers();'))
+  await writeFile(program, `using NGB.Mcp.AspNetCore;\n${programText}`
+    .replace('var app = builder.Build();', 'builder.Services.AddNgbMcp(builder.Configuration);\n\nvar app = builder.Build();')
+    .replace('app.UseAuthentication();', 'app.UseCors();\napp.UseAuthentication();')
+    .replace('app.MapControllers();', 'app.MapControllers();\napp.MapNgbMcp();'))
+  const relativeProject = `${project}.Api/${project}.Api.csproj`
+  run('dotnet', ['restore', relativeProject, '--configfile', 'NuGet.Config',
+    '--packages', join(root, `nuget-${targetVersion}`), '--force-evaluate'])
+  run('dotnet', ['build', relativeProject, '--no-restore', '--no-incremental', '-c', 'Release',
+    '-m:1', '-nodeReuse:false', '-p:UseSharedCompilation=false'])
+  mcpEnabled = true
+  const host = dotnetHost('Api', [], true)
+  await ready('http://localhost:5181/health')
+
+  const verifier = randomBytes(32).toString('base64url')
+  const oauthState = randomBytes(24).toString('base64url')
+  const redirect = 'http://localhost:5182/mcp-callback'
+  const clientId = upgrade ? 'certification-web' : 'ngb-web'
+  const issuer = `http://localhost:5180/realms/${realmName}`
+  const receiver = createServer((request, response) => {
+    response.writeHead(request.url.startsWith('/mcp-callback?') ? 200 : 404, {
+      'Content-Type': 'text/plain', 'Cache-Control': 'no-store',
+    })
+    response.end('Authorization complete.')
+  })
+  let callback
+  try {
+    await new Promise((resolveListen, reject) => receiver.once('error', reject).listen(5182, 'localhost', resolveListen))
+    browser = await chromium.launch({ headless: true })
+    page = await browser.newPage()
+    await page.goto(`${issuer}/protocol/openid-connect/auth?${new URLSearchParams({
+      client_id: clientId, response_type: 'code', scope: 'openid', redirect_uri: redirect,
+      state: oauthState, code_challenge: createHash('sha256').update(verifier).digest('base64url'), code_challenge_method: 'S256',
+    })}`)
+    await page.locator('input[name="username"]').fill(email)
+    await page.locator('input[name="password"]').fill(secrets.administrator)
+    await page.locator('button[type="submit"], input[type="submit"]').first().click()
+    await page.waitForURL(`${redirect}**`)
+    callback = new URL(page.url())
+  } finally {
+    receiver.closeAllConnections()
+    await new Promise(resolveClose => receiver.close(resolveClose))
+  }
+  assert.equal(callback.searchParams.get('state'), oauthState)
+  assert.ok(callback.searchParams.get('code'))
+  const response = await fetch(`${issuer}/protocol/openid-connect/token`, {
+    method: 'POST', signal: AbortSignal.timeout(30_000), body: new URLSearchParams({
+      grant_type: 'authorization_code', client_id: clientId, redirect_uri: redirect,
+      code: callback.searchParams.get('code'), code_verifier: verifier,
+    }),
+  })
+  assert.equal(response.status, 200)
+  const accessToken = (await response.json()).access_token
+  await browser.close()
+  browser = null
+  let requestId = 0
+  const rpc = async (method, params) => {
+    const result = await fetch('http://localhost:5181/mcp', {
+      method: 'POST', signal: AbortSignal.timeout(30_000),
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json',
+        Accept: 'application/json, text/event-stream', 'MCP-Protocol-Version': '2025-11-25' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: ++requestId, method, params }),
+    })
+    assert.equal(result.status, 200)
+    const text = await result.text()
+    const messages = result.headers.get('content-type').includes('text/event-stream')
+      ? text.split('\n').filter(line => line.startsWith('data:')).map(line => JSON.parse(line.slice(5)))
+      : [JSON.parse(text)]
+    const message = messages.find(item => item.id === requestId)
+    assert.ok(message?.result, 'The upgraded MCP host must return a protocol result.')
+    assert.notEqual(message.result.isError, true)
+    return message.result
+  }
+  const call = async (name, args) => (await rpc('tools/call', { name, arguments: args })).structuredContent.data
+  runtimeProbe('SnapshotPersistentApplicationState', join(root, 'before-mcp.json'))
+  const tools = await rpc('tools/list', {})
+  assert.ok(tools.tools.some(tool => tool.name === 'ngb_get_record'))
+  assert.ok(tools.tools.every(tool => !tool.name.includes('register')))
+  const record = await call('ngb_get_record', { kind: 'catalog', typeCode: 'certification.checkpoint', id: state.checkpoint.id })
+  assert.equal(record.catalog.id, state.checkpoint.id)
+  assert.equal((await call('ngb_get_capabilities', {})).version, targetVersion)
+  const target = { kind: 'catalogItem', typeCode: 'certification.checkpoint', id: state.checkpoint.id }
+  if (content) {
+    const notes = await call('ngb_list_notes', { target })
+    assert.ok(notes.items.length > 0)
+    if (attachments) assert.ok((await call('ngb_list_attachments', { target })).items.length > 0)
+  }
+  runtimeProbe('SnapshotPersistentApplicationState', join(root, 'after-mcp.json'))
+  await assertPersistentSnapshot('before-mcp.json', 'after-mcp.json', false, 'mcpReadOnlySnapshot')
+  await stop(host)
+  mcpEnabled = false
+  evidence.assertions.mcpOptInAfterUpgrade = 'passed'
 }
 
 try {
@@ -518,6 +628,7 @@ volumes:
     await assertPersistentSnapshot('before-repeat.json', 'after-repeat.json', false)
     evidence.assertions.repeatedMigrationPreservesState = 'passed'
     evidence.assertions.preservationAndContinuation = 'passed'
+    if (targetVersion === '3.3.0') await verifyMcpUpgrade(state, content)
   }
   if (!upgrade) {
     if (extension) {

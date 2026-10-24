@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="../CertificationApp.Definitions/CertificationApp.Definitions.csproj" />
+        <ProjectReference Include="../CertificationApp.Runtime/CertificationApp.Runtime.csproj" />
+        <ProjectReference Include="../CertificationApp.PostgreSql/CertificationApp.PostgreSql.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="NGB.Platform.Api" Version="$(NgbPlatformVersion)" />
+        <PackageReference Include="NGB.Platform.Application.Abstractions" Version="$(NgbPlatformVersion)" />
+        <PackageReference Include="NGB.Platform.Contracts" Version="$(NgbPlatformVersion)" />
+        <PackageReference Include="NGB.Platform.Core" Version="$(NgbPlatformVersion)" />
+        <PackageReference Include="NGB.Platform.Hosting.AspNetCore" Version="$(NgbPlatformVersion)" />
+        <PackageReference Include="NGB.Platform.PostgreSql" Version="$(NgbPlatformVersion)" />
+        <PackageReference Include="NGB.Platform.PostgreSql.AspNetCore" Version="$(NgbPlatformVersion)" />
+        <PackageReference Include="NGB.Platform.Runtime" Version="$(NgbPlatformVersion)" />
+        <PackageReference Include="NGB.Platform.Runtime.Hosting" Version="$(NgbPlatformVersion)" />
+        <PackageReference Include="NGB.Platform.Definitions" Version="$(NgbPlatformVersion)" />
+        <PackageReference Include="NGB.Platform.Attachments.MinIO" Version="$(NgbPlatformVersion)" />
+        <PackageReference Include="Serilog.AspNetCore" Version="10.0.0" />
+        <PackageReference Include="Serilog.Sinks.Console" Version="6.1.1" />
+    </ItemGroup>
+
+</Project>

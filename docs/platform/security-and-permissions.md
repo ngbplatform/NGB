@@ -43,9 +43,11 @@ The UI may hide menu items, disable actions, and show access-denied states, but 
 - main menu contributors are filtered by permission;
 - document and catalog metadata are filtered and returned with permission-aware capabilities;
 - document and catalog list/read/create/update/post/delete-style actions are checked by runtime wrappers;
-- report definitions, execution, export, variants, and cell actions are checked by report controllers;
+- report definitions, interactive execution and cell actions use the shared permission-aware report read service; export and variant endpoints retain their controller checks;
 - command palette results are filtered server-side;
 - user and role management APIs require system permissions.
+
+The optional [MCP endpoint](/guides/mcp-server) uses the existing API bearer authentication scheme and the same current-user permission boundaries. It exposes read operations only; the `Mcp` deployment flag controls whether the endpoint is available independently of user permissions.
 
 ## Users
 

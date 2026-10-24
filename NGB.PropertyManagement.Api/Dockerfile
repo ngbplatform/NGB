@@ -13,6 +13,12 @@ ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
 COPY ["NGB.PropertyManagement.Api/NGB.PropertyManagement.Api.csproj", "NGB.PropertyManagement.Api/"]
 COPY ["NGB.Api/NGB.Api.csproj", "NGB.Api/"]
+COPY ["NGB.AiAssistant/NGB.AiAssistant.csproj", "NGB.AiAssistant/"]
+COPY ["NGB.AiAssistant.AspNetCore/NGB.AiAssistant.AspNetCore.csproj", "NGB.AiAssistant.AspNetCore/"]
+COPY ["NGB.AiAssistant.Ollama/NGB.AiAssistant.Ollama.csproj", "NGB.AiAssistant.Ollama/"]
+COPY ["NGB.Mcp/NGB.Mcp.csproj", "NGB.Mcp/"]
+COPY ["NGB.Mcp.AspNetCore/NGB.Mcp.AspNetCore.csproj", "NGB.Mcp.AspNetCore/"]
+COPY ["NGB.Hosting.AspNetCore/NGB.Hosting.AspNetCore.csproj", "NGB.Hosting.AspNetCore/"]
 COPY ["NGB.Contracts/NGB.Contracts.csproj", "NGB.Contracts/"]
 COPY ["NGB.Tools/NGB.Tools.csproj", "NGB.Tools/"]
 COPY ["NGB.Application.Abstractions/NGB.Application.Abstractions.csproj", "NGB.Application.Abstractions/"]

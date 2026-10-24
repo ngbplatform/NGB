@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <Nullable>enable</Nullable>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <IsPublishable>false</IsPublishable>
+        <PackageId>NGB.Platform.AiAssistant.Anthropic</PackageId>
+        <NgbPlatformFirstStableInMajorVersion>3.3.0</NgbPlatformFirstStableInMajorVersion>
+        <Description>NGB Platform AI Assistant Anthropic.</Description>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\NGB.AiAssistant\NGB.AiAssistant.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Anthropic" Version="12.60.0" />
+        <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.13" />
+        <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.13" />
+    </ItemGroup>
+
+</Project>

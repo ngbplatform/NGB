@@ -109,7 +109,16 @@ describe('frontend architecture boundaries', () => {
   it('keeps transport APIs independent from editor, site, and Work Center presentation layers', () => {
     const apiRoot = resolve(frameworkSource, 'ngb/api')
     const violations = sourceFiles(apiRoot).flatMap((file) => imports(readFileSync(file, 'utf8'))
-      .filter((specifier) => /(?:^|\/)(?:editor|site|work-center)(?:\/|$)/.test(specifier))
+      .filter((specifier) => /(?:^|\/)(?:editor|site|work-center|ai-assistant)(?:\/|$)/.test(specifier))
+      .map((specifier) => `${relative(file)} -> ${specifier}`))
+
+    expect(violations).toEqual([])
+  })
+
+  it('keeps shared navigation below editors and Assistant presentation', () => {
+    const navigationRoot = resolve(frameworkSource, 'ngb/navigation')
+    const violations = sourceFiles(navigationRoot).flatMap((file) => imports(readFileSync(file, 'utf8'))
+      .filter((specifier) => /(?:^|\/)(?:editor|site|ai-assistant)(?:\/|$)/.test(specifier))
       .map((specifier) => `${relative(file)} -> ${specifier}`))
 
     expect(violations).toEqual([])

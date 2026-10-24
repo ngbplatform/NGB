@@ -39,12 +39,10 @@ public sealed class AgencyBillingControllersFullCoverageTests : IDisposable
             Mock.Of<IDocumentActionQueryService>(),
             Mock.Of<IDocumentActionDispatcher>()).Should().NotBeNull();
         new ReportController(
-            Mock.Of<IReportDefinitionProvider>(),
-            Mock.Of<IReportEngine>(),
+            Mock.Of<IAuthorizedReportReadService>(),
             Mock.Of<IReportVariantService>(),
             Mock.Of<IReportDownloadService>(),
-            access,
-            securityCache).Should().NotBeNull();
+            access).Should().NotBeNull();
         new WorkCenterController(Mock.Of<IWorkCenterQueryService>()).Should().NotBeNull();
     }
 
@@ -71,14 +69,13 @@ public sealed class AgencyBillingControllersFullCoverageTests : IDisposable
     public async Task CommandPaletteSearch_DelegatesRequestAndCancellationToken()
     {
         using var cancellation = new CancellationTokenSource();
-        var documents = new Mock<IDocumentService>(MockBehavior.Strict);
+        var documents = new Mock<IAuthorizedDocumentReadService>(MockBehavior.Strict);
         documents.Setup(x => x.GetAllMetadataAsync(cancellation.Token))
             .ReturnsAsync(Array.Empty<DocumentTypeMetadataDto>());
         var service = new AgencyBillingCommandPaletteSearchService(
             documents.Object,
-            Mock.Of<ICatalogService>(),
-            Mock.Of<IReportDefinitionProvider>(),
-            _cache,
+            Mock.Of<IAuthorizedCatalogReadService>(),
+            Mock.Of<IAuthorizedReportReadService>(),
             NullLogger<AgencyBillingCommandPaletteSearchService>.Instance);
         var sut = new CommandPaletteController(service);
         var request = new CommandPaletteSearchRequestDto("needle", Scope: "documents");

@@ -132,6 +132,14 @@ if (action === 'seal') {
     await stage('compose', checked(() => execute('quality/external-consumer/verify-compose.mjs', [root])), ['certification/compose.json'])
     await stage('nuget-compatibility', checked(() => execute('packaging/nuget/verify-api-compatibility.mjs', [join(root, 'nuget-release')])), ['nuget-release/api-compatibility.json'])
     await stage('npm-compatibility', checked(() => execute('ui/scripts/verify-platform-ui-contracts.mjs', [join(root, 'npm', `ngbplatform-ui-${matrix.target}.tgz`)])), ['npm/npm-compatibility.json'])
+    if (matrix.schemaVersion === 2) {
+      await stage('mcp-contract', checked(() => execute('quality/mcp/verify-contract.mjs', [join(root, 'certification/mcp-contract')])),
+        ['certification/mcp-contract/contracts.json'])
+      await stage('mcp-external', checked(() => execute('quality/mcp/verify-external.mjs', [join(root, 'nuget-release'), join(root, 'certification/mcp-external')])),
+        ['certification/mcp-external/inputs.json'])
+      await stage('mcp-verticals', checked(() => execute('quality/mcp/verify-verticals.mjs', [join(root, 'certification/mcp-verticals')])),
+        ['certification/mcp-verticals/verticals.json'])
+    }
     for (const profile of Object.keys(matrix.profiles)) {
       await stage(profile, checked(() => execute('quality/external-consumer/certify.mjs', [profile, root])), [`certification/${profile}.json`])
     }
@@ -167,6 +175,11 @@ if (action === 'seal') {
     await bind(['npm-compatibility'], 'npm/npm-compatibility.json')
     await bind(['browser-quality'], 'certification/cross-browser.json')
     await bind(['performance-tooling'], 'certification/performance.json')
+    if (matrix.schemaVersion === 2) {
+      await bind(['mcp-contract'], 'certification/mcp-contract/contracts.json')
+      await bind(['mcp-external'], 'certification/mcp-external/inputs.json')
+      await bind(['mcp-verticals'], 'certification/mcp-verticals/verticals.json')
+    }
     await atomicJson(join(root, 'certification/candidate-identity.json'), {
       artifactManifestSha256: sealed.sha256, scope: matrix.scope, source: matrix.source, target: matrix.target,
       baselines: inventory, status: 'passed', environmentSha256: digest(JSON.stringify(environment)),

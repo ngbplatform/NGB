@@ -1,6 +1,6 @@
 # NGB.Platform.Templates
 
-Install with `dotnet new install NGB.Platform.Templates::3.2.0`, then run
+After 3.3.0 is published, install with `dotnet new install NGB.Platform.Templates::3.3.0`, then run
 `dotnet new ngb -n MyBusinessApp`. The generated README explains configuration,
 migration, Administrator bootstrap and deployment.
 

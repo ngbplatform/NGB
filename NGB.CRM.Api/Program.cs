@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Serilog;
+using NGB.AiAssistant.AspNetCore;
+using NGB.AiAssistant.Ollama;
 using NGB.Api;
 using NGB.Api.Attachments;
 using NGB.Api.Reporting;
@@ -10,6 +12,7 @@ using NGB.Attachments.MinIO;
 using NGB.Hosting.AspNetCore;
 using NGB.Hosting.AspNetCore.ErrorHandling;
 using NGB.Hosting.AspNetCore.Identity;
+using NGB.Mcp.AspNetCore;
 using NGB.CRM.Api.Services;
 using NGB.CRM.DependencyInjection;
 using NGB.CRM.PostgreSql.DependencyInjection;
@@ -82,6 +85,10 @@ builder.Services.AddScoped<CrmCommandPaletteSearchService>();
 builder.Services.RemoveAll<IReportVariantAccessContext>();
 builder.Services.AddScoped<IReportVariantAccessContext, HttpReportVariantAccessContext>();
 
+builder.Services.AddNgbMcp(builder.Configuration);
+builder.Services.AddNgbAiAssistant(builder.Configuration, services =>
+    services.AddNgbOllamaChatClient(builder.Configuration.GetSection(OllamaAssistantOptions.SectionName).Bind));
+
 var app = builder.Build();
 
 if (app.Environment.IsDevelopment())
@@ -101,6 +108,8 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapNgbMcp();
+app.MapNgbAiAssistant();
 app.MapNgbWorkCenterHub();
 
 app.Run();

@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "recordCounts": [101, 10001],
+  "samplesPerScenario": 100,
+  "maxSqlCommands": {
+    "ngb_list_records": 3,
+    "ngb_get_record": 5,
+    "ngb_search": 3,
+    "custom_current_user": 2
+  }
+}

@@ -14,13 +14,17 @@ docker compose --env-file .env.pm -f docker-compose.pm.yml up -d ngb.pm.api
 
 When running from an IDE, supply `FeatureManagement__Attachments` and `FeatureManagement__Notes` as process environment variables, or use the equivalent .NET configuration keys. ASP.NET Core does not automatically read Compose `.env` files. Reload the browser after all API replicas use the new configuration.
 
+MCP uses the same mechanism: `FeatureManagement:Mcp` (`FeatureManagement__Mcp` in process environment variables), mapped from `FEATURE_MCP` in Compose. It defaults to false. The four local `.env` files enable it explicitly; generated application templates keep it disabled until configured. When disabled, `AddNgbMcp` registers no MCP server infrastructure and `MapNgbMcp` maps neither the endpoint nor its OAuth metadata. The feature remains visible in `/api/features` as `Mcp`, in the `Integrations` group. The former `Mcp:Enabled` key is rejected; there is only one enable switch. See [MCP setup](/guides/mcp-server) for its public API address, existing-user authentication and local HTTP option.
+
 All registered features default to `false`. Unknown feature codes, incorrect casing, nonboolean values and nested filter/variant configuration fail startup with an actionable configuration error. This prevents a typo from silently changing the intended deployment state.
 
 ```json
 {
   "FeatureManagement": {
     "Attachments": false,
-    "Notes": true
+    "Notes": true,
+    "Mcp": false,
+    "AiAssistant": false
   },
   "Attachments": {
     "UploadExpirationEnabled": false
@@ -33,6 +37,8 @@ Equivalent environment keys:
 ```text
 FeatureManagement__Attachments=false
 FeatureManagement__Notes=true
+FeatureManagement__Mcp=false
+FeatureManagement__AiAssistant=false
 Attachments__UploadExpirationEnabled=false
 ```
 
@@ -50,6 +56,13 @@ Use `Attachments:UploadExpirationEnabled=true` to keep expiring abandoned pendin
 Turning a feature off does not delete its business data or revoke existing role grants. Notes and ready attachment metadata remain available when it is enabled again. The expiration worker may still mark abandoned pending uploads as deleted, while retaining all stored files. Disabling the flag does not revoke previously issued MinIO bearer URLs: upload URLs remain usable until expiry, and download URLs remain usable until expiry. Requests already admitted by an old replica may finish during deployment, so drain and restart all replicas before treating a disable as fully applied.
 
 ## Host composition
+
+[AI Assistant](/guides/ai-assistant) adds `FeatureManagement:AiAssistant`, mapped
+from `FEATURE_AI_ASSISTANT` in Compose. It defaults to false and requires MCP to
+be enabled; an invalid combination fails startup. MCP can remain enabled without
+Assistant. When Assistant is disabled, its provider callback and HTTP endpoints
+are not registered, and its shared UI button is hidden. It adds no permissions
+or persistent conversation storage.
 
 Use the storage callback so MinIO is registered and validated only when Attachments is enabled:
 
@@ -90,9 +103,21 @@ For the Notes-only configuration above, the response includes:
 ```json
 [
   {
+    "code": "AiAssistant",
+    "displayName": "AI Assistant",
+    "group": "Integrations",
+    "enabled": false
+  },
+  {
     "code": "Attachments",
     "displayName": "Attachments",
     "group": "Attachments & Notes",
+    "enabled": false
+  },
+  {
+    "code": "Mcp",
+    "displayName": "MCP Server",
+    "group": "Integrations",
     "enabled": false
   },
   {

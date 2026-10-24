@@ -8,7 +8,8 @@ const mocks = vi.hoisted(() => ({
   connectRealtime: vi.fn(),
 }))
 
-vi.mock('../../../../src/ngb/auth/keycloak', () => ({
+vi.mock('../../../../src/ngb/auth/keycloak', async importOriginal => ({
+  ...await importOriginal<typeof import('../../../../src/ngb/auth/keycloak')>(),
   getAuthSnapshot: mocks.getAuthSnapshot,
 }))
 

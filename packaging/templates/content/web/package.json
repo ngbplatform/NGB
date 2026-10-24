@@ -1,6 +1,6 @@
 {
   "name": "ngb-application-web",
-  "version": "3.2.0",
+  "version": "3.3.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -13,7 +13,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@ngbplatform/ui": "3.2.0",
+    "@ngbplatform/ui": "3.3.0",
     "keycloak-js": "^26.2.3",
     "pinia": "^3.0.3",
     "vue": "^3.5.0",

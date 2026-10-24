@@ -24,7 +24,7 @@ async function releaseFixture(t) {
     'execution.mjs', 'environment.mjs', 'toolchain.json', 'matrix.json',
   ]) {
     const path = `quality/external-consumer/${name}`
-    await cp(join(repository, path), join(root, path))
+    await cp(join(repository, name === 'matrix.json' ? 'quality/external-consumer/history/matrix-3.2.0.json' : path), join(root, path))
   }
   await symlink(join(repository, 'quality/node_modules'), join(root, 'quality/node_modules'))
   await save('.gitignore', 'artifacts/\nquality/node_modules\n')

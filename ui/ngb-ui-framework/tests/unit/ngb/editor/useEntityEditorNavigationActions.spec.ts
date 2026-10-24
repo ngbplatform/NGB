@@ -1,4 +1,4 @@
-import { computed, ref } from 'vue'
+import { computed, nextTick, reactive, ref } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Router } from 'vue-router'
 
@@ -82,6 +82,7 @@ function createDocumentMetadata() {
 function createArgs(overrides: Partial<Parameters<typeof useEntityEditorNavigationActions>[0]> = {}) {
   const route = {
     fullPath: '/documents/pm.invoice?panel=edit&id=doc-1',
+    query: {},
   } as Parameters<typeof useEntityEditorNavigationActions>[0]['route']
 
   const router = {
@@ -138,6 +139,40 @@ function createArgs(overrides: Partial<Parameters<typeof useEntityEditorNavigati
 describe('entity editor navigation actions', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+  })
+
+  it('opens an audit deep link only after the record and permission are available', async () => {
+    const allowed = ref(false)
+    const currentId = ref<string | null>(null)
+    const route = reactive({
+      fullPath: '/documents/pm.invoice/doc-1?view=audit&back=origin',
+      query: { view: 'audit', back: 'origin' },
+    })
+    const { args, router } = createArgs({
+      currentId,
+      canOpenAudit: computed(() => allowed.value),
+      route: route as never,
+    })
+    const actions = useEntityEditorNavigationActions(args)
+    expect(actions.auditOpen.value).toBe(false)
+
+    currentId.value = 'doc-1'
+    await nextTick()
+    expect(actions.auditOpen.value).toBe(false)
+
+    allowed.value = true
+    await nextTick()
+    expect(actions.auditOpen.value).toBe(true)
+
+    allowed.value = false
+    await nextTick()
+    expect(actions.auditOpen.value).toBe(false)
+
+    allowed.value = true
+    await nextTick()
+    actions.closeAuditLog()
+    expect(actions.auditOpen.value).toBe(false)
+    expect(router.replace).toHaveBeenCalledWith({ query: { back: 'origin' } })
   })
 
   it('copies writable document fields into a drawer copy target', () => {

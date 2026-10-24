@@ -1,5 +1,5 @@
-import { page } from 'vitest/browser'
-import { expect, test } from 'vitest'
+import { page, userEvent } from 'vitest/browser'
+import { expect, test, vi } from 'vitest'
 import { render } from 'vitest-browser-vue'
 import { defineComponent, h } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
@@ -9,6 +9,9 @@ import { configureNgbReporting } from '../../../../src/ngb/reporting/config'
 import { createDefaultNgbReportingConfig } from '../../../../src/ngb/reporting/defaultConfig'
 import NgbSiteShell from '../../../../src/ngb/site/NgbSiteShell.vue'
 import { ReportRowKind, type ReportSheetDto } from '../../../../src/ngb/reporting/types'
+import { getFeatures } from '../../../../src/ngb/features/api'
+
+vi.mock('../../../../src/ngb/features/api', () => ({ getFeatures: vi.fn() }))
 
 const shellNodes = [
   { id: 'dashboard', label: 'Dashboard', route: '/dashboard', icon: 'home' },
@@ -147,14 +150,22 @@ async function renderReportSheetHarness() {
   })
 }
 
-test('exposes named shell controls and labeled drawer dialogs for platform chrome', async () => {
+test.each([false, true])('exposes named shell controls and labeled dialogs with AI Assistant enabled: %s', async assistantEnabled => {
   await page.viewport(375, 800)
+  vi.mocked(getFeatures).mockResolvedValue([
+    { code: 'Mcp', displayName: 'MCP Server', group: 'Integrations', enabled: true },
+    { code: 'AiAssistant', displayName: 'AI Assistant', group: 'Integrations', enabled: assistantEnabled },
+  ])
 
   const view = await render(SiteShellAccessibilityHarness)
 
   await expect.element(view.getByRole('button', { name: 'Main menu' })).toBeVisible()
   await expect.element(view.getByRole('button', { name: 'Work Center' })).toBeVisible()
-  await expect.element(view.getByRole('button', { name: 'Help' })).toBeVisible()
+  if (assistantEnabled) {
+    await expect.element(view.getByRole('button', { name: 'AI Assistant', exact: true })).toBeVisible()
+  } else {
+    await expect.element(view.getByRole('button', { name: 'AI Assistant', exact: true })).not.toBeInTheDocument()
+  }
   await expect.element(view.getByRole('button', { name: 'Settings' })).toBeVisible()
   await expect.element(view.getByRole('button', { name: 'Switch to dark mode' })).toBeVisible()
   await expect.element(view.getByRole('button', { name: /Search pages, records, reports, or run a command/i })).toBeVisible()
@@ -165,6 +176,17 @@ test('exposes named shell controls and labeled drawer dialogs for platform chrom
 
   document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
   await expect.poll(() => document.querySelector('[data-testid="drawer-panel"]')).toBeNull()
+
+  if (assistantEnabled) {
+    view.getByRole('button', { name: 'AI Assistant', exact: true }).element().focus()
+    await userEvent.keyboard('{Enter}')
+    await expect.element(view.getByRole('dialog', { name: 'AI Assistant' })).toBeInTheDocument()
+    await expect.element(view.getByTestId('drawer-panel')).toBeVisible()
+    await expect.element(view.getByRole('textbox', { name: 'Ask a question' })).toHaveFocus()
+    await view.getByRole('button', { name: 'Close assistant' }).click()
+    await expect.poll(() => document.querySelector('[data-testid="drawer-panel"]')).toBeNull()
+    await expect.element(view.getByRole('button', { name: 'AI Assistant', exact: true })).toHaveFocus()
+  }
 
   await view.getByRole('button', { name: 'Settings' }).click()
   await expect.element(view.getByTestId('drawer-panel')).toBeVisible()

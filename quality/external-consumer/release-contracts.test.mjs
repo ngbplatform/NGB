@@ -128,7 +128,7 @@ test('artifact inventory classifies templates separately and rejects missing or 
 test('matrix binds all mandatory gates, stages, exact versions and profiles', async () => {
   const matrix = JSON.parse(await readFile(new URL('./matrix.json', import.meta.url), 'utf8'))
   validateMatrix(matrix)
-  assert.equal(matrix.gates.filter(gate => gate.blocks === 'candidate').length, 19)
+  assert.equal(matrix.gates.filter(gate => gate.blocks === 'candidate').length, 22)
   for (const id of ['backend-quality', 'frontend-quality', 'regression-quality']) {
     assert.ok(!matrix.gates.some(gate => gate.id === id))
     const stale = structuredClone(matrix)
@@ -145,7 +145,7 @@ test('matrix binds all mandatory gates, stages, exact versions and profiles', as
     value => { value.gates[0].command = '' },
     value => { value.gates[0].assertions = [] },
     value => { value.profiles['clean-starter'].assertions = [] },
-    value => { value.profiles['clean-starter'].target = '3.3.0' },
+    value => { value.profiles['clean-starter'].target = '9.9.0' },
     value => { value.profiles['core-upgrade'].source = '3.0.0' },
     value => { value.profiles['notes-upgrade'].minio = true },
     value => { value.profiles['attachments-upgrade'].minio = false },
@@ -153,5 +153,26 @@ test('matrix binds all mandatory gates, stages, exact versions and profiles', as
     const invalid = structuredClone(matrix)
     mutate(invalid)
     assert.throws(() => validateMatrix(invalid))
+  }
+})
+
+
+test('historical 3.2 certification retains all original gates and 3.3 cannot drop MCP gates', async () => {
+  const prior = JSON.parse(await readFile(new URL('./history/matrix-3.2.0.json', import.meta.url), 'utf8'))
+  validateMatrix(prior)
+  assert.equal(prior.gates.length, 21)
+  const current = JSON.parse(await readFile(new URL('./matrix.json', import.meta.url), 'utf8'))
+  current.schemaVersion = 1
+  assert.throws(() => validateMatrix(current), /MCP gates are mandatory/)
+})
+
+test('every MCP upgrade profile must prove opt-in and persistent read-only state', async () => {
+  const matrix = JSON.parse(await readFile(new URL('./matrix.json', import.meta.url), 'utf8'))
+  for (const profile of ['core-upgrade', 'notes-upgrade', 'attachments-upgrade']) {
+    for (const assertion of ['mcpOptInAfterUpgrade', 'mcpReadOnlySnapshot']) {
+      const incomplete = structuredClone(matrix)
+      incomplete.profiles[profile].assertions = incomplete.profiles[profile].assertions.filter(value => value !== assertion)
+      assert.throws(() => validateMatrix(incomplete), /Missing MCP upgrade assertion/)
+    }
   }
 })

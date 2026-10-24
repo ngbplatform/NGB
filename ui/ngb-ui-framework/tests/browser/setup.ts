@@ -1,6 +1,9 @@
 import '../../src/styles/tailwind.css'
 
-import { vi } from 'vitest'
+import { beforeEach, vi } from 'vitest'
+import { createPinia, setActivePinia } from 'pinia'
+
+beforeEach(() => setActivePinia(createPinia()))
 
 // Component tests start with deployment features disabled; content tests opt in explicitly.
 vi.mock('../../src/ngb/features/api', () => ({

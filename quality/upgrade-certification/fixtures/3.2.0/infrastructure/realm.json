@@ -1,0 +1,89 @@
+{
+  "realm": "certification",
+  "enabled": true,
+  "sslRequired": "none",
+  "editUsernameAllowed": true,
+  "roles": {
+    "realm": [
+      {
+        "name": "ngb-admin"
+      },
+      {
+        "name": "ngb-user"
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "certification-web",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "redirectUris": [
+        "http://localhost:5182/*"
+      ],
+      "webOrigins": [
+        "http://localhost:5182"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      }
+    },
+    {
+      "clientId": "certification-jobs",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "redirectUris": [
+        "http://localhost:5184/*"
+      ],
+      "webOrigins": [
+        "http://localhost:5184"
+      ]
+    },
+    {
+      "clientId": "certification-tests",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "${KEYCLOAK_ADMIN_CLIENT_SECRET}",
+      "serviceAccountsEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "standardFlowEnabled": false
+    }
+  ],
+  "users": [
+    {
+      "username": "administrator@certification.test",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "administrator@certification.test",
+      "firstName": "External",
+      "lastName": "Administrator",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${BOOTSTRAP_PASSWORD}",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "ngb-admin"
+      ]
+    },
+    {
+      "username": "service-account-certification-tests",
+      "enabled": true,
+      "serviceAccountClientId": "certification-tests",
+      "clientRoles": {
+        "realm-management": [
+          "manage-users",
+          "query-users",
+          "view-users"
+        ]
+      }
+    }
+  ]
+}
