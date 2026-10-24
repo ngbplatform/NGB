@@ -129,8 +129,9 @@ internal sealed class AiAssistantNumericEvidence
         {
             _numbers.Add(number);
         }
-        else if (value.ValueKind == JsonValueKind.String && value.GetString() is { } text)
+        else if (value.ValueKind == JsonValueKind.String)
         {
+            var text = value.GetString()!;
             if (decimal.TryParse(text, NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint,
                 CultureInfo.InvariantCulture, out var numericText))
             {

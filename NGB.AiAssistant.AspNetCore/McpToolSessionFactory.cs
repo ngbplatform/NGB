@@ -58,7 +58,7 @@ internal sealed class McpToolSessionFactory(
             var tools = await client.ListToolsAsync(cancellationToken: ct);
             var knownTypes = new HashSet<(string Kind, string TypeCode)>();
 
-            return new Session(client, tools
+            return new Session(client, transport, tools
                 .Where(tool => tool.ProtocolTool.Annotations?.ReadOnlyHint == true
                     && tool.ProtocolTool.Meta?[NgbMcpToolMetadata.CompatibilityOnly]?.GetValue<bool>() != true)
                 .Select(tool => (AIFunction)new ReadTool(tool, knownTypes, options.Value.ReportPageSize))
@@ -66,21 +66,36 @@ internal sealed class McpToolSessionFactory(
         }
         catch
         {
-            if (client is not null)
-                await client.DisposeAsync();
-            else
+            try
+            {
+                if (client is not null)
+                    await client.DisposeAsync();
+            }
+            finally
+            {
                 await transport.DisposeAsync();
+            }
 
             throw;
         }
     }
 
-    private sealed class Session(McpClient client, IReadOnlyList<AIFunction> tools)
+    private sealed class Session(McpClient client, HttpClientTransport transport, IReadOnlyList<AIFunction> tools)
         : IAiAssistantToolSession, IAiAssistantSourceResolver
     {
         public IReadOnlyList<AIFunction> Tools { get; } = tools;
 
-        public ValueTask DisposeAsync() => client.DisposeAsync();
+        public async ValueTask DisposeAsync()
+        {
+            try
+            {
+                await client.DisposeAsync();
+            }
+            finally
+            {
+                await transport.DisposeAsync();
+            }
+        }
 
         public async Task<AiAssistantSource?> ResolveAsync(AiAssistantSource candidate, CancellationToken ct)
         {
@@ -251,12 +266,12 @@ internal sealed class McpToolSessionFactory(
             if (result.StructuredContent is not { } content)
                 return new AiAssistantToolResult(text, []);
 
-            var response = content.Deserialize<McpReadResponse<JsonElement>>(Json);
-            var sources = response?.Sources.Select(source => new AiAssistantSource(
+            var response = content.Deserialize<McpReadResponse<JsonElement>>(Json)!;
+            var sources = response.Sources.Select(source => new AiAssistantSource(
                 source.Kind.ToCode(),
                 source.TypeCode,
                 source.Id,
-                source.Title)).ToArray() ?? [];
+                source.Title)).ToArray();
 
             if (tool.Name == McpToolNames.GetRecord)
             {
@@ -269,7 +284,7 @@ internal sealed class McpToolSessionFactory(
 
             // The envelope is transport metadata. Pass business data once; sources are handled
             // separately by the runner and are never inferred from arbitrary payload fields.
-            var data = response?.Data ?? content;
+            var data = response.Data;
             if (data.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
             {
                 return new AiAssistantToolResult(new

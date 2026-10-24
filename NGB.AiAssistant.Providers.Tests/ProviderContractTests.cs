@@ -19,7 +19,7 @@ using ChatRole = Microsoft.Extensions.AI.ChatRole;
 
 namespace NGB.AiAssistant.Providers.Tests;
 
-public sealed class ProviderContractTests
+public sealed partial class ProviderContractTests
 {
     [Theory]
     [InlineData(true)]

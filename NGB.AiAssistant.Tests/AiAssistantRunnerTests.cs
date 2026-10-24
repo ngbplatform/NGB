@@ -113,8 +113,10 @@ public sealed partial class AiAssistantRunnerTests
         Assert.DoesNotContain(events, item => item.Type == "error");
     }
 
-    [Fact]
-    public async Task EquivalentRepeatedArgumentsReuseEvidenceWithoutAnotherApplicationRead()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task EquivalentRepeatedArgumentsReuseEvidenceWithoutAnotherApplicationRead(bool logging)
     {
         var invoked = 0;
         var tool = AIFunctionFactory.Create((string first, string second) => ++invoked, "read");
@@ -123,7 +125,7 @@ public sealed partial class AiAssistantRunnerTests
             [new(ChatRole.Assistant, [new FunctionCallContent("second", "read", new Dictionary<string, object?> { ["second"] = "b", ["first"] = "a" })])],
             [new(ChatRole.Assistant, "One result.")]);
 
-        await Runner(model, new Sessions(tool)).RunAsync(Question, Ignore, default);
+        await Runner(model, new Sessions(tool), logging: logging).RunAsync(Question, Ignore, default);
 
         Assert.Equal(1, invoked);
         Assert.NotEmpty(model.Options[2].Tools!);
@@ -493,8 +495,10 @@ public sealed partial class AiAssistantRunnerTests
         Assert.Equal("done", events[^1].Type);
     }
 
-    [Fact]
-    public async Task ASecondUnsupportedNumericAnswerFailsWithoutPublishingEitherDraft()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ASecondUnsupportedNumericAnswerFailsWithoutPublishingEitherDraft(bool logging)
     {
         var model = new ScriptedClient(
             [new(ChatRole.Assistant, [new FunctionCallContent("read", "read", null)])],
@@ -504,7 +508,7 @@ public sealed partial class AiAssistantRunnerTests
         var events = new List<AiAssistantEvent>();
 
         var error = await Assert.ThrowsAsync<AiAssistantException>(() =>
-            Runner(model, new Sessions(tool)).RunAsync(Question, Capture(events), default));
+            Runner(model, new Sessions(tool), logging: logging).RunAsync(Question, Capture(events), default));
 
         Assert.Equal("unverified_answer", error.Code);
         Assert.Equal(3, model.Requests.Count);
@@ -918,8 +922,10 @@ public sealed partial class AiAssistantRunnerTests
         }
     }
 
-    [Fact]
-    public async Task OutputLimitRetriesOnceWithoutPublishingIncompleteTextOrExecutingIncompleteCalls()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task OutputLimitRetriesOnceWithoutPublishingIncompleteTextOrExecutingIncompleteCalls(bool logging)
     {
         var invoked = 0;
         var model = new ScriptedClient(
@@ -928,7 +934,7 @@ public sealed partial class AiAssistantRunnerTests
             [new(ChatRole.Assistant, "The requested balance could not be established.")]);
         var events = new List<AiAssistantEvent>();
 
-        await Runner(model, new Sessions(AIFunctionFactory.Create(() => ++invoked, "read")))
+        await Runner(model, new Sessions(AIFunctionFactory.Create(() => ++invoked, "read")), logging: logging)
             .RunAsync(Question, Capture(events), default);
 
         Assert.Equal(0, invoked);
@@ -1071,15 +1077,18 @@ public sealed partial class AiAssistantRunnerTests
         Assert.Contains("pm.property", model.Requests[0][^1].Text);
     }
 
-    [Fact]
-    public async Task RepeatedProviderStreamsWithoutAFinishReasonsAreIncomplete()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RepeatedProviderStreamsWithoutAFinishReasonsAreIncomplete(bool logging)
     {
         var model = new ScriptedClient(
             [new(ChatRole.Assistant, "Partial answer")],
             [new(ChatRole.Assistant, "Another partial answer")]) { OmitFinishReason = true };
         var events = new List<AiAssistantEvent>();
 
-        var error = await Assert.ThrowsAsync<AiAssistantException>(() => Runner(model, new Sessions()).RunAsync(Question, Capture(events), default));
+        var error = await Assert.ThrowsAsync<AiAssistantException>(() =>
+            Runner(model, new Sessions(), logging: logging).RunAsync(Question, Capture(events), default));
 
         Assert.Equal("incomplete_response", error.Code);
         Assert.Equal(2, model.Requests.Count);
@@ -1175,8 +1184,10 @@ public sealed partial class AiAssistantRunnerTests
         Assert.Equal("done", events[^1].Type);
     }
 
-    [Fact]
-    public async Task EmptyInitialAnswerRetriesBeforeReadingApplicationData()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task EmptyInitialAnswerRetriesBeforeReadingApplicationData(bool logging)
     {
         var invoked = 0;
         var model = new ScriptedClient(
@@ -1186,7 +1197,7 @@ public sealed partial class AiAssistantRunnerTests
         var tool = AIFunctionFactory.Create(() => new { count = 7, reads = ++invoked }, "read");
         var events = new List<AiAssistantEvent>();
 
-        await Runner(model, new Sessions(tool)).RunAsync(Question, Capture(events), default);
+        await Runner(model, new Sessions(tool), logging: logging).RunAsync(Question, Capture(events), default);
 
         Assert.Equal(1, invoked);
         Assert.NotEmpty(model.Options[1].Tools!);
@@ -1235,8 +1246,13 @@ public sealed partial class AiAssistantRunnerTests
         Assert.DoesNotContain(events, item => item.Type == "source");
     }
 
-    private static AiAssistantRunner Runner(ScriptedClient client, Sessions sessions, AiAssistantOptions? options = null)
-        => new(client, sessions, Options.Create(options ?? new()));
+    private static AiAssistantRunner Runner(
+        ScriptedClient client,
+        Sessions sessions,
+        AiAssistantOptions? options = null,
+        bool logging = true)
+        => new(client, sessions, Options.Create(options ?? new()),
+            logger: logging ? Microsoft.Extensions.Logging.Abstractions.NullLogger<AiAssistantRunner>.Instance : null);
 
     private static ValueTask Ignore(AiAssistantEvent _, CancellationToken __) => ValueTask.CompletedTask;
 

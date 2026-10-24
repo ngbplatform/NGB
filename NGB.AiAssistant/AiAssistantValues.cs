@@ -27,9 +27,10 @@ internal sealed class AiAssistantValues(TimeZoneInfo? timeZone = null)
 
         // An omitted result must not consume the display budget or publish values
         // that were never supplied to the model as evidence.
-        foreach (var key in _values.Keys.Where(key => !existing.Contains(key)).ToArray())
+        foreach (var key in _values.Keys.ToArray())
         {
-            _values.Remove(key);
+            if (!existing.Contains(key))
+                _values.Remove(key);
         }
 
         prepared = null;

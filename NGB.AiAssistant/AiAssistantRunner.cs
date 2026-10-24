@@ -473,8 +473,7 @@ public sealed class AiAssistantRunner(
                 continue;
             }
 
-            if (response.FinishReason is null
-                || response.FinishReason == ChatFinishReason.ContentFilter)
+            if (response.FinishReason is not { } finishReason || finishReason == ChatFinishReason.ContentFilter)
             {
                 throw new AiAssistantException("incomplete_response", "The model stopped before completing the answer. Please retry.");
             }

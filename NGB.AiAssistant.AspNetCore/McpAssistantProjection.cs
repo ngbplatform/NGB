@@ -174,7 +174,7 @@ internal static class McpAssistantProjection
                 + "hasMore=false ends this listing: do not request further offsets. If this complete listing and "
                 + "its relevant definitions establish no matching measure and scope, explain the limitation and stop. "
                 + "Searching stored records or substituting another entity cannot add a missing report capability.",
-            count = page is { HasMore: false, Offset: 0 }
+            count = !page.HasMore && page.Offset == 0
                 ? (int?)page.Items.Count
                 : null
         };

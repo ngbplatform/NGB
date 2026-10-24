@@ -169,7 +169,7 @@ internal static class AiAssistantHttpEndpoint
                 if (heartbeat is not null)
                     await heartbeat;
             }
-            catch (OperationCanceledException) when (heartbeatStop.IsCancellationRequested)
+            catch (OperationCanceledException)
             {
             }
             catch (IOException)
@@ -226,8 +226,10 @@ internal static class AiAssistantHttpEndpoint
         using var timer = new PeriodicTimer(HeartbeatInterval);
         try
         {
-            while (await timer.WaitForNextTickAsync(ct))
+            // Only this method owns and disposes the timer; cancellation ends the loop.
+            while (true)
             {
+                await timer.WaitForNextTickAsync(ct);
                 await publish(new("heartbeat"), ct);
             }
         }
