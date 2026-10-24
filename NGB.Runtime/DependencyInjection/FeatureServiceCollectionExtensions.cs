@@ -22,6 +22,8 @@ public static class FeatureServiceCollectionExtensions
         [
             new(NgbFeatures.Attachments, "Attachments", "Attachments & Notes"),
             new(NgbFeatures.Notes, "Notes", "Attachments & Notes"),
+            new(NgbFeatures.Mcp, "MCP Server", "Integrations"),
+            new(NgbFeatures.AiAssistant, "AI Assistant", "Integrations"),
             .. additionalFeatures ?? []
         ]);
         var flags = registry.Definitions.ToDictionary(x => x.Code, _ => (string?)bool.FalseString);
@@ -33,6 +35,9 @@ public static class FeatureServiceCollectionExtensions
 
             flags[section.Key] = enabled.ToString();
         }
+
+        if (bool.Parse(flags[NgbFeatures.AiAssistant]!) && !bool.Parse(flags[NgbFeatures.Mcp]!))
+            throw new NgbConfigurationViolationException("FeatureManagement:AiAssistant requires FeatureManagement:Mcp=true.");
 
         if (registered is not null)
         {

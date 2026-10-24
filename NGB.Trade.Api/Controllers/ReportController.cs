@@ -9,10 +9,8 @@ namespace NGB.Trade.Api.Controllers;
 [Authorize]
 [ApiController]
 public sealed class ReportController(
-    IReportDefinitionProvider definitions,
-    IReportEngine engine,
+    IAuthorizedReportReadService reads,
     IReportVariantService variants,
     IReportDownloadService downloads,
-    INgbAccessChecker access,
-    NgbSecurityCache cache)
-    : ReportControllerBase(definitions, engine, variants, downloads, access, cache);
+    INgbAccessChecker access)
+    : ReportControllerBase(reads, variants, downloads, access);

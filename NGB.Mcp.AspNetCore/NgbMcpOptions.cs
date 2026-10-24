@@ -1,0 +1,21 @@
+namespace NGB.Mcp.AspNetCore;
+
+public sealed class NgbMcpOptions
+{
+    /// <summary>Optional canonical endpoint override; otherwise uses Ngb:Hosting:PublicApiUrl and the mapped MCP route.</summary>
+    public string Resource { get; set; } = string.Empty;
+
+    /// <summary>Existing API JWT bearer scheme used to authenticate the current user.</summary>
+    public string AuthenticationScheme { get; set; } = "Bearer";
+    public string[] AllowedOrigins { get; set; } = [];
+    public bool AllowLocalhostHttp { get; set; }
+    public int ConcurrentRequests { get; set; } = 24;
+    public int RequestsPerMinute { get; set; } = 120;
+    public int RequestTimeoutSeconds { get; set; } = 45;
+
+    /// <summary>Positive UTF-8 byte budget for the whole HTTP body, including the JSON-RPC envelope.</summary>
+    public int MaxRequestBytes { get; set; } = 128 * 1024;
+
+    public string? PublicUiOrigin { get; set; }
+    public Dictionary<string, string> UiRoutes { get; set; } = new(StringComparer.Ordinal);
+}

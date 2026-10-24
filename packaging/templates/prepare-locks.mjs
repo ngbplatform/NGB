@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { cp, mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -40,11 +40,28 @@ assert.equal(sourceManifest.version, version)
 const published = createPlatformUiPackageManifest(sourceManifest)
 for (const filename of ['packaging/templates/content/web/package-lock.json', 'ui/ngb-crm-web/package-lock.json']) {
   const path = join(repository, filename)
-  const lock = JSON.parse(await readFile(path, 'utf8'))
+  const workspace = join(root, filename.includes('ngb-crm-web') ? 'crm-lock' : 'starter-lock')
+  await mkdir(workspace)
+  const manifest = JSON.parse(await readFile(join(dirname(path), 'package.json'), 'utf8'))
+  assert.equal(manifest.dependencies['@ngbplatform/ui'], version)
+  manifest.dependencies['@ngbplatform/ui'] = `file:${join(repository, 'artifacts/npm', `ngbplatform-ui-${version}.tgz`)}`
+  await writeFile(join(workspace, 'package.json'), `${JSON.stringify(manifest, null, 2)}\n`)
+  const previousLock = JSON.parse(await readFile(path, 'utf8'))
+  previousLock.packages[''].dependencies['@ngbplatform/ui'] = manifest.dependencies['@ngbplatform/ui']
+  // The candidate may add runtime dependencies while retaining the release version.
+  // Removing only this node makes npm read its real manifest and preserve other pins.
+  delete previousLock.packages['node_modules/@ngbplatform/ui']
+  await writeFile(join(workspace, 'package-lock.json'), `${JSON.stringify(previousLock, null, 2)}\n`)
+  execFileSync('npm', ['install', '--package-lock-only', '--ignore-scripts', '--workspaces=false', '--cache', join(root, 'npm-cache')], {
+    cwd: workspace, stdio: 'inherit',
+  })
+  const lock = JSON.parse(await readFile(join(workspace, 'package-lock.json'), 'utf8'))
+  lock.packages[''].dependencies['@ngbplatform/ui'] = version
   assert.equal(lock.packages[''].dependencies['@ngbplatform/ui'], version)
   const dependency = lock.packages['node_modules/@ngbplatform/ui']
   Object.assign(dependency, {
     version, resolved: `https://registry.npmjs.org/@ngbplatform/ui/-/ui-${version}.tgz`, integrity,
+    dependencies: published.dependencies,
     peerDependencies: published.peerDependencies, peerDependenciesMeta: published.peerDependenciesMeta,
   })
   await writeFile(path, `${JSON.stringify(lock, null, 2)}\n`)

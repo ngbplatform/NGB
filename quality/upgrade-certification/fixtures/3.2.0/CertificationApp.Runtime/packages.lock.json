@@ -1,0 +1,101 @@
+{
+  "version": 1,
+  "dependencies": {
+    "net10.0": {
+      "NGB.Platform.Definitions": {
+        "type": "Direct",
+        "requested": "[3.2.0, )",
+        "resolved": "3.2.0",
+        "contentHash": "Qf3Dpqstwqm72HakD33Q03KuOtpItehEQuLVtqlTkzXFxY8jqzI23PKj8Aa0vNyTVX56BvVVGHKEX9vwJJ15uA==",
+        "dependencies": {
+          "NGB.Platform.Accounting": "3.2.0",
+          "NGB.Platform.Core": "3.2.0",
+          "NGB.Platform.Metadata": "3.2.0",
+          "NGB.Platform.OperationalRegisters": "3.2.0",
+          "NGB.Platform.ReferenceRegisters": "3.2.0",
+          "NGB.Platform.Tools": "3.2.0"
+        }
+      },
+      "NGB.Platform.Tools": {
+        "type": "Direct",
+        "requested": "[3.2.0, )",
+        "resolved": "3.2.0",
+        "contentHash": "V+a+UytucUm/RS49MGNwK0z6eD3GCSCw4aC+MnLPyhmGlqH//uu8VkmXvb8z0i2AFd3XSU17YVADJNiuCpwKfg==",
+        "dependencies": {
+          "FastEnum": "2.0.8"
+        }
+      },
+      "FastEnum": {
+        "type": "Transitive",
+        "resolved": "2.0.8",
+        "contentHash": "k8FbfxFOLuhqDGmDkaHvtzCpYKfEJpZ3dVb56UtF+V00jM5UC5owdMf1zqNBNgVqvDop7YRzcIT8NImB1W5Q3A==",
+        "dependencies": {
+          "FastEnum.Core": "2.0.8",
+          "FastEnum.Generators": "2.0.8"
+        }
+      },
+      "FastEnum.Core": {
+        "type": "Transitive",
+        "resolved": "2.0.8",
+        "contentHash": "3i2kf5vD45U0w7d0b2bccKVOTL71HUq3iji9FiXs6AV6Vy7ftcpwFiy06MqnhZx7PrnMiC92Rljh+Lntg159oQ=="
+      },
+      "FastEnum.Generators": {
+        "type": "Transitive",
+        "resolved": "2.0.8",
+        "contentHash": "0VHS8JvV7U61FpA6dfUXX5Oob37+lUIdiGCCq9xhnoVEY5n26pLo9eDu2sBPWytLGzzh77fO6ZLXs/e04QYmYQ=="
+      },
+      "NGB.Platform.Accounting": {
+        "type": "Transitive",
+        "resolved": "3.2.0",
+        "contentHash": "DfABDVNZmJzCLE+m1YVblSXDzlWIJm3176fUZcjrL2Kb08lQ3IXIAjLJS9zbNV6gjCHEzlkq8aI6CIyWxU6d2Q==",
+        "dependencies": {
+          "NGB.Platform.Core": "3.2.0",
+          "NGB.Platform.Tools": "3.2.0"
+        }
+      },
+      "NGB.Platform.Core": {
+        "type": "Transitive",
+        "resolved": "3.2.0",
+        "contentHash": "f42lryzn+EGjM1CM/gvTmRVflbHlOkMB3Taa4MTRFKyb5EJLNciqFX9UR1feKyQW9YOmJDbt7uxNPcJS8WiVpg==",
+        "dependencies": {
+          "NGB.Platform.Tools": "3.2.0"
+        }
+      },
+      "NGB.Platform.Metadata": {
+        "type": "Transitive",
+        "resolved": "3.2.0",
+        "contentHash": "awM6OxBzp3WfesdFe5V4UqfJ+scXnvjpI1C9Af03nGle06jLOLShyI2kiei3wTakqn6/Q88jfyDwLykkEEU+vg==",
+        "dependencies": {
+          "NGB.Platform.Core": "3.2.0",
+          "NGB.Platform.Tools": "3.2.0"
+        }
+      },
+      "NGB.Platform.OperationalRegisters": {
+        "type": "Transitive",
+        "resolved": "3.2.0",
+        "contentHash": "Ua9twa5OZaCerHaRGWeMo0bRrmKEDz+Kkz3ALgoxdPveYr3ffV2mQErvGY22fMZj8/EYHSJbQr9Fwlo9PPwxxQ==",
+        "dependencies": {
+          "NGB.Platform.Core": "3.2.0",
+          "NGB.Platform.Tools": "3.2.0"
+        }
+      },
+      "NGB.Platform.ReferenceRegisters": {
+        "type": "Transitive",
+        "resolved": "3.2.0",
+        "contentHash": "/ylPq/pi8ZFe9Z54p32ZjxldJGK27XzPu9v55hSCBOOn2/EtgalWM3dxp7E6zOluimdBoo0oKfX9Xre3r3LJPg==",
+        "dependencies": {
+          "NGB.Platform.Core": "3.2.0",
+          "NGB.Platform.Metadata": "3.2.0",
+          "NGB.Platform.Tools": "3.2.0"
+        }
+      },
+      "certificationapp.definitions": {
+        "type": "Project",
+        "dependencies": {
+          "NGB.Platform.Definitions": "[3.2.0, )",
+          "NGB.Platform.Metadata": "[3.2.0, )"
+        }
+      }
+    }
+  }
+}

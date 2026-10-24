@@ -50,7 +50,8 @@ jobs:
   publish:
     needs: select
     name: Approve release of ${{ needs.select.outputs.sha }}
-    runs-on: ubuntu-latest
+    # Playwright 1.59.1 supports Ubuntu 24.04; ubuntu-latest may select a newer OS.
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     environment: platform-release
     permissions:

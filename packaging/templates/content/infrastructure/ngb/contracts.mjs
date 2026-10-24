@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { parseArgs } from 'node:util'
 
-export const toolVersion = '3.2.0'
+export const toolVersion = '3.3.0'
 export const migrationGuide = 'https://docs.ngbplatform.com/architecture/external-app-upgrades'
 
 export function withManagedIgnores(original) {
@@ -13,7 +13,7 @@ export function withManagedIgnores(original) {
 }
 
 export function exactVersion(value) {
-  assert.match(value, /^\d+\.\d+\.\d+$/, 'Use an exact stable version, for example 3.2.0.')
+  assert.match(value, /^\d+\.\d+\.\d+$/, `Use an exact stable version, for example ${toolVersion}.`)
   return value
 }
 
@@ -71,7 +71,8 @@ export function planUpgrade(files, target) {
   const versions = [...props.matchAll(/<NgbPlatformVersion>([^<]+)<\/NgbPlatformVersion>/g)]
   assert.equal(versions.length, 1, 'Use one unconditional NgbPlatformVersion property.')
   const source = exactVersion(versions[0][1])
-  assert.ok(source === '3.1.0' && target === '3.2.0', `No automated migration is registered for ${source} → ${target}. See ${migrationGuide}.`)
+  const supported = source === '3.1.0' && target === '3.2.0' || source === '3.2.0' && target === '3.3.0'
+  assert.ok(supported, `No automated migration is registered for ${source} → ${target}. See ${migrationGuide}.`)
   assert.ok(!/<PropertyGroup\b[^>]*\bCondition=[^>]*>(?:(?!<\/PropertyGroup>)[\s\S])*<NgbPlatformVersion>/.test(props),
     'Conditional platform versions need manual migration.')
 

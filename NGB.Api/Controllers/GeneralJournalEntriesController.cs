@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
 using NGB.Accounting.Documents;
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Accounting;
@@ -14,8 +15,23 @@ namespace NGB.Api.Controllers;
 public sealed class GeneralJournalEntriesController(IGeneralJournalEntryUiService service, INgbAccessChecker access)
     : ControllerBase
 {
+    [ActivatorUtilitiesConstructor]
+    public GeneralJournalEntriesController(
+        IGeneralJournalEntryUiService service,
+        INgbAccessChecker access,
+        IAuthorizedGeneralJournalEntryReadService reads)
+        : this(service, access)
+    {
+        ArgumentNullException.ThrowIfNull(reads);
+        Reads = reads;
+    }
+
+    // The original public constructor remains supported for existing hosts.
+    private IAuthorizedGeneralJournalEntryReadService Reads
+        => field ?? HttpContext.RequestServices.GetRequiredService<IAuthorizedGeneralJournalEntryReadService>();
+
     [HttpGet]
-    public async Task<GeneralJournalEntryPageDto> GetPage(
+    public Task<GeneralJournalEntryPageDto> GetPage(
         [FromQuery] int offset = 0,
         [FromQuery] int limit = 50,
         [FromQuery] string? search = null,
@@ -24,20 +40,11 @@ public sealed class GeneralJournalEntriesController(IGeneralJournalEntryUiServic
         [FromQuery] string? trash = null,
         [FromQuery] string? cursor = null,
         CancellationToken ct = default)
-    {
-        await RequireAsync(NgbPermissionActions.View, ct);
-
-        return string.IsNullOrWhiteSpace(cursor)
-            ? await service.GetPageAsync(offset, limit, search, dateFrom, dateTo, trash, ct)
-            : await service.GetCursorPageAsync(cursor, limit, search, dateFrom, dateTo, trash, ct);
-    }
+        => Reads.GetPageAsync(offset, limit, search, dateFrom, dateTo, trash, cursor, ct);
 
     [HttpGet("{id:guid}")]
-    public async Task<GeneralJournalEntryDetailsDto> GetById([FromRoute] Guid id, CancellationToken ct)
-    {
-        await RequireAsync(NgbPermissionActions.View, ct);
-        return await service.GetByIdAsync(id, ct);
-    }
+    public Task<GeneralJournalEntryDetailsDto> GetById([FromRoute] Guid id, CancellationToken ct)
+        => Reads.GetByIdAsync(id, ct);
 
     [HttpPost]
     public async Task<GeneralJournalEntryDetailsDto> CreateDraft(
@@ -124,7 +131,9 @@ public sealed class GeneralJournalEntriesController(IGeneralJournalEntryUiServic
     }
 
     [HttpGet("accounts/{accountId:guid}")]
-    public async Task<GeneralJournalEntryAccountContextDto> GetAccountContext([FromRoute] Guid accountId, CancellationToken ct)
+    public async Task<GeneralJournalEntryAccountContextDto> GetAccountContext(
+        [FromRoute] Guid accountId,
+        CancellationToken ct)
     {
         await RequireAsync(NgbPermissionActions.View, ct);
         return await service.GetAccountContextAsync(accountId, ct);

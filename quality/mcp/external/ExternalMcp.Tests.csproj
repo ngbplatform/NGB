@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <IsPackable>false</IsPackable>
+        <IsTestProject>true</IsTestProject>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <EmbeddedResource Include="db/migrations/*.sql" />
+        <None Update="performance-budgets.json" CopyToOutputDirectory="PreserveNewest" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <FrameworkReference Include="Microsoft.AspNetCore.App" />
+        <PackageReference Include="NGB.Platform.Api" Version="[3.3.0]" />
+        <PackageReference Include="NGB.Platform.Mcp.AspNetCore" Version="[3.3.0]" />
+        <PackageReference Include="NGB.Platform.PostgreSql" Version="[3.3.0]" />
+        <PackageReference Include="ModelContextProtocol" Version="2.2.0" />
+        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
+        <PackageReference Include="xunit" Version="2.9.3" />
+        <PackageReference Include="xunit.runner.visualstudio" Version="4.0.0" PrivateAssets="all" />
+        <PackageReference Include="Testcontainers" Version="4.15.0" />
+        <PackageReference Include="Testcontainers.PostgreSql" Version="4.15.0" />
+    </ItemGroup>
+
+</Project>

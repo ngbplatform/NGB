@@ -141,8 +141,7 @@ test('switches shell drawers, navigates from settings, toggles theme, and forwar
   await visibleButtonByTitle('Work Center').click()
   await expect.element(view.getByText('You’re all caught up', { exact: true })).toBeVisible()
 
-  await visibleButtonByTitle('Help').click()
-  await expect.element(view.getByText('Help is coming soon', { exact: true })).toBeVisible()
+  expect(document.querySelector('button[title="AI Assistant"]')).toBeNull()
 
   await visibleButtonByTitle('Settings').click()
   await expect.element(view.getByText('Preferences', { exact: true })).toBeVisible()

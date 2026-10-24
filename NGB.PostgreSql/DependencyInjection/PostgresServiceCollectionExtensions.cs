@@ -250,6 +250,7 @@ public static class PostgresServiceCollectionExtensions
         services.TryAddScoped<ITrialBalanceSnapshotReader, PostgresTrialBalanceSnapshotReader>();
         services.TryAddScoped<ITrialBalanceAccountSummaryReader, PostgresTrialBalanceAccountSummaryReader>();
         services.TryAddScoped<IReportReadSession, PostgresReportReadSession>();
+        services.TryAddScoped<IRecordReadScopeFactory, PostgresRecordReadScopeFactory>();
         services.TryAddScoped<IAccountingConsistencyStreamReader, PostgresAccountingConsistencySnapshotReader>();
         services.TryAddScoped<IAccountingStatementAccountReader, PostgresAccountingStatementAccountReader>();
         services.TryAddScoped<IAccountingSummaryPageReader, PostgresAccountingSummaryPageReader>();

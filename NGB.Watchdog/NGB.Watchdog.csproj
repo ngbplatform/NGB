@@ -16,7 +16,7 @@
     <ItemGroup>
         <PackageReference Include="AspNetCore.HealthChecks.UI" Version="9.0.0"/>
         <PackageReference Include="AspNetCore.HealthChecks.UI.InMemory.Storage" Version="9.0.0"/>
-        <PackageReference Include="KubernetesClient" Version="19.0.2" />
+        <PackageReference Include="KubernetesClient" Version="21.0.8" />
     </ItemGroup>
 
     <ItemGroup>

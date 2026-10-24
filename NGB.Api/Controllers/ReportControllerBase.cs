@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using System.Text.Json;
 using NGB.Api.Reporting;
@@ -13,43 +14,58 @@ using NGB.Tools.Exceptions;
 
 namespace NGB.Api.Controllers;
 
-public abstract class ReportControllerBase(
-    IReportDefinitionProvider definitions,
-    IReportEngine engine,
-    IReportVariantService variants,
-    IReportDownloadService downloads,
-    INgbAccessChecker access,
-    NgbSecurityCache cache)
-    : ControllerBase
+public abstract class ReportControllerBase : ControllerBase
 {
-    [HttpGet("~/api/report-definitions")]
-    public async Task<IReadOnlyList<ReportDefinitionDto>> GetAllDefinitions(CancellationToken ct)
-    {
-        var snapshot = await access.GetSnapshotAsync(ct);
-        if (!snapshot.HasAny(NgbResourceKinds.Report, NgbPermissionActions.View)
-            && !snapshot.HasAny(NgbResourceKinds.Report, NgbPermissionActions.Execute)
-            && !HasAnyAdminBackedReportAccess(snapshot))
-        {
-            return [];
-        }
+    private readonly IReportVariantService _variants;
+    private readonly IReportDownloadService _downloads;
+    private readonly INgbAccessChecker _access;
 
-        return (await cache.GetOrCreateReportDefinitionsAsync(
-            snapshot,
-            async token =>
-            {
-                var all = await definitions.GetAllDefinitionsAsync(token);
-                return FilterDefinitions(all, snapshot);
-            },
-            ct))!;
+    public ReportControllerBase(
+        IAuthorizedReportReadService reads,
+        IReportVariantService variants,
+        IReportDownloadService downloads,
+        INgbAccessChecker access)
+        : this(variants, downloads, access)
+    {
+        ArgumentNullException.ThrowIfNull(reads);
+        Reads = reads;
     }
+
+    /// <summary>
+    /// Preserves existing controller subclasses. Reads resolve the registered service from the request scope.
+    /// New subclasses should inject <see cref="IAuthorizedReportReadService"/> directly.
+    /// </summary>
+    public ReportControllerBase(
+        IReportDefinitionProvider definitions,
+        IReportEngine engine,
+        IReportVariantService variants,
+        IReportDownloadService downloads,
+        INgbAccessChecker access,
+        NgbSecurityCache cache)
+        : this(variants, downloads, access)
+    {
+    }
+
+    private ReportControllerBase(
+        IReportVariantService variants,
+        IReportDownloadService downloads,
+        INgbAccessChecker access)
+    {
+        _variants = variants;
+        _downloads = downloads;
+        _access = access;
+    }
+
+    private IAuthorizedReportReadService Reads
+        => field ?? HttpContext.RequestServices.GetRequiredService<IAuthorizedReportReadService>();
+
+    [HttpGet("~/api/report-definitions")]
+    public Task<IReadOnlyList<ReportDefinitionDto>> GetAllDefinitions(CancellationToken ct)
+        => Reads.GetAllDefinitionsAsync(ct);
 
     [HttpGet("~/api/report-definitions/{reportCode}")]
-    public async Task<ReportDefinitionDto> GetDefinition([FromRoute] string reportCode, CancellationToken ct)
-    {
-        var snapshot = await access.GetSnapshotAsync(ct);
-        RequireViewOrExecuteReport(snapshot, reportCode);
-        return await definitions.GetDefinitionAsync(reportCode, ct);
-    }
+    public Task<ReportDefinitionDto> GetDefinition([FromRoute] string reportCode, CancellationToken ct)
+        => Reads.GetDefinitionAsync(reportCode, ct);
 
     [HttpPost("~/api/reports/{reportCode}/execute")]
     [ReportRequestBudget]
@@ -57,7 +73,7 @@ public abstract class ReportControllerBase(
         [FromRoute] string reportCode,
         [FromBody] ReportExecutionRequestDto request,
         CancellationToken ct)
-        => ExecuteCoreAsync(reportCode, request, ct);
+        => Reads.ExecuteAsync(reportCode, request, ct);
 
     [HttpPost("~/api/reports/{reportCode}/export/xlsx")]
     [ReportRequestBudget(download: true)]
@@ -66,10 +82,10 @@ public abstract class ReportControllerBase(
         [FromBody] ReportExportRequestDto request,
         CancellationToken ct)
     {
-        var snapshot = await access.GetSnapshotAsync(ct);
+        var snapshot = await _access.GetSnapshotAsync(ct);
         Require(snapshot, NgbResourceKinds.Report, reportCode, NgbPermissionActions.Export);
 
-        var download = await downloads.PrepareAsync(reportCode, request, ct);
+        var download = await _downloads.PrepareAsync(reportCode, request, ct);
 
         // Also release the read session if a later MVC filter replaces or rejects this result.
         HttpContext?.Response.RegisterForDisposeAsync(download);
@@ -108,9 +124,9 @@ public abstract class ReportControllerBase(
     [HttpGet("~/api/reports/{reportCode}/variants")]
     public async Task<IReadOnlyList<ReportVariantDto>> GetVariants([FromRoute] string reportCode, CancellationToken ct)
     {
-        var snapshot = await access.GetSnapshotAsync(ct);
+        var snapshot = await _access.GetSnapshotAsync(ct);
         RequireViewOrExecuteReport(snapshot, reportCode);
-        return await variants.GetAllAsync(reportCode, ct);
+        return await _variants.GetAllAsync(reportCode, ct);
     }
 
     [HttpGet("~/api/reports/{reportCode}/variants/{variantCode}")]
@@ -119,9 +135,9 @@ public abstract class ReportControllerBase(
         [FromRoute] string variantCode,
         CancellationToken ct)
     {
-        var snapshot = await access.GetSnapshotAsync(ct);
+        var snapshot = await _access.GetSnapshotAsync(ct);
         RequireViewOrExecuteReport(snapshot, reportCode);
-        var variant = await variants.GetAsync(reportCode, variantCode, ct);
+        var variant = await _variants.GetAsync(reportCode, variantCode, ct);
 
         return variant ?? throw new ReportVariantNotFoundException(reportCode, variantCode);
     }
@@ -140,8 +156,8 @@ public abstract class ReportControllerBase(
         [FromRoute] string variantCode,
         CancellationToken ct)
     {
-        var existing = await variants.GetAsync(reportCode, variantCode, ct);
-        var snapshot = await access.GetSnapshotAsync(ct);
+        var existing = await _variants.GetAsync(reportCode, variantCode, ct);
+        var snapshot = await _access.GetSnapshotAsync(ct);
 
         if (existing?.IsShared == true)
         {
@@ -155,27 +171,8 @@ public abstract class ReportControllerBase(
                 [NgbPermissionActions.DeleteVariant, NgbPermissionActions.ManageSharedVariants]);
         }
 
-        await variants.DeleteAsync(reportCode, variantCode, ct);
+        await _variants.DeleteAsync(reportCode, variantCode, ct);
         return NoContent();
-    }
-
-    private async Task<ReportExecutionResponseDto> ExecuteCoreAsync(
-        string reportCode,
-        ReportExecutionRequestDto request,
-        CancellationToken ct)
-    {
-        var snapshot = await access.GetSnapshotAsync(ct);
-        RequireExecuteReport(snapshot, reportCode);
-
-        if (request.DisablePaging)
-            throw new NgbArgumentInvalidException("disablePaging", "Interactive reports require paging. Use the export endpoint for a complete download.");
-
-        if (request.Offset != 0)
-            throw new NgbArgumentInvalidException("offset", "Use the continuation cursor to request another page.");
-
-        var response = await engine.ExecuteAsync(reportCode, request, ct);
-        var sheet = ScrubForbiddenCellActions(response.Sheet, snapshot);
-        return response with { Sheet = sheet };
     }
 
     private async Task<ReportVariantDto> SaveVariantCoreAsync(
@@ -184,7 +181,7 @@ public abstract class ReportControllerBase(
         ReportVariantDto variant,
         CancellationToken ct)
     {
-        var snapshot = await access.GetSnapshotAsync(ct);
+        var snapshot = await _access.GetSnapshotAsync(ct);
         Require(
             snapshot,
             NgbResourceKinds.Report,
@@ -193,7 +190,7 @@ public abstract class ReportControllerBase(
                 ? NgbPermissionActions.ManageSharedVariants
                 : NgbPermissionActions.SavePrivateVariant);
 
-        return await variants.SaveAsync(variant with { ReportCode = reportCode, VariantCode = variantCode }, ct);
+        return await _variants.SaveAsync(variant with { ReportCode = reportCode, VariantCode = variantCode }, ct);
     }
 
     private static void RequireViewOrExecuteReport(PermissionSnapshot snapshot, string reportCode)
@@ -206,22 +203,6 @@ public abstract class ReportControllerBase(
         => Has(snapshot, NgbResourceKinds.Report, reportCode, NgbPermissionActions.View)
            || Has(snapshot, NgbResourceKinds.Report, reportCode, NgbPermissionActions.Execute)
            || HasAdminBackedReportAccess(snapshot, reportCode);
-
-    private static void RequireExecuteReport(PermissionSnapshot snapshot, string reportCode)
-    {
-        if (Has(snapshot, NgbResourceKinds.Report, reportCode, NgbPermissionActions.Execute)
-            || HasAdminBackedReportAccess(snapshot, reportCode))
-        {
-            return;
-        }
-
-        throw new NgbPermissionDeniedException(
-            new NgbPermissionKey(NgbResourceKinds.Report, reportCode, NgbPermissionActions.Execute));
-    }
-
-    private static bool HasAnyAdminBackedReportAccess(PermissionSnapshot snapshot)
-        => Has(snapshot, NgbResourceKinds.Admin, NgbPermissionResources.PostingLog, NgbPermissionActions.View)
-           || Has(snapshot, NgbResourceKinds.Admin, NgbPermissionResources.Integrity, NgbPermissionActions.View);
 
     private static bool HasAdminBackedReportAccess(PermissionSnapshot snapshot, string reportCode)
     {
@@ -246,72 +227,6 @@ public abstract class ReportControllerBase(
         }
 
         throw new NgbPermissionDeniedException(new NgbPermissionKey(NgbResourceKinds.Report, reportCode, actions[0]));
-    }
-
-    private static IReadOnlyList<ReportDefinitionDto> FilterDefinitions(
-        IReadOnlyList<ReportDefinitionDto> definitions,
-        PermissionSnapshot snapshot)
-    {
-        var result = new List<ReportDefinitionDto>(definitions.Count);
-        foreach (var definition in definitions)
-        {
-            if (CanViewOrExecuteReport(snapshot, definition.ReportCode))
-                result.Add(definition);
-        }
-
-        return result;
-    }
-
-    private static ReportSheetDto ScrubForbiddenCellActions(ReportSheetDto sheet, PermissionSnapshot snapshot)
-    {
-        if (snapshot.IsBootstrapAdmin)
-            return sheet;
-
-        return sheet with
-        {
-            Rows = ScrubRows(sheet.Rows, snapshot),
-            HeaderRows = sheet.HeaderRows is null ? null : ScrubRows(sheet.HeaderRows, snapshot)
-        };
-    }
-
-    private static IReadOnlyList<ReportSheetRowDto> ScrubRows(
-        IReadOnlyList<ReportSheetRowDto> rows,
-        PermissionSnapshot snapshot)
-    {
-        var result = new ReportSheetRowDto[rows.Count];
-        for (var i = 0; i < rows.Count; i++)
-        {
-            var row = rows[i];
-            var cells = new ReportCellDto[row.Cells.Count];
-
-            for (var j = 0; j < row.Cells.Count; j++)
-            {
-                var cell = row.Cells[j];
-                cells[j] = cell.Action is null || IsCellActionAllowed(cell.Action, snapshot)
-                    ? cell
-                    : cell with { Action = null };
-            }
-
-            result[i] = row with { Cells = cells };
-        }
-
-        return result;
-    }
-
-    private static bool IsCellActionAllowed(ReportCellActionDto action, PermissionSnapshot snapshot)
-    {
-        return action.Kind switch
-        {
-            ReportCellActionKinds.OpenDocument when !string.IsNullOrWhiteSpace(action.DocumentType)
-                => Has(snapshot, NgbResourceKinds.Document, action.DocumentType, NgbPermissionActions.View),
-            ReportCellActionKinds.OpenCatalog when !string.IsNullOrWhiteSpace(action.CatalogType)
-                => Has(snapshot, NgbResourceKinds.Catalog, action.CatalogType, NgbPermissionActions.View),
-            ReportCellActionKinds.OpenReport when action.Report is not null
-                => CanViewOrExecuteReport(snapshot, action.Report.ReportCode),
-            ReportCellActionKinds.OpenAccount
-                => Has(snapshot, NgbResourceKinds.Admin, NgbPermissionResources.ChartOfAccounts, NgbPermissionActions.View),
-            _ => false
-        };
     }
 
     private static void Require(PermissionSnapshot snapshot, string resourceKind, string resourceCode, string actionCode)

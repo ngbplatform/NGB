@@ -21,6 +21,9 @@
         <PackageReference Include="NGB.Platform.Contracts" Version="$(NgbPlatformPackageVersion)" />
         <PackageReference Include="NGB.Platform.Core" Version="$(NgbPlatformPackageVersion)" />
         <PackageReference Include="NGB.Platform.Hosting.AspNetCore" Version="$(NgbPlatformPackageVersion)" />
+        <PackageReference Include="NGB.Platform.Mcp.AspNetCore" Version="$(NgbPlatformPackageVersion)" />
+        <PackageReference Include="NGB.Platform.AiAssistant.AspNetCore" Version="$(NgbPlatformPackageVersion)" />
+        <PackageReference Include="NGB.Platform.AiAssistant.Ollama" Version="$(NgbPlatformPackageVersion)" />
         <PackageReference Include="NGB.Platform.Metadata" Version="$(NgbPlatformPackageVersion)" />
         <PackageReference Include="NGB.Platform.PostgreSql" Version="$(NgbPlatformPackageVersion)" />
         <PackageReference Include="NGB.Platform.PostgreSql.AspNetCore" Version="$(NgbPlatformPackageVersion)" />

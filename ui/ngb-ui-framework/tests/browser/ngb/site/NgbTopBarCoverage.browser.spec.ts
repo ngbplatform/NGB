@@ -58,6 +58,7 @@ function mountTopBar(props: Record<string, unknown>, open = true, active = true)
       userMetaIcon: 'shield-check',
       userRoles: [' Admin ', 'Reviewer', 'Auditor', 'Support'],
       hasSettings: true,
+      hasAssistant: true,
       showMainMenu: true,
       ...props,
     },

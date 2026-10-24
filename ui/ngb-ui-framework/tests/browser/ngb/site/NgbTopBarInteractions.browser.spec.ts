@@ -66,6 +66,7 @@ const TopBarEventHarness = defineComponent({
         userMetaIcon: 'shield-check',
         userRoles: ['PM Administrator', 'PM Accountant', 'PM Auditor', 'PM Test'],
         hasSettings: true,
+        hasAssistant: true,
         showMainMenu: true,
         onOpenMainMenu: () => { mainMenu.value += 1 },
         onOpenPalette: () => { palette.value += 1 },
@@ -129,7 +130,7 @@ test.each([
 
   await view.getByRole('button', { name: /Search pages, records, reports, or run a command/i }).click()
   await visibleButtonByTitle('Work Center').click()
-  await visibleButtonByTitle('Help').click()
+  await visibleButtonByTitle('AI Assistant').click()
   await visibleButtonByTitle('Settings').click()
   await visibleButtonByTitle('Switch to light mode').click()
 

@@ -198,6 +198,11 @@ public sealed partial class ReportRequestBudgetTests
         await pending.WaitAsync(TimeSpan.FromSeconds(5));
         AssertBusy(context);
         context.HttpContext.RequestAborted.Should().Be(CancellationToken.None);
+        // ConcurrencyLimiter can complete the cancelled waiter's task just before
+        // its cancellation callback updates the observable queue count.
+        using var cleanupDeadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        while (budget.Statistics(download).CurrentQueuedCount != 0)
+            await Task.Delay(1, cleanupDeadline.Token);
         budget.Statistics(download).CurrentQueuedCount.Should().Be(0);
         budget.Statistics(download).CurrentAvailablePermits.Should().Be(0);
         active!.Dispose();

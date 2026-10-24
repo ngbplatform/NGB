@@ -7,7 +7,54 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
-No changes yet.
+## [3.3.0] - 2026-10-24
+
+### Added
+
+- Added `NGB.Platform.Mcp` and `NGB.Platform.Mcp.AspNetCore` for read-only MCP access
+  to existing authorized business reads, reports, document flow and Effects, audit,
+  Work Center, Notes and attachment metadata.
+- Added stateless Streamable HTTP transport, OAuth resource discovery, bounded requests
+  and responses, and public contracts for trusted application-specific read tools.
+- Added the registered `FeatureManagement:Mcp` deployment flag and MCP composition
+  in Property Management, Trade, Agency Billing, CRM and the external application template.
+- Added `NGB.Platform.AiAssistant` and `NGB.Platform.AiAssistant.AspNetCore` for
+  bounded, streaming conversations using the official MCP client and the current
+  user's authorized read tools.
+- Added replaceable `IChatClient` adapters in `NGB.Platform.AiAssistant.Ollama`,
+  `NGB.Platform.AiAssistant.OpenAI`, `NGB.Platform.AiAssistant.Anthropic` and
+  `NGB.Platform.AiAssistant.Bedrock` for native Ollama, OpenAI-compatible Chat
+  Completions, Anthropic and Amazon Bedrock.
+- Added the shared AI Assistant panel in `@ngbplatform/ui`, including page/record
+  context, streamed Markdown answers, source links, an animated activity indicator,
+  resizable desktop width, the top-bar toggle, cancellation, retry and new chat.
+- Added the `FeatureManagement:AiAssistant` deployment flag in all four verticals
+  and the external application template. AI Assistant is disabled by default and
+  requires MCP. Provider credentials stay on the server; conversation state stays
+  in browser memory. See the [AI Assistant guide](docs/guides/ai-assistant.md).
+- Added separate unit/contract and HTTP/SDK integration test projects, external
+  package-consumer checks and four-vertical MCP release gates.
+- Registered the 3.2.0 → 3.3.0 external application upgrade path with a frozen
+  published 3.2.0 source fixture. See the [MCP guide](docs/guides/mcp-server.md)
+  for opt-in, current-user authentication and deployment settings.
+
+### Changed
+
+- MCP uses the existing API JWT bearer handler and NGB permissions for the current
+  user. Its canonical endpoint derives from `Ngb:Hosting:PublicApiUrl` and the mapped
+  route, with an optional `Mcp:Resource` override.
+- Aligned platform, UI, template, documentation, release-tooling and performance
+  workspace versions with 3.3.0. CLI examples use the application tool's version.
+- Updated current creation and upgrade instructions for 3.3.0 while retaining
+  historical release fixtures, compatibility baselines and the 3.1.0 → 3.2.0 path.
+
+### Migration
+
+- Follow the [3.2.0 → 3.3.0 upgrade guide](docs/architecture/external-app-upgrades.md#migrate-320-to-330)
+  and deploy matching platform NuGet packages and `@ngbplatform/ui` together.
+- MCP and AI Assistant are opt-in capabilities. Their adapters reuse existing
+  application services, report calculations and authorization; they do not add
+  write tools or arbitrary SQL access.
 
 ## [3.2.0] - 2026-10-11
 
@@ -229,7 +276,8 @@ No changes yet.
 ### Notes
 - This release establishes the first public baseline of the NGB Platform repository.
 
-[Unreleased]: https://github.com/ngbplatform/ngb/compare/v3.2.0...HEAD
+[Unreleased]: https://github.com/ngbplatform/ngb/compare/v3.3.0...HEAD
+[3.3.0]: https://github.com/ngbplatform/ngb/compare/v3.2.0...v3.3.0
 [3.2.0]: https://github.com/ngbplatform/ngb/compare/v3.1.0...v3.2.0
 [3.1.0]: https://github.com/ngbplatform/ngb/compare/v3.0.0...v3.1.0
 [3.0.0]: https://github.com/ngbplatform/ngb/compare/v2.0.0...v3.0.0

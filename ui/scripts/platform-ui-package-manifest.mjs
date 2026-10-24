@@ -72,6 +72,8 @@ export function createPlatformUiPackageManifest(sourceManifest, version = source
     dependencies: {
       '@headlessui/vue': sourceManifest.dependencies['@headlessui/vue'],
       '@microsoft/signalr': sourceManifest.dependencies['@microsoft/signalr'],
+      '@types/markdown-it': sourceManifest.dependencies['@types/markdown-it'],
+      'markdown-it': sourceManifest.dependencies['markdown-it'],
     },
     peerDependencies: {
       'keycloak-js': sourceManifest.dependencies['keycloak-js'],

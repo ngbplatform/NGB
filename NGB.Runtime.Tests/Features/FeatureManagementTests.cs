@@ -30,13 +30,18 @@ namespace NGB.Runtime.Tests.Features;
 public sealed class FeatureManagementTests
 {
     [Theory]
-    [InlineData(false, false)]
-    [InlineData(true, false)]
-    [InlineData(false, true)]
-    [InlineData(true, true)]
-    public async Task Flags_are_independent_default_off_and_frozen_until_restart(bool attachments, bool notes)
+    [InlineData(false, false, false)]
+    [InlineData(true, false, false)]
+    [InlineData(false, true, false)]
+    [InlineData(true, true, false)]
+    [InlineData(false, false, true)]
+    [InlineData(true, false, true)]
+    [InlineData(false, true, true)]
+    [InlineData(true, true, true)]
+    public async Task Flags_are_independent_default_off_and_frozen_until_restart(bool attachments, bool notes, bool mcp)
     {
         var configuration = Configuration(attachments, notes);
+        configuration["FeatureManagement:Mcp"] = mcp.ToString();
         await using var provider = new ServiceCollection().AddLogging()
             .AddNgbFeatureManagement(configuration).BuildServiceProvider();
         await using var scope = provider.CreateAsyncScope();
@@ -44,17 +49,24 @@ public sealed class FeatureManagementTests
 
         (await features.IsEnabledAsync(NgbFeatures.Attachments, default)).Should().Be(attachments);
         (await features.IsEnabledAsync(NgbFeatures.Notes, default)).Should().Be(notes);
+        (await features.IsEnabledAsync(NgbFeatures.Mcp, default)).Should().Be(mcp);
         (await features.IsEnabledAsync("Unknown", default)).Should().BeFalse();
         var states = await new FeaturesController(features).Get(default);
-        states.Should().HaveCount(2);
+        states.Select(x => x.Code).Should().BeEquivalentTo(
+            NgbFeatures.Attachments, NgbFeatures.Notes, NgbFeatures.Mcp, NgbFeatures.AiAssistant);
         states.Single(x => x.Code == NgbFeatures.Attachments).Enabled.Should().Be(attachments);
         states.Single(x => x.Code == NgbFeatures.Notes).Enabled.Should().Be(notes);
+        states.Single(x => x.Code == NgbFeatures.Mcp).Enabled.Should().Be(mcp);
+        states.Single(x => x.Code == NgbFeatures.AiAssistant).Enabled.Should().BeFalse();
 
         configuration["FeatureManagement:Attachments"] = (!attachments).ToString();
+        configuration["FeatureManagement:Mcp"] = (!mcp).ToString();
         configuration.Reload();
         await using var nextScope = provider.CreateAsyncScope();
         (await nextScope.ServiceProvider.GetRequiredService<INgbFeatureService>()
             .IsEnabledAsync(NgbFeatures.Attachments, default)).Should().Be(attachments);
+        (await nextScope.ServiceProvider.GetRequiredService<INgbFeatureService>()
+            .IsEnabledAsync(NgbFeatures.Mcp, default)).Should().Be(mcp);
 
         using var cancelled = new CancellationTokenSource();
         cancelled.Cancel();

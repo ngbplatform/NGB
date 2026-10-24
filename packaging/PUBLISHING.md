@@ -344,13 +344,17 @@ requires a new version. Expired artifacts cannot be replaced silently by a new p
 ## SemVer and API compatibility
 
 `Directory.Build.props` supplies the NuGet target version. UI, template and CRM
-dependencies must agree with it, as must `quality/external-consumer/matrix.json`
-and `packaging/nuget/baselines.json`.
+dependencies, documentation, release-tooling and performance workspace versions
+and their lockfiles must agree with it, as must `quality/external-consumer/matrix.json`
+and `packaging/nuget/baselines.json`. Historical fixtures and third-party dependency
+versions keep their own versions.
 
 Every runtime package is validated against its first stable release in the major
-line and the selected previous supported release. For the registered 3.1.0 → 3.2.0
+line and the selected previous supported release. For the registered 3.2.0 → 3.3.0
 transition, most major baselines are 3.0.0; Attachments, Notes and Attachments.MinIO
-start at 3.1.0. The first-release template exception is explicit in `baselines.json`.
+start at 3.1.0. The two MCP packages are first published in 3.3.0 and have no previous
+runtime baseline. Templates were first published in 3.2.0 and contain no runtime
+assembly. These package-specific exceptions are explicit in `baselines.json`.
 
 SDK package validation and ApiCompat stay enabled. Strict baseline equality is
 disabled to permit compatible additions; attribute and parameter-name checks stay

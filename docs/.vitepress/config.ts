@@ -10,6 +10,17 @@ const docsHostname = (process.env.VITEPRESS_HOSTNAME?.trim() || 'https://docs.ng
 const asset = (relativePath: string) => `${base}${relativePath}`
 const page = (text: string, link: string) => ({ text, link })
 const section = (text: string, items: Array<ReturnType<typeof page>>, collapsed = false) => ({ text, items, collapsed })
+const mcpSidebar = [
+  section('MCP Server', [
+    page('MCP Server Guide', '/guides/mcp-server'),
+    page('AI Assistant', '/guides/ai-assistant')
+  ]),
+  section('Related Guides', [
+    page('Feature Flags', '/architecture/feature-flags'),
+    page('Security and Permissions', '/platform/security-and-permissions'),
+    page('External Applications and Upgrades', '/architecture/external-app-upgrades')
+  ])
+]
 const sitemapHostname = base === '/' ? `${docsHostname}/` : `${docsHostname}${base}`
 const gtmContainerId = 'GTM-WFZ2RMM7'
 const gtmHeadSnippet = `(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
@@ -48,7 +59,12 @@ export default defineConfig({
       {
         text: 'Guides',
         link: '/guides/developer-workflows',
-        activeMatch: '^/guides/'
+        activeMatch: '^/guides/(?!(mcp-server|ai-assistant))'
+      },
+      {
+        text: 'MCP Server',
+        link: '/guides/mcp-server',
+        activeMatch: '^/guides/(mcp-server|ai-assistant)'
       },
       { text: 'Reference', link: '/reference/documentation-map' },
       { text: 'Website', link: 'https://ngbplatform.com' }
@@ -56,6 +72,8 @@ export default defineConfig({
     outline: [2, 3],
     search: { provider: 'local' },
     sidebar: {
+      '/guides/mcp-server': mcpSidebar,
+      '/guides/ai-assistant': mcpSidebar,
       '/start-here/': [
         section('Start Here', [
           page('Platform Overview', '/start-here/overview'),
@@ -96,7 +114,9 @@ export default defineConfig({
           page('Work Center', '/architecture/work-center'),
           page('Idempotency and Concurrency', '/architecture/idempotency-and-concurrency'),
           page('Feature Flags', '/architecture/feature-flags'),
-          page('Attachments & Notes', '/architecture/attachments-and-notes')
+          page('Attachments & Notes', '/architecture/attachments-and-notes'),
+          page('MCP Server', '/guides/mcp-server'),
+          page('AI Assistant', '/guides/ai-assistant')
         ], true)
       ],
       '/ecosystem/': [
@@ -113,6 +133,8 @@ export default defineConfig({
           page('Definitions', '/platform/definitions'),
           page('Runtime', '/platform/runtime'),
           page('API', '/platform/api'),
+          page('MCP Server', '/guides/mcp-server'),
+          page('AI Assistant', '/guides/ai-assistant'),
           page('Persistence', '/platform/persistence'),
           page('PostgreSQL', '/platform/postgresql'),
           page('Accounting and Registers', '/platform/accounting-and-registers'),
@@ -180,6 +202,8 @@ export default defineConfig({
           page('Developer Workflows', '/guides/developer-workflows'),
           page('Platform Extension Points', '/guides/platform-extension-points'),
           page('Extend an External Application', '/guides/extend-external-application'),
+          page('MCP Server', '/guides/mcp-server'),
+          page('AI Assistant', '/guides/ai-assistant'),
           page('Document Actions and Work Center', '/guides/document-actions-and-work-center'),
           page('Add a Document with Accounting and Registers', '/guides/add-document-with-accounting-and-registers'),
           page('Add a Canonical Report', '/guides/add-canonical-report-workflow'),

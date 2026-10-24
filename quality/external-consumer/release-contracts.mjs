@@ -15,17 +15,21 @@ export const requiredGates = [
   'publish-identity', 'registry-verification',
 ]
 
+export const mcpGates = ['mcp-contract', 'mcp-external', 'mcp-verticals']
+
 export function digest(bytes, algorithm = 'sha256', encoding = 'hex') {
   return createHash(algorithm).update(bytes).digest(encoding)
 }
 
 export function validateMatrix(matrix) {
-  assert.equal(matrix.schemaVersion, 1)
+  assert.ok(matrix.schemaVersion === 1 || matrix.schemaVersion === 2)
+  if (matrix.target === '3.3.0') assert.equal(matrix.schemaVersion, 2, 'MCP gates are mandatory for 3.3.0.')
   assertExactVersion(matrix.source)
   assertExactVersion(matrix.target)
   assert.notEqual(matrix.source, matrix.target)
   assert.deepEqual(Object.keys(matrix.profiles).sort(), [...requiredProfiles].sort())
-  assert.deepEqual(matrix.gates.map(gate => gate.id).sort(), [...requiredGates].sort())
+  assert.deepEqual(matrix.gates.map(gate => gate.id).sort(),
+    [...requiredGates, ...(matrix.schemaVersion === 2 ? mcpGates : [])].sort())
   for (const gate of matrix.gates) {
     assert.ok(['candidate', 'publication', 'promotion'].includes(gate.blocks), `Invalid gate stage: ${gate.id}`)
     const expectedStage = gate.id === 'publish-identity' ? 'publication'
@@ -39,6 +43,11 @@ export function validateMatrix(matrix) {
     assert.equal(profile.target, matrix.target)
     assert.equal(profile.source, id.endsWith('-upgrade') ? matrix.source : null)
     assert.equal(profile.minio, id === 'attachments-upgrade')
+    if (matrix.schemaVersion === 2 && id.endsWith('-upgrade')) {
+      for (const assertion of ['mcpOptInAfterUpgrade', 'mcpReadOnlySnapshot']) {
+        assert.ok(profile.assertions.includes(assertion), `Missing MCP upgrade assertion: ${id}/${assertion}`)
+      }
+    }
   }
   assert.equal(matrix.profiles['notes-upgrade'].minio, false)
   assert.equal(matrix.profiles['attachments-upgrade'].minio, true)
@@ -97,7 +106,7 @@ export function assertArtifactIdentity(expected, bytes, registry = false) {
 export function assertArtifactInventory(manifest, inventory) {
   assert.equal(manifest.schemaVersion, 1)
   assertExactVersion(manifest.version)
-  assert.equal(manifest.version, inventory.target)
+  assert.equal(manifest.version, inventory.target, 'Artifact inventory version differs from the release manifest.')
   const paths = inventory.packages.flatMap(item => [
     `nuget-release/${item.id}.${manifest.version}.nupkg`,
     ...(item.kind === 'runtime' ? [`nuget-release/${item.id}.${manifest.version}.snupkg`] : []),

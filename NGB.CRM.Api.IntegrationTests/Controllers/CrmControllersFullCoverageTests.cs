@@ -43,12 +43,10 @@ public sealed class CrmControllersFullCoverageTests : IDisposable
             Mock.Of<IDocumentActionDispatcher>()).Should().NotBeNull();
         new DashboardController(Mock.Of<ICrmDashboardService>(), access).Should().NotBeNull();
         new ReportController(
-            Mock.Of<IReportDefinitionProvider>(),
-            Mock.Of<IReportEngine>(),
+            Mock.Of<IAuthorizedReportReadService>(),
             Mock.Of<IReportVariantService>(),
             Mock.Of<IReportDownloadService>(),
-            access,
-            securityCache).Should().NotBeNull();
+            access).Should().NotBeNull();
         new SecurityController(
             Mock.Of<ICurrentAccessService>(),
             permissionDefinitions,
@@ -100,14 +98,13 @@ public sealed class CrmControllersFullCoverageTests : IDisposable
     public async Task CommandPaletteSearch_DelegatesRequestAndCancellationToken()
     {
         using var cancellation = new CancellationTokenSource();
-        var documents = new Mock<IDocumentService>(MockBehavior.Strict);
+        var documents = new Mock<IAuthorizedDocumentReadService>(MockBehavior.Strict);
         documents.Setup(x => x.GetAllMetadataAsync(cancellation.Token))
             .ReturnsAsync(Array.Empty<DocumentTypeMetadataDto>());
         var service = new CrmCommandPaletteSearchService(
             documents.Object,
-            Mock.Of<ICatalogService>(),
-            Mock.Of<IReportDefinitionProvider>(),
-            _cache,
+            Mock.Of<IAuthorizedCatalogReadService>(),
+            Mock.Of<IAuthorizedReportReadService>(),
             NullLogger<CrmCommandPaletteSearchService>.Instance);
         var sut = new CommandPaletteController(service);
         var request = new CommandPaletteSearchRequestDto("needle", Scope: "documents");

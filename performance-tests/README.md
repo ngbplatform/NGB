@@ -17,7 +17,7 @@ The framework is intentionally independent from the normal backend and frontend 
 
 ## Version and Compatibility
 
-Performance test suite version: **3.0.0**. Target platform: **NGB Platform 3.0.x**.
+Performance test suite version: **3.3.0**. Target platform: **NGB Platform 3.3.x**.
 The root workspace, shared framework, and all three vertical packages use a coordinated
 version aligned with the platform release line. They remain private packages with a
 separate build and test workflow. Trade and Agency Billing remain smoke scaffolds;

@@ -70,6 +70,15 @@ services:
         NUGET_CONFIG: ${NGB_NUGET_CONFIG:-NuGet.Config}
     environment:
       <<: *application-environment
+      Ngb__Hosting__PublicApiUrl: ${API_PUBLIC_URL:-http://localhost:5181}
+      FeatureManagement__Mcp: ${FEATURE_MCP:-false}
+      FeatureManagement__AiAssistant: ${FEATURE_AI_ASSISTANT:-false}
+      AiAssistant__Ollama__Endpoint: ${AI_OLLAMA_ENDPOINT:-http://host.docker.internal:11434}
+      AiAssistant__Ollama__AllowInsecureHttp: ${AI_OLLAMA_ALLOW_INSECURE_HTTP:-false}
+      AiAssistant__Ollama__Model: ${AI_OLLAMA_MODEL:-qwen3.5:9b}
+      AiAssistant__Ollama__ContextLength: ${AI_OLLAMA_CONTEXT_LENGTH:-32768}
+      AiAssistant__McpLoopbackPort: "8080"
+      Mcp__AllowLocalhostHttp: ${MCP_ALLOW_LOCALHOST_HTTP:-false}
       KeycloakSettings__ClientIds__0: ngb-web
       KeycloakAdminClientSettings__BaseUrl: http://keycloak:8080
       KeycloakAdminClientSettings__Realm: ngb-app

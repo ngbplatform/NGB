@@ -75,7 +75,7 @@ run_test_project() {
     --settings "${runsettings}" \
     --collect:"XPlat Code Coverage" \
     --results-directory "${raw_root}/${project_name}" >> "${project_log}" 2>&1; then
-    project_report="$(find "${raw_root}/${project_name}" -name 'coverage.cobertura.xml' -type f -print -quit)"
+    project_report="$(find "${raw_root}/${project_name}" -name 'coverage.opencover.xml' -type f -print -quit)"
     if [[ -z "${project_report}" ]]; then
       echo "Coverage report was not produced for: ${project}" >> "${project_log}"
       return 1
@@ -146,15 +146,16 @@ for project in "${test_projects[@]}"; do
   cat "${log_root}/${project_name}.log"
 done
 
-report_count="$(find "${raw_root}" -name 'coverage.cobertura.xml' -type f | wc -l | tr -d '[:space:]')"
+report_count="$(find "${raw_root}" -name 'coverage.opencover.xml' -type f | wc -l | tr -d '[:space:]')"
 if [[ "${report_count}" -eq 0 ]]; then
-  echo "No Cobertura reports were produced." >&2
+  echo "No OpenCover reports were produced." >&2
   exit 1
 fi
 
 echo "Merging ${report_count} coverage reports..."
+# OpenCover retains branch identities so complementary paths from separate test projects can be merged.
 dotnet reportgenerator \
-  "-reports:${raw_root}/**/coverage.cobertura.xml" \
+  "-reports:${raw_root}/**/coverage.opencover.xml" \
   "-targetdir:${report_root}" \
   "-reporttypes:Html;Cobertura;TextSummary" \
   "-assemblyfilters:+NGB.*;-*.Tests;-*.IntegrationTests" \

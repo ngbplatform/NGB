@@ -1,4 +1,4 @@
-import { computed, ref, type ComputedRef, type Ref } from 'vue';
+import { computed, ref, watch, type ComputedRef, type Ref } from 'vue';
 import type { RouteLocationNormalizedLoaded, Router } from 'vue-router';
 
 import { copyAppLink } from '../router/shareLink';
@@ -56,6 +56,13 @@ type UseEntityEditorNavigationActionsArgs = {
 
 export function useEntityEditorNavigationActions(args: UseEntityEditorNavigationActionsArgs) {
   const auditOpen = ref(false);
+  watch(
+    () => [args.route.query?.view, args.currentId.value, args.canOpenAudit.value] as const,
+    ([view, id, allowed]) => {
+      auditOpen.value = view === 'audit' && !!id && allowed;
+    },
+    { immediate: true },
+  );
   const currentRouteTarget = computed(() => currentRouteBackTarget(args.route));
 
   const fallbackCloseTarget = computed(() =>
@@ -166,6 +173,11 @@ export function useEntityEditorNavigationActions(args: UseEntityEditorNavigation
 
   function closeAuditLog() {
     auditOpen.value = false;
+    if (args.route.query?.view === 'audit') {
+      const query = { ...args.route.query };
+      delete query.view;
+      void args.router.replace({ query });
+    }
   }
 
   function openDocumentEffectsPage() {

@@ -80,7 +80,7 @@ public sealed class AgencyBillingCommandPaletteSearchServiceFullCoverageTests
     }
 
     [Fact]
-    public async Task SearchAsync_AllProviders_ReturnsRankedDomainResultsAndCachesMetadata()
+    public async Task SearchAsync_AllProviders_ReturnsRankedDomainResultsAndRechecksMetadata()
     {
         using var fixture = new Fixture();
         var documentId = Guid.Parse("11111111-1111-1111-1111-111111111111");
@@ -154,9 +154,9 @@ public sealed class AgencyBillingCommandPaletteSearchServiceFullCoverageTests
         first.Groups.Single(x => x.Code == "reports").Items.Should().OnlyContain(x =>
             x.Key != $"report:{AccountingReportCodes.PostingLog}" && x.Key != $"report:{AccountingReportCodes.Consistency}");
 
-        fixture.Documents.Verify(x => x.GetAllMetadataAsync(It.IsAny<CancellationToken>()), Times.Once);
-        fixture.Catalogs.Verify(x => x.GetAllMetadataAsync(It.IsAny<CancellationToken>()), Times.Once);
-        fixture.Reports.Verify(x => x.GetAllDefinitionsAsync(It.IsAny<CancellationToken>()), Times.Once);
+        fixture.Documents.Verify(x => x.GetAllMetadataAsync(It.IsAny<CancellationToken>()), Times.Exactly(2));
+        fixture.Catalogs.Verify(x => x.GetAllMetadataAsync(It.IsAny<CancellationToken>()), Times.Exactly(2));
+        fixture.Reports.Verify(x => x.GetAllDefinitionsAsync(It.IsAny<CancellationToken>()), Times.Exactly(2));
     }
 
     [Theory]
@@ -340,13 +340,12 @@ public sealed class AgencyBillingCommandPaletteSearchServiceFullCoverageTests
                 Documents.Object,
                 Catalogs.Object,
                 Reports.Object,
-                _cache,
                 NullLogger<AgencyBillingCommandPaletteSearchService>.Instance);
         }
 
-        public Mock<IDocumentService> Documents { get; } = new();
-        public Mock<ICatalogService> Catalogs { get; } = new();
-        public Mock<IReportDefinitionProvider> Reports { get; } = new();
+        public Mock<IAuthorizedDocumentReadService> Documents { get; } = new();
+        public Mock<IAuthorizedCatalogReadService> Catalogs { get; } = new();
+        public Mock<IAuthorizedReportReadService> Reports { get; } = new();
         public AgencyBillingCommandPaletteSearchService Sut { get; }
 
         public void SetDocumentMetadata(params DocumentTypeMetadataDto[] metadata)

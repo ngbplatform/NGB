@@ -12,6 +12,7 @@ using NGB.Api.Controllers;
 using NGB.Contracts.Reporting;
 using NGB.Core.Reporting;
 using NGB.Core.Security;
+using NGB.Runtime.Reporting;
 using NGB.Runtime.Security;
 using Xunit;
 
@@ -332,6 +333,7 @@ public sealed class ReportControllerBaseEdgeCoverageTests
 
     private static MethodInfo Method(string methodName)
         => typeof(ReportControllerBase).GetMethod(methodName, BindingFlags.NonPublic | BindingFlags.Static)
+           ?? typeof(NGB.Runtime.Reporting.PermissionAwareReportReadService).GetMethod(methodName, BindingFlags.NonPublic | BindingFlags.Static)
            ?? throw new MissingMethodException(typeof(ReportControllerBase).FullName, methodName);
 
     private static NgbSecurityCache SecurityCache(IMemoryCache memory)
@@ -348,10 +350,12 @@ public sealed class ReportControllerBaseEdgeCoverageTests
         IReportDownloadService? exports = null,
         NgbSecurityCache? cache = null)
         : ReportControllerBase(
-            definitions ?? Mock.Of<IReportDefinitionProvider>(),
-            engine ?? Mock.Of<IReportEngine>(),
+            new PermissionAwareReportReadService(
+                definitions ?? Mock.Of<IReportDefinitionProvider>(),
+                engine ?? Mock.Of<IReportEngine>(),
+                access,
+                cache ?? null!),
             Mock.Of<IReportVariantService>(),
             exports ?? Mock.Of<IReportDownloadService>(),
-            access,
-            cache ?? null!);
+            access);
 }

@@ -1,0 +1,175 @@
+{
+  "schemaVersion": 1,
+  "target": "3.2.0",
+  "packages": [
+    {
+      "id": "NGB.Platform.Attachments",
+      "project": "NGB.Attachments/NGB.Attachments.csproj",
+      "kind": "runtime",
+      "firstStableInMajor": "3.1.0",
+      "previous": "3.1.0"
+    },
+    {
+      "id": "NGB.Platform.Notes",
+      "project": "NGB.Notes/NGB.Notes.csproj",
+      "kind": "runtime",
+      "firstStableInMajor": "3.1.0",
+      "previous": "3.1.0"
+    },
+    {
+      "id": "NGB.Platform.Attachments.MinIO",
+      "project": "NGB.Attachments.MinIO/NGB.Attachments.MinIO.csproj",
+      "kind": "runtime",
+      "firstStableInMajor": "3.1.0",
+      "previous": "3.1.0"
+    },
+    {
+      "id": "NGB.Platform.Accounting",
+      "project": "NGB.Accounting/NGB.Accounting.csproj",
+      "kind": "runtime",
+      "firstStableInMajor": "3.0.0",
+      "previous": "3.1.0"
+    },
+    {
+      "id": "NGB.Platform.Application.Abstractions",
+      "project": "NGB.Application.Abstractions/NGB.Application.Abstractions.csproj",
+      "kind": "runtime",
+      "firstStableInMajor": "3.0.0",
+      "previous": "3.1.0"
+    },
+    {
+      "id": "NGB.Platform.Runtime.Hosting",
+      "project": "NGB.Runtime.Hosting/NGB.Runtime.Hosting.csproj",
+      "kind": "runtime",
+      "firstStableInMajor": "3.0.0",
+      "previous": "3.1.0"
+    },
+    {
+      "id": "NGB.Platform.Hosting.AspNetCore",
+      "project": "NGB.Hosting.AspNetCore/NGB.Hosting.AspNetCore.csproj",
+      "kind": "runtime",
+      "firstStableInMajor": "3.0.0",
+      "previous": "3.1.0"
+    },
+    {
+      "id": "NGB.Platform.Api",
+      "project": "NGB.Api/NGB.Api.csproj",
+      "kind": "runtime",
+      "firstStableInMajor": "3.0.0",
+      "previous": "3.1.0"
+    },
+    {
+      "id": "NGB.Platform.BackgroundJobs",
+      "project": "NGB.BackgroundJobs/NGB.BackgroundJobs.csproj",
+      "kind": "runtime",
+      "firstStableInMajor": "3.0.0",
+      "previous": "3.1.0"
+    },
+    {
+      "id": "NGB.Platform.BackgroundJobs.PostgreSql",
+      "project": "NGB.BackgroundJobs.PostgreSql/NGB.BackgroundJobs.PostgreSql.csproj",
+      "kind": "runtime",
+      "firstStableInMajor": "3.0.0",
+      "previous": "3.1.0"
+    },
+    {
+      "id": "NGB.Platform.Contracts",
+      "project": "NGB.Contracts/NGB.Contracts.csproj",
+      "kind": "runtime",
+      "firstStableInMajor": "3.0.0",
+      "previous": "3.1.0"
+    },
+    {
+      "id": "NGB.Platform.Core",
+      "project": "NGB.Core/NGB.Core.csproj",
+      "kind": "runtime",
+      "firstStableInMajor": "3.0.0",
+      "previous": "3.1.0"
+    },
+    {
+      "id": "NGB.Platform.Definitions",
+      "project": "NGB.Definitions/NGB.Definitions.csproj",
+      "kind": "runtime",
+      "firstStableInMajor": "3.0.0",
+      "previous": "3.1.0"
+    },
+    {
+      "id": "NGB.Platform.Metadata",
+      "project": "NGB.Metadata/NGB.Metadata.csproj",
+      "kind": "runtime",
+      "firstStableInMajor": "3.0.0",
+      "previous": "3.1.0"
+    },
+    {
+      "id": "NGB.Platform.Migrator.Core",
+      "project": "NGB.Migrator.Core/NGB.Migrator.Core.csproj",
+      "kind": "runtime",
+      "firstStableInMajor": "3.0.0",
+      "previous": "3.1.0"
+    },
+    {
+      "id": "NGB.Platform.OperationalRegisters",
+      "project": "NGB.OperationalRegisters/NGB.OperationalRegisters.csproj",
+      "kind": "runtime",
+      "firstStableInMajor": "3.0.0",
+      "previous": "3.1.0"
+    },
+    {
+      "id": "NGB.Platform.Persistence",
+      "project": "NGB.Persistence/NGB.Persistence.csproj",
+      "kind": "runtime",
+      "firstStableInMajor": "3.0.0",
+      "previous": "3.1.0"
+    },
+    {
+      "id": "NGB.Platform.PostgreSql",
+      "project": "NGB.PostgreSql/NGB.PostgreSql.csproj",
+      "kind": "runtime",
+      "firstStableInMajor": "3.0.0",
+      "previous": "3.1.0"
+    },
+    {
+      "id": "NGB.Platform.PostgreSql.AspNetCore",
+      "project": "NGB.PostgreSql.AspNetCore/NGB.PostgreSql.AspNetCore.csproj",
+      "kind": "runtime",
+      "firstStableInMajor": "3.0.0",
+      "previous": "3.1.0"
+    },
+    {
+      "id": "NGB.Platform.ReferenceRegisters",
+      "project": "NGB.ReferenceRegisters/NGB.ReferenceRegisters.csproj",
+      "kind": "runtime",
+      "firstStableInMajor": "3.0.0",
+      "previous": "3.1.0"
+    },
+    {
+      "id": "NGB.Platform.Runtime",
+      "project": "NGB.Runtime/NGB.Runtime.csproj",
+      "kind": "runtime",
+      "firstStableInMajor": "3.0.0",
+      "previous": "3.1.0"
+    },
+    {
+      "id": "NGB.Platform.Tools",
+      "project": "NGB.Tools/NGB.Tools.csproj",
+      "kind": "runtime",
+      "firstStableInMajor": "3.0.0",
+      "previous": "3.1.0"
+    },
+    {
+      "id": "NGB.Platform.Watchdog",
+      "project": "NGB.Watchdog/NGB.Watchdog.csproj",
+      "kind": "runtime",
+      "firstStableInMajor": "3.0.0",
+      "previous": "3.1.0"
+    },
+    {
+      "id": "NGB.Platform.Templates",
+      "project": "packaging/templates/NGB.Platform.Templates.csproj",
+      "kind": "template",
+      "firstStableInMajor": null,
+      "previous": null,
+      "exception": "First publication in 3.2.0; content package with no runtime assembly or symbols."
+    }
+  ]
+}

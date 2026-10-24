@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import ts from 'typescript'
-import { compareCssTokens, comparePackageContracts, compareTypeContracts } from './platform-ui-compatibility.mjs'
+import { compareCssTokens, comparePackageContracts, compareTypeContracts, declarationPath } from './platform-ui-compatibility.mjs'
 import { dependencyCache } from '../../quality/external-consumer/dependency-cache.mjs'
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
@@ -64,9 +64,8 @@ for (const [name, directory] of [['previous', oldRoot], ['candidate', nextRoot]]
 for (const [subpath, value] of Object.entries(previous.exports)) {
   const target = typeof value === 'string' ? value : value.types
   if (!target || target.endsWith('.css')) continue
-  const declaration = target.replace(/\.(?:ts|js)$/, '.d.ts')
-  const oldFile = join(root, 'previous', declaration)
-  const newFile = join(root, 'candidate', declaration)
+  const oldFile = declarationPath(target, oldRoot, join(root, 'previous'))
+  const newFile = declarationPath(target, nextRoot, join(root, 'candidate'))
   const program = ts.createProgram([oldFile, newFile], {
     target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext,
     moduleResolution: ts.ModuleResolutionKind.Bundler, strict: true, skipLibCheck: true,
