@@ -15,13 +15,18 @@ This site is the consolidated platform documentation for <strong>NGB Platform</s
 - [Host composition](/start-here/host-composition)
 - [Reading path](/start-here/reading-path)
 
-## MCP Server in 3.3.0
+## MCP Server and AI Assistant in 3.3.0
 
 MCP exposes the hosting application's authorized business reads as the current user. It runs in the existing API process and is enabled with `FeatureManagement:Mcp`.
+
+AI Assistant adds the shared conversation panel and a replaceable model provider
+over those reads. It requires both the MCP and AI Assistant feature flags.
 
 - [Enable MCP and connect a client](/guides/mcp-server)
 - [Tools, limits and continuation](/guides/mcp-server#tools)
 - [Architecture and project boundaries](/guides/mcp-server#architecture)
+- [Enable AI Assistant and configure a provider](/guides/ai-assistant)
+- [Assistant troubleshooting and package compatibility](/guides/ai-assistant#troubleshooting)
 
 ## Previous 3.0 migration
 

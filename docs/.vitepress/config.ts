@@ -59,12 +59,12 @@ export default defineConfig({
       {
         text: 'Guides',
         link: '/guides/developer-workflows',
-        activeMatch: '^/guides/(?!mcp-server)'
+        activeMatch: '^/guides/(?!(mcp-server|ai-assistant))'
       },
       {
         text: 'MCP Server',
         link: '/guides/mcp-server',
-        activeMatch: '^/guides/mcp-server'
+        activeMatch: '^/guides/(mcp-server|ai-assistant)'
       },
       { text: 'Reference', link: '/reference/documentation-map' },
       { text: 'Website', link: 'https://ngbplatform.com' }

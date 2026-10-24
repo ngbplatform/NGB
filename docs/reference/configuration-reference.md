@@ -92,7 +92,7 @@ The same keys are used by all four API hosts. Environment-variable equivalents u
 | `FeatureManagement:Attachments` | `FEATURE_ATTACHMENTS` | Enable attachment operations; defaults to `false` |
 | `FeatureManagement:Notes` | `FEATURE_NOTES` | Enable notes independently of storage; defaults to `false` |
 | `FeatureManagement:Mcp` | `FEATURE_MCP` | Enable the MCP endpoint and OAuth metadata at API startup; defaults to `false` |
-| `AiAssistant:Ollama:AllowInsecureHttp` | `AI_OLLAMA_ALLOW_INSECURE_HTTP` | Permit HTTP beyond loopback for the configured Ollama endpoint; defaults to `false`. Local Compose `.env` files explicitly enable it for the API-to-host connection |
+| `FeatureManagement:AiAssistant` | `FEATURE_AI_ASSISTANT` | Enable the shared assistant panel and API; defaults to `false` and requires MCP |
 | `Mcp:AllowLocalhostHttp` | `MCP_ALLOW_LOCALHOST_HTTP` | Permit HTTP for loopback and reserved `*.localhost` hosts during local development; defaults to `false` |
 | `Ngb:Hosting:PublicApiUrl` | `PM_API_PUBLIC_URL` (optional) | Shared public API base URL; local Compose derives it from `PM_API_HTTPS_PORT` when absent. MCP appends its mapped route |
 | `Attachments:UploadExpirationEnabled` | `ATTACHMENTS_UPLOAD_EXPIRATION_ENABLED` | Keep pending upload expiration active when Attachments is disabled; defaults to `false` |
@@ -114,6 +114,33 @@ Feature state is fixed at API startup. After changing `.env`, recreate the API c
 Upload expiration runs inside the API host, not Hangfire. It changes database metadata and writes AuditLog events; it never deletes MinIO objects. MinIO configuration is required only when the Attachments feature is enabled, although the provided full Compose stacks still start storage.
 
 See [Feature Flags](/architecture/feature-flags) for rollout and registration, and [Attachments & Notes configuration](/architecture/attachments-and-notes#configuration) for all limits, lifetimes, storage requirements and production configuration.
+
+### AI Assistant
+
+All four checked-in API hosts register Ollama. Provider selection happens in API
+composition; adding another provider's settings alone does not switch it. These
+settings configure the existing Ollama registration:
+
+| API key | Compose `.env` key | Default / meaning |
+|---|---|---|
+| `AiAssistant:Ollama:Endpoint` | `AI_OLLAMA_ENDPOINT` | Adapter default `http://localhost:11434`; Compose uses `http://host.docker.internal:11434` |
+| `AiAssistant:Ollama:AllowInsecureHttp` | `AI_OLLAMA_ALLOW_INSECURE_HTTP` | `false`; local `.env` files explicitly permit the HTTP API-to-host connection |
+| `AiAssistant:Ollama:Model` | `AI_OLLAMA_MODEL` | `qwen3.5:9b` |
+| `AiAssistant:Ollama:ContextLength` | `AI_OLLAMA_CONTEXT_LENGTH` | `32768` tokens |
+| `AiAssistant:McpLoopbackPort` | Set directly in Compose | Unset by default; local Compose sets `443` for the API's internal MCP connection |
+| `AiAssistant:TrustDevelopmentServerCertificate` | Set directly in Compose | `false`; local Compose opts into trusting only the configured Kestrel certificate in Development |
+
+The remaining `AiAssistant` settings control request, tool, context and output
+budgets; see the complete [limits table](/guides/ai-assistant#limits-and-deployment).
+Use double underscores in API environment variables, for example
+`AiAssistant__MaxToolCalls` and `AiAssistant__MaxOutputTokens`. Compose `.env`
+entries only reach a container when the service's `environment` section maps them.
+
+Provider sections are `AiAssistant:OpenAI` (`Endpoint`, `Model`, `ApiKey`),
+`AiAssistant:Anthropic` (`Model`, `ApiKey`) and `AiAssistant:Bedrock` (`Region`,
+`Model`). Bedrock credentials use the AWS SDK credential chain. Keep all provider
+credentials on the server. See [provider composition](/guides/ai-assistant#api-composition-and-providers)
+and [package updates and troubleshooting](/guides/ai-assistant#update-ui-and-api-together).
 
 ### Reporting
 

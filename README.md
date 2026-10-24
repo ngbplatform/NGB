@@ -54,6 +54,7 @@
 - [Who NGB is for](#who-ngb-is-for)
 - [What you can build with NGB](#what-you-can-build-with-ngb)
 - [Core capabilities](#core-capabilities)
+- [MCP Server + AI Assistant](#mcp-server--ai-assistant)
 - [Live demos](#live-demos)
 - [Architecture overview](#architecture-overview)
 - [Architecture flow](#architecture-flow)
@@ -62,8 +63,10 @@
 - [Performance testing](#performance-testing)
 - [Getting started](#getting-started)
 - [Design principles](#design-principles)
+- [Why Apache 2.0](#why-apache-20)
 - [Contributing](#contributing)
 - [License](#license)
+- [Links](#links)
 
 ---
 
@@ -158,6 +161,8 @@ The demo solutions included in this repository show a few possible applications 
 - Metadata-driven catalogs and documents.
 - Universal patterns for lists, forms, payloads, actions, and UI metadata.
 - Consistent lifecycle model for business objects and business documents.
+- Document Actions and Work Center for authorized business actions and personal tasks.
+- Optional Attachments & Notes with parent-record authorization and a MinIO storage adapter.
 
 ### Accounting and register engine
 
@@ -187,6 +192,37 @@ The demo solutions included in this repository show a few possible applications 
 - Shared UI framework.
 - Metadata-driven web applications for vertical solutions.
 - Custom branding and authentication theme support.
+
+---
+
+## MCP Server + AI Assistant
+
+NGB includes a shared, opt-in MCP Server and AI Assistant for all four verticals
+and the application starter.
+
+- **MCP Server** runs inside the existing API host and exposes authorized reads:
+  metadata, records, reports, document flow and effects, audit history, Work Center,
+  notes and attachment metadata. It uses the current application user's permissions.
+- **AI Assistant** uses those reads through the official MCP client. Its panel,
+  animated activity indicator, resizable desktop width and **?** button toggle
+  belong to the shared `@ngbplatform/ui` package.
+- **Model providers** are selected in API composition through `IChatClient`:
+  native Ollama, OpenAI-compatible Chat Completions, Anthropic or Amazon Bedrock.
+  Provider credentials stay on the server; conversations remain in browser memory.
+- **Vertical extensions** expose existing authorized capabilities through MCP
+  contributors. Report calculations, business rules and authorization remain in
+  the application services. The assistant has no write or arbitrary SQL tools.
+
+Enable MCP with `FeatureManagement:Mcp` and the assistant with
+`FeatureManagement:AiAssistant`; the assistant requires both. The checked-in
+local `.env.*` files enable MCP and leave AI Assistant disabled. All four API
+hosts currently register Ollama; another provider requires changing the API
+registration and its dependencies, not the UI.
+
+See the [MCP Server guide](docs/guides/mcp-server.md) for tools, authentication and
+extensions, and the [AI Assistant guide](docs/guides/ai-assistant.md) for setup,
+providers, limits and troubleshooting. Package consumers such as CRM must update
+the [UI and API packages together](docs/guides/ai-assistant.md#update-ui-and-api-together).
 
 ---
 
@@ -390,10 +426,18 @@ sequenceDiagram
 
 ## Monorepo structure
 
-This repository is organized as a **single monorepo**.
+This repository is organized as a **single monorepo**. The headings below are
+logical groups, not physical directories: backend `NGB.*` project directories
+live at the repository root. `NGB.sln` contains the backend library, host and test
+projects; frontend, packaging and verification tooling have their own entry points.
 
 ```text
-NGB.sln
+NGB/
+│
+├─ Backend solution and shared build configuration
+│  ├─ NGB.sln
+│  ├─ Directory.Build.props
+│  └─ NuGet.config
 │
 ├─ Platform core
 │  ├─ NGB.Core
@@ -417,6 +461,21 @@ NGB.sln
 │  ├─ NGB.Tools
 │  └─ NGB.Migrator.Core
 │
+├─ Shared content services
+│  ├─ NGB.Attachments
+│  ├─ NGB.Attachments.MinIO
+│  └─ NGB.Notes
+│
+├─ MCP Server and AI Assistant
+│  ├─ NGB.Mcp
+│  ├─ NGB.Mcp.AspNetCore
+│  ├─ NGB.AiAssistant
+│  ├─ NGB.AiAssistant.AspNetCore
+│  ├─ NGB.AiAssistant.Ollama
+│  ├─ NGB.AiAssistant.OpenAI
+│  ├─ NGB.AiAssistant.Anthropic
+│  └─ NGB.AiAssistant.Bedrock
+│
 ├─ Vertical solutions
 │  ├─ NGB.AgencyBilling.*
 │  ├─ NGB.CRM.*
@@ -429,24 +488,59 @@ NGB.sln
 │  ├─ ui/ngb-crm-web
 │  ├─ ui/ngb-property-management-web
 │  ├─ ui/ngb-trade-web
-│  └─ ui/ngb-auth-theme
+│  ├─ ui/ngb-auth-theme
+│  └─ ui/scripts
 │
 ├─ Docker environments
+│  ├─ docker/
 │  ├─ docker-compose.ab.yml
 │  ├─ docker-compose.crm.yml
 │  ├─ docker-compose.pm.yml
 │  └─ docker-compose.trade.yml
 │
+├─ Packages and external applications
+│  ├─ packaging/nuget
+│  ├─ packaging/templates
+│  ├─ packaging/PUBLISHING.md
+│  └─ ngb.mjs
+│
 ├─ Performance tests
 │  ├─ performance-tests/ngb-performance-tests-framework
 │  ├─ performance-tests/ngb-property-management-perf
 │  ├─ performance-tests/ngb-trade-perf
-│  └─ performance-tests/ngb-agency-billing-perf
+│  ├─ performance-tests/ngb-agency-billing-perf
+│  └─ performance-tests/scripts
 │
-└─ Tests
-   ├─ Platform unit and integration tests
-   └─ Vertical unit and integration tests
+├─ Tests and verification
+│  ├─ NGB.*.Tests / NGB.*.IntegrationTests
+│  ├─ ui/**/tests / ui/tests
+│  ├─ quality/ai-assistant
+│  ├─ quality/mcp
+│  ├─ quality/integration
+│  ├─ quality/coverage
+│  ├─ quality/external-consumer
+│  ├─ quality/upgrade-certification
+│  ├─ quality/mutation
+│  ├─ run-backend-full-coverage.sh
+│  └─ run-frontend-full-coverage.sh
+│
+└─ Documentation and CI
+   ├─ docs/
+   └─ .github/workflows/
 ```
+
+Each vertical has a definition project plus Runtime, PostgreSQL, API, Migrator,
+BackgroundJobs, Watchdog and test projects. PM, Trade and Agency Billing consume
+platform source projects and the shared UI workspace. CRM consumes the platform's
+NuGet packages and declares a versioned `@ngbplatform/ui` dependency, while retaining
+project references within its own vertical. Its isolated Docker web build consumes
+the UI package; a root UI workspace install can link the matching local workspace.
+
+The package inventory is maintained in
+[`packaging/nuget/projects.txt`](packaging/nuget/projects.txt). Generated packages,
+coverage reports and verification output go under ignored `artifacts/` directories.
+See [Repository Structure](docs/start-here/repository-structure.md) and
+[Platform Projects](docs/reference/platform-projects.md) for navigation by responsibility.
 
 ---
 
@@ -461,6 +555,7 @@ NGB is built with a practical, production-oriented stack:
 - **Background jobs:** Hangfire-based job infrastructure
 - **Logging / observability:** Serilog + Seq-friendly structured logging setup
 - **Frontend:** Vue 3 + Vite + Tailwind CSS + shared UI workspace
+- **MCP / AI:** official MCP SDK + `Microsoft.Extensions.AI` with replaceable model adapters
 - **Containerized local environments:** Docker Compose
 
 ---
@@ -471,7 +566,9 @@ NGB includes a reusable Grafana k6 + TypeScript performance testing framework un
 
 The framework validates platform-level behavior and vertical-specific workloads with realistic business scenarios such as metadata and menu loading, document reads, document lifecycle operations, posting, audit reads, accounting effects, document flow, report execution, capacity staircases, breakpoint discovery, and opt-in write-heavy pressure.
 
-Initial vertical coverage is provided for Property Management, with Trade and Agency Billing structured as extensions. Destructive write-heavy profiles are opt-in and excluded from the normal `pm:all` chain.
+Property Management has the full scenario suite; Trade and Agency Billing currently
+provide smoke scaffolds. Destructive write-heavy profiles are opt-in and excluded
+from the normal `pm:all` chain.
 
 See:
 
@@ -501,7 +598,11 @@ See the [application guide](docs/architecture/external-app-upgrades.md#create-an
 
 ### Upgrade an existing application
 
-Follow the [upgrade guide](docs/architecture/external-app-upgrades.md#migrate-310-to-320) for supported transitions, preview/apply commands, application validation, backups and database migration. Installing a newer template does not update an existing application.
+Follow the [3.2.0 → 3.3.0 upgrade guide](docs/architecture/external-app-upgrades.md#migrate-320-to-330)
+for the current transition, preview/apply commands, application validation, backups
+and database migration. The guide also retains the registered 3.1.0 → 3.2.0 path;
+it does not define a direct 3.1.0 → 3.3.0 upgrade. Installing a newer template does
+not update an existing application.
 
 The upgrade command uses published NuGet/npm packages by default. For an older application without the bundled `infrastructure/ngb.mjs`, run the CLI from an NGB checkout for the target release; a standalone installable CLI package is not currently provided.
 
@@ -565,7 +666,7 @@ user environment variable and restart the IDE.
 
 CRM consumes NuGet and npm packages, while PM, Trade, and Agency Billing use platform source
 projects/workspaces. Before building the complete solution or starting CRM against unpublished
-changes, create the local NuGet feed. Before building the CRM web image, create its UI tarball too.
+changes, prepare both package sets from the same checkout in the order below.
 Generated packages are ignored by Git and are absent after a fresh clone.
 
 On macOS/Linux, from the repository root:
@@ -580,6 +681,10 @@ The npm archive must be created first because template packing uses it to genera
 The NuGet script packs all platform projects, regenerates template and CRM lockfiles,
 refreshes `artifacts/nuget`, invalidates replaced cache entries, and restores the solution.
 The UI command creates `artifacts/npm/ngbplatform-ui-local.tgz`.
+
+Rebuilding a CRM Docker image does not repack the platform. After platform changes,
+repeat both packaging steps before rebuilding the API and web images; a new UI
+archive with an older NuGet package can produce incompatible assistant requests.
 
 On Windows, follow the [WSL2 package preparation instructions](docs/start-here/run-locally.md#prepare-local-platform-packages).
 
@@ -621,6 +726,11 @@ dotnet build NGB.sln
 
 ### Run backend tests
 
+Start Docker for the integration tests' isolated dependency containers. See
+[integration-test execution](quality/integration/README.md) for fixture behavior
+and concurrency settings. Native Ollama checks are opt-in and are described in
+the [AI Assistant verification guide](docs/guides/ai-assistant.md#verification).
+
 ```bash
 dotnet test NGB.sln
 ```
@@ -629,11 +739,29 @@ dotnet test NGB.sln
 
 ```bash
 cd ui
-npm install
+npm ci
+npx playwright install
 npm run test:all
 ```
 
-> Exact local environment details may evolve over time. The live demos are the fastest way to see the platform in action.
+The full frontend gate includes type checks, API compatibility, unit tests, browser
+component tests and Playwright E2E. The content E2E host also requires .NET and
+Docker; see the [Attachments & Notes validation prerequisites](docs/architecture/attachments-and-notes.md#validation).
+
+### Full coverage reports
+
+From the repository root, after preparing packages and the test prerequisites:
+
+```bash
+./run-backend-full-coverage.sh
+./run-frontend-full-coverage.sh
+```
+
+`NGB_BACKEND_COVERAGE_JOBS` and `NGB_FRONTEND_COVERAGE_JOBS` control concurrent test
+projects. The defaults are 2 and 1 respectively. Each runner replaces its previous
+output under `artifacts/coverage/backend-full` or `artifacts/coverage/frontend-full`,
+including `coverage-summary.json` and `report/index.html`. These commands enforce
+100% coverage thresholds; they do not imply that the current checkout passes them.
 
 ---
 

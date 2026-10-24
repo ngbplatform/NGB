@@ -24,6 +24,7 @@ This page is the project catalog for the reusable platform.
 
 - `NGB.Runtime` — orchestration center for documents, reporting, derivations, graph/effects, and validation.
 - `NGB.Mcp` — transport-neutral read-tool registry, typed contracts and adapters over existing authorized reads. Publishes as `NGB.Platform.Mcp`.
+- `NGB.AiAssistant` — bounded conversation runner, evidence handling and provider-neutral assistant contracts. Publishes as `NGB.Platform.AiAssistant`.
 
 ## Business engines
 
@@ -39,19 +40,26 @@ This page is the project catalog for the reusable platform.
 - `NGB.Runtime.Hosting` — explicit generic-host lifecycle adapters for Runtime, including fail-fast startup validation.
 - `NGB.Api` — reusable API controllers, endpoints, and application-facing HTTP composition.
 - `NGB.Mcp.AspNetCore` — opt-in stateless MCP HTTP endpoint, shared API authentication, discovery and request budgets. Publishes as `NGB.Platform.Mcp.AspNetCore`.
+- `NGB.AiAssistant.AspNetCore` — authenticated HTTP/SSE endpoints, admission, official MCP client and tool-result projection. Publishes as `NGB.Platform.AiAssistant.AspNetCore`.
+- `NGB.AiAssistant.Ollama`, `.OpenAI`, `.Anthropic` and `.Bedrock` — replaceable `IChatClient` provider adapters, published as the corresponding `NGB.Platform.AiAssistant.*` packages.
 - `NGB.BackgroundJobs` — provider-neutral background-jobs scheduling and hosting support.
 - `NGB.BackgroundJobs.PostgreSql` — PostgreSQL-specific Hangfire storage adapter; keeps scheduler dependencies out of the generic PostgreSQL provider.
 - `NGB.Watchdog` — reusable watchdog hosting support.
 - `NGB.Migrator.Core` — reusable migrator CLI core.
 
-## MCP tests
+## MCP and AI Assistant tests
 
 - `NGB.Mcp.Tests` — unit and schema-contract checks, including direct transport-handler and configuration tests.
 - `NGB.Mcp.AspNetCore.IntegrationTests` — real Kestrel HTTP and official MCP SDK integration.
 - `quality/mcp/external` and the four vertical integration projects — package-only and actual-host scenarios with PostgreSQL and Keycloak.
+- `NGB.AiAssistant.Tests` — orchestration, evidence boundaries, input validation and output budgets.
+- `NGB.AiAssistant.AspNetCore.IntegrationTests` — authenticated HTTP/SSE and MCP integration, with opt-in native Ollama checks.
+- `NGB.AiAssistant.Providers.Tests` — provider SDK transport and streaming contract fixtures.
+- `ui/ngb-ui-framework/tests/unit/ngb/ai-assistant` and `tests/browser/ngb/ai-assistant` — shared assistant state, rendering and panel behavior.
 
 ## See also
 
 - [MCP Server](/guides/mcp-server)
+- [AI Assistant](/guides/ai-assistant)
 - [Layering and Dependencies](/architecture/layering-and-dependencies)
 - [Layering rules](/reference/layering-rules)

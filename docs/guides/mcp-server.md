@@ -9,6 +9,10 @@ NGB Platform 3.3.0 exposes existing authorized reads through the official MCP C#
 SDK 2.2.0. It runs inside the application API host. It does not require an LLM,
 another application account, a vector database, or another service container.
 
+The platform's [AI Assistant](/guides/ai-assistant) is a built-in MCP client with
+a shared conversation panel. It adds a model provider and a separate opt-in
+feature flag; external MCP clients do not require the assistant to be enabled.
+
 ## Quick start: local Property Management
 
 For the existing PM Compose stack, set these values in `.env.pm`:
@@ -491,6 +495,12 @@ handlers side-effect-free, use read-only contracts, support cancellation and
 verify persistent-state postconditions. Never register a generic service locator
 or dispatch arbitrary operation names from input.
 
+Vertical contributors expose existing authorized application capabilities. Adding
+a contributor does not authorize new report calculations, filters, business
+contracts or permission rules. If the existing services cannot answer a scenario,
+document that limitation; extending the business layer is separate work. The
+generic MCP adapter and shared assistant UI remain independent of the vertical.
+
 ## Local verification and interoperability
 
 Connect a Streamable HTTP MCP client using the configured resource URI and the
@@ -577,6 +587,7 @@ the exception type and trace ID, not the exception message or result data.
 
 ## Related documentation
 
+- [AI Assistant](/guides/ai-assistant)
 - [Layering and Dependencies](/architecture/layering-and-dependencies)
 - [Security and Permissions](/platform/security-and-permissions)
 - [Report Execution Results](/architecture/report-execution-results)
