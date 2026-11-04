@@ -1,6 +1,7 @@
 using System.Globalization;
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Reporting;
+using NGB.Core.Reporting.Exceptions;
 using NGB.Tools.Exceptions;
 
 namespace NGB.PostgreSql.Reporting;
@@ -149,9 +150,7 @@ public sealed class PostgresReportPlanExecutor(PostgresReportDatasetExecutor exe
         {
             dict[parameter.ParameterCode] = parameter.ParameterCode switch
             {
-                "from_utc" => ParseUtcDate(parameter.ParameterCode, parameter.Value),
-                "to_utc" => ParseUtcDate(parameter.ParameterCode, parameter.Value),
-                "as_of_utc" => ParseUtcDate(parameter.ParameterCode, parameter.Value),
+                "from_utc" or "to_utc" or "as_of_utc" => ParseUtcDate(reportCode, parameter.ParameterCode, parameter.Value),
                 _ => parameter.Value
             };
         }
@@ -165,11 +164,27 @@ public sealed class PostgresReportPlanExecutor(PostgresReportDatasetExecutor exe
         return dict;
     }
 
-    private static DateTime ParseUtcDate(string code, string value)
+    private static DateTime ParseUtcDate(string reportCode, string code, string value)
     {
         if (!DateOnly.TryParseExact(value, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date))
-            throw new NgbConfigurationViolationException($"Reporting parameter '{code}' must be a valid date in yyyy-MM-dd format.");
+            throw InvalidParameter(reportCode, code, $"Reporting parameter '{code}' must be a valid date in yyyy-MM-dd format.");
+
+        if (date == DateOnly.MaxValue && code is "to_utc" or "as_of_utc")
+            throw InvalidParameter(reportCode, code, $"Reporting parameter '{code}' must be earlier than 9999-12-31 to allow an exclusive end date.");
 
         return DateTime.SpecifyKind(date.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
     }
+
+    private static ReportLayoutValidationException InvalidParameter(string reportCode, string code, string message)
+        => new(
+            message,
+            $"parameters.{code}",
+            errors: new Dictionary<string, string[]>(StringComparer.Ordinal)
+            {
+                [$"parameters.{code}"] = [message]
+            },
+            context: new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["reportCode"] = reportCode
+            });
 }

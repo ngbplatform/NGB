@@ -59,18 +59,16 @@ visible rows also constrain totals. Measure actual query count and bounded memor
 
 ## Parameters and authorization test setup
 
-For the standard PostgreSQL composable path, supply `from_utc` and `to_utc` as
-ISO `yyyy-MM-dd` dates. The provider normalizes the inclusive upper day to
-`to_utc_exclusive`. A parameter marked `IsRequired` must be present; declaring
-`DataType = "date"` does not by itself guarantee an HTTP 400 for malformed text.
-In SDK 3.4.0, malformed date text reaches the provider and raises
-`ngb.configuration.violation`, which the standard HTTP boundary maps to 500.
-This is an observed SDK limitation, not a recommended validation response.
-Keep it separate from the supported 400 checks for missing required parameters,
-invalid cursors, changed cursor filters, arbitrary offsets and `DisablePaging`.
-Do not infer a validation status from metadata alone or change the SDK to make a
-report-extension test pass. A requirement to return 400 for malformed date text
-needs an explicitly implemented and tested application validation boundary.
+For the standard PostgreSQL composable path, supply `from_utc`, `to_utc` and
+`as_of_utc` as strict ISO `yyyy-MM-dd` dates. The provider converts inclusive
+upper dates to exclusive next-day bounds. Upper dates must therefore be earlier
+than `9999-12-31`; a lower date can use the entire supported date range.
+Malformed or unrepresentable upper dates produce `report.layout.invalid`, a
+`parameters.<code>` field path and HTTP 400. This validation applies to ordinary,
+paged and streaming execution. A parameter marked `IsRequired` must be present.
+Other date parameters still need validation in their executor; declaring date
+metadata alone does not establish it. Actual SDK configuration failures retain
+their original error classification.
 
 Use a distinct test identity for an ungranted reader, a display-name-only
 administrator and a registered application administrator. Link roles before each
@@ -82,7 +80,7 @@ role changes, use the public security API as demonstrated by
 the successful administrator request. See [verification guidance](testing.md).
 
 `InspectionReportTests` demonstrates these independent actors and separately
-records the current malformed-date error. Parameterize negative HTTP cases or
+verifies malformed-date HTTP 400 responses and parameter field paths. Parameterize negative HTTP cases or
 include the request identity in assertions so a failure identifies its input.
 
 ## Composable example

@@ -10,7 +10,6 @@ using NGB.Runtime.Dimensions;
 using NGB.Runtime.OperationalRegisters;
 using NGB.Runtime.UnitOfWork;
 using NGB.Tools.Exceptions;
-using Npgsql;
 using Xunit;
 using static EquipmentInspection.IntegrationTests.InspectionRequests;
 
@@ -162,15 +161,11 @@ public sealed class OperationalRegisterDimensionPagingTests
         Assert.Empty(pastEnd.Rows);
         Assert.Equal(5, pastEnd.Total);
 
-        // SDK 3.4.0 cannot infer the null occurrence-cursor parameter type.
-        // Record that boundary, then start with the supported bounded offset page.
-        var missingCursor = await Assert.ThrowsAsync<PostgresException>(() =>
-            reads.GetByOccurredAtCursorAsync(register, January, February, limit: 2));
-        Assert.Equal("42P08", missingCursor.SqlState);
-        var firstPage = await reads.GetByOccurredAtPageAsync(register, January, February, limit: 2);
-        var firstLast = firstPage.Rows[^1];
+        var firstPage = await reads.GetByOccurredAtCursorAsync(register, January, February, limit: 2);
+        Assert.Equal(2, firstPage.Count);
+        var firstLast = firstPage[^1];
         var cursor = new OperationalRegisterOccurredAtCursor(firstLast.OccurredAtUtc, firstLast.MovementId);
-        var observed = firstPage.Rows.Select(row => row.MovementId).ToList();
+        var observed = firstPage.Select(row => row.MovementId).ToList();
         foreach (var count in new[] { 2, 1 })
         {
             var page = await reads.GetByOccurredAtCursorAsync(register, January, February, cursor: cursor, limit: 2);
@@ -186,6 +181,9 @@ public sealed class OperationalRegisterDimensionPagingTests
         var filtered = await reads.GetByOccurredAtPageAsync(register, January, February, filter, limit: 2);
         Assert.Equal(1, filtered.Total);
         Assert.Equal(sameTime, Assert.Single(filtered.Rows).DocumentId);
+        Assert.Equal(sameTime, Assert.Single(await reads.GetByOccurredAtCursorAsync(register, January, February,
+            filter, limit: 2)).DocumentId);
+        Assert.Empty(await reads.GetByOccurredAtCursorAsync(register, February.AddDays(1), February.AddDays(2), limit: 2));
         var beforeFiltered = new OperationalRegisterOccurredAtCursor(all.Rows[0].OccurredAtUtc, all.Rows[0].MovementId);
         Assert.Equal(sameTime, Assert.Single(await reads.GetByOccurredAtCursorAsync(register, January, February, filter,
             cursor: beforeFiltered, limit: 2)).DocumentId);

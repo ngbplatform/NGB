@@ -3,6 +3,13 @@
 Target: 3.4.0. Baseline: `be691b30a86ae6f636134d5ff15f75a678939e28`.
 Implementation is in progress; candidate certification has not passed.
 
+The three subsequently authorized SDK read-path corrections are complete and
+verified by targeted tests as of 2026-11-04. See
+[platform read regressions](findings/platform-read-regressions.md) for fixes,
+coverage, compatibility and rebuilt package evidence. Earlier limitations and
+candidate results below are historical. The full Backend/Frontend run remains
+with the user and is not claimed by these targeted results.
+
 ## Verified architecture
 
 - The repository and application entry points share

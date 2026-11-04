@@ -99,8 +99,8 @@ FROM {context.TableName} t
 WHERE t.occurred_at_utc >= @OccurredFromUtc
   AND t.occurred_at_utc < @OccurredToExclusiveUtc
   AND (
-      @AfterOccurredAtUtc IS NULL
-      OR (t.occurred_at_utc, t.movement_id) > (@AfterOccurredAtUtc, @AfterMovementId)
+      @AfterOccurredAtUtc::timestamptz IS NULL
+      OR (t.occurred_at_utc, t.movement_id) > (@AfterOccurredAtUtc::timestamptz, @AfterMovementId::bigint)
   )
   {dimensionFilterSql}
 ORDER BY t.occurred_at_utc, t.movement_id

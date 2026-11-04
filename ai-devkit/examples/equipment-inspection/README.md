@@ -210,9 +210,9 @@ See [MCP contracts and deployment settings](../../references/mcp-assistant.md).
 `McpBuiltInReadTests` invokes all 18 built-in read tools with known records,
 reports, notes, audit, notifications and Ready attachment metadata. Reads preserve
 saved data, audit and notification unread state. Catalog access changes use the
-public security API. The separate journal-detail case documents the existing
-generic metadata limitation while verifying that the typed journal list and
-dedicated authorized HTTP detail remain usable. See the
+public security API. The journal-detail case verifies metadata, typed MCP detail and compatibility
+fetch against the dedicated authorized HTTP API, including denied access and
+unchanged journal state. See the
 [built-in read contracts](../../references/mcp-assistant.md#built-in-authorized-reads).
 
 ### Opt-in AI Assistant
@@ -668,9 +668,8 @@ after all dirty months are finalized.
 A separate case appends facts out of occurrence order, including three records
 at the same instant. It verifies exact-date offset/cursor reads, month-based
 movement-ID ordering, dimension enrichment/filtering, maximum-month filters and
-retained storno. It records the provider's null occurrence-cursor failure
-(`SQLSTATE 42P08`) and starts with a bounded offset page before non-null cursor
-continuation. These service tests do not expose a new HTTP endpoint or claim
+retained storno. The first cursor page starts with a null cursor; subsequent
+pages preserve all facts without skips or duplicates, including equal timestamps. These service tests do not expose a new HTTP endpoint or claim
 authorization, concurrency or volume/performance acceptance. See
 [dimension net and history contracts](../../references/registers.md#dimension-net-pages-and-movement-history).
 

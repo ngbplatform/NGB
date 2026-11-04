@@ -14,6 +14,19 @@ public sealed class NgbSearchService(
     ILogger<NgbSearchService> logger)
     : INgbSearchService
 {
+    private readonly IAuthorizedGeneralJournalEntryReadService? _journal;
+
+    public NgbSearchService(
+        IAuthorizedCatalogReadService catalogs,
+        IAuthorizedDocumentReadService documents,
+        IAuthorizedReportReadService reports,
+        IAuthorizedGeneralJournalEntryReadService journal,
+        ILogger<NgbSearchService> logger)
+        : this(catalogs, documents, reports, logger)
+    {
+        _journal = journal ?? throw new NgbArgumentRequiredException(nameof(journal));
+    }
+
     public Task<NgbSearchResult> SearchAsync(string query, int limit, CancellationToken ct)
         => SearchAsync(query, limit, null, null, ct);
 
@@ -120,16 +133,38 @@ public sealed class NgbSearchService(
             return null;
 
         var perType = Math.Min(limit, 6);
-        var records = await documents.LookupAcrossTypesAsync(codes, query, perType, false, ct);
 
-        return new SearchGroup(records.Select(item => new NgbSearchHit(
+        var documentCodes = _journal is null
+            ? codes
+            : [.. codes.Where(code => code != AccountingDocumentTypeCodes.GeneralJournalEntry)];
+
+        var records = documentCodes.Length == 0
+            ? []
+            : await documents.LookupAcrossTypesAsync(documentCodes, query, perType, false, ct);
+
+        var hits = records.Select(item => new NgbSearchHit(
                 item.DocumentType == AccountingDocumentTypeCodes.GeneralJournalEntry
                     ? NgbSourceKinds.GeneralJournalEntry
                     : NgbSourceKinds.Document,
                 item.DocumentType,
                 item.Id,
-                item.Number ?? item.Display ?? item.Id.ToString())).ToArray(),
-            matching.Length > codes.Length || records.GroupBy(item => item.DocumentType).Any(group => group.Count() >= perType));
+                item.Number ?? item.Display ?? item.Id.ToString())).ToList();
+
+        var truncated = matching.Length > codes.Length
+            || records.GroupBy(item => item.DocumentType).Any(group => group.Count() >= perType);
+
+        if (_journal is not null && codes.Contains(AccountingDocumentTypeCodes.GeneralJournalEntry))
+        {
+            var page = await _journal.GetPageAsync(0, perType, query, null, null, "all", null, ct);
+            hits.AddRange(page.Items.Select(item => new NgbSearchHit(
+                NgbSourceKinds.GeneralJournalEntry,
+                AccountingDocumentTypeCodes.GeneralJournalEntry,
+                item.Id,
+                item.Number ?? item.Display ?? item.Id.ToString())));
+            truncated |= page.Items.Count >= perType;
+        }
+
+        return new SearchGroup(hits, truncated);
     }
 
     private async Task<SearchGroup?> SearchReportsAsync(string query, int limit, string? typeCode, CancellationToken ct)

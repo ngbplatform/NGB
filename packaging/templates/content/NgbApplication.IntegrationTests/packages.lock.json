@@ -33,7 +33,7 @@
         "type": "Direct",
         "requested": "[3.4.0, 3.4.0]",
         "resolved": "3.4.0",
-        "contentHash": "XsBsF+Fb85Hx5WYYuxhgO671oRMuXzj0Y+rW1iqb231ay0Vl3emaNo407bITy9yrMW5hR/T8QmisJJNgkKfP+Q==",
+        "contentHash": "DgjEtTpZyAU9YWMBx01uNDNUAKBxfyc/w4Map4+XBYZI4xPZzIX2+kw4t3wJ8MKhBjFKWjN118KFz1DXxVFnTg==",
         "dependencies": {
           "Dapper": "2.1.89",
           "Evolve": "3.2.0",
@@ -1131,7 +1131,7 @@
       "NGB.Platform.Runtime": {
         "type": "Transitive",
         "resolved": "3.4.0",
-        "contentHash": "QcIfLId4jk3nC11y7CC97xbsIJVaJ4o5P00I+axDygGXrEpJOyGoge0jQ+pOcTI4TZjcEU03MVAh+6DYRI/qMQ==",
+        "contentHash": "CtHEMrlMTqEOr53gvADaTWGpU5OXhRD0oPwXK08NqFAoV6OMLr1sVhiSA6JD6olZtIhuCRPsgW+KinakA4t//Q==",
         "dependencies": {
           "Microsoft.Extensions.Caching.Memory": "10.0.13",
           "Microsoft.Extensions.Configuration": "10.0.13",

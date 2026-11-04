@@ -105,7 +105,8 @@ public sealed class InspectionReportTests
     [Theory]
     [InlineData("from_utc", "invalid")]
     [InlineData("to_utc", "2026-02-30")]
-    public async Task Malformed_composable_dates_preserve_the_current_sdk_configuration_error(string parameter, string value)
+    [InlineData("to_utc", "9999-12-31")]
+    public async Task Malformed_composable_dates_return_field_validation_errors(string parameter, string value)
     {
         await using var host = new InspectionHost();
         await host.StartAsync();
@@ -114,11 +115,12 @@ public sealed class InspectionReportTests
         var parameters = new Dictionary<string, string>(request.Parameters!) { [parameter] = value };
 
         using var response = await admin.PostAsJsonAsync(ExecutePath, request with { Parameters = parameters });
-        Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         using var problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         var error = problem.RootElement.GetProperty("error");
-        Assert.Equal("ngb.configuration.violation", error.GetProperty("code").GetString());
-        Assert.Equal("Configuration", error.GetProperty("kind").GetString());
+        Assert.Equal("report.layout.invalid", error.GetProperty("code").GetString());
+        Assert.Equal("Validation", error.GetProperty("kind").GetString());
+        Assert.Equal("parameters." + parameter, error.GetProperty("context").GetProperty("fieldPath").GetString());
     }
 
     [Fact]

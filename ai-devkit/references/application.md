@@ -70,14 +70,15 @@ search is not an exhaustive list or a pagination API. The generic profile limits
 catalog/document matches to at most six per type, even with a larger overall limit.
 Catalog lookups exclude deletion-marked records.
 
-The 3.4.0 built-in General Journal Entry metadata has no `display` column required by
-the generic document lookup. For an administrator, unscoped search and the
-`GeneralJournalEntry` kind therefore return `documents` in `UnavailableSources` and
-set `Truncated`; other sources can still return results. `Document` excludes that
-kind, and an explicit application document type works. Use the existing typed
-General Journal Entry endpoint for that journal's reads. See
-[`search.general-journal-metadata`](../known-limitations.json). Do not alter journal
-metadata/storage, hide the unavailable-source flag or claim complete generic search.
+The registered 3.4.0 search service reads General Journal Entry through
+`IAuthorizedGeneralJournalEntryReadService`, after selecting currently authorized
+metadata. Ordinary documents use the generic lookup reader. `Document` excludes
+the journal kind; `GeneralJournalEntry` selects it. Journal searches include
+all trash states, use the same six-per-type bound and preserve truncation.
+When constructing `NgbSearchService` manually, use the overload accepting the
+specialized authorized journal reader; the older constructor remains available
+for existing generic-reader integrations. Do not add a `display` storage column
+or bypass authorization. See [`search.general-journal-metadata`](../known-limitations.json).
 
 For an application-specific search presentation, the public `NgbSearchPipeline`
 accepts scoped delegates, a maximum limit and cancellation. Supply authorized readers.

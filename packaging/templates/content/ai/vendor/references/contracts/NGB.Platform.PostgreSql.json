@@ -2,18 +2,18 @@
   "schemaVersion": 1,
   "package": "NGB.Platform.PostgreSql",
   "version": "3.4.0",
-  "packageSha256": "b5a1636549d2d557497f3fc4eb26ed243bea3948b86540059881065bf51f5091",
+  "packageSha256": "c8a5b835f128301930f925d4d8cbab76f172998f54c982230765ffbbcae65a10",
   "assembly": {
     "name": "NGB.PostgreSql",
     "version": "3.0.0.0",
-    "sha256": "55107954a2bcd457c3e279f2daa82a05a99cf2f8ff49e2552d690d353729469b"
+    "sha256": "0ee2e9d6295e02dc78ac29b75441202ff856d68d952b741e3b9f04e633a67cf8"
   },
-  "contractSha256": "b6658dd7dc4010c5c1c435f4af140c9683da5cfa045e88e1826ffc11ab6d946e",
+  "contractSha256": "214f2582742497d4a236b42d7458cf193c60ce80b7388f9175f75f16be48461c",
   "types": [
     {
       "name": "NGB.PostgreSql.Accounts.PostgresCashFlowLineRepository",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "6b613d5eff7ce9c5b5a09c4eb0ec3699c6fdddb98d064c6beca782beebf2f8d8",
+      "contractSha256": "ba70cb328af9354590e43b3b08aac0eba1d9d554b25929a83593d315a50c7d29",
       "methods": [
         ".ctor",
         "GetAllAsync",
@@ -24,7 +24,7 @@
     {
       "name": "NGB.PostgreSql.Accounts.PostgresChartOfAccountsRepository",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "9b7a64e0e73504710c09ee05dcb57515a080e3ffc77e6049558e3a0c1458bd5e",
+      "contractSha256": "f7838350059a78f621dc714e56591fa1182c9317a02b1681e01ffd546d7a6767",
       "methods": [
         ".ctor",
         "CreateAsync",
@@ -45,7 +45,7 @@
     {
       "name": "NGB.PostgreSql.AuditLog.PostgresAuditEventReader",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "09228d496500c1eff7d0a346cf55672ba5786664d59222f3b0f99991ad4e0d0d",
+      "contractSha256": "4c8773ade88e00cc621dad49ebbc757acf6497b923083e576f7b47cb2c2fa140",
       "methods": [
         ".ctor",
         "QueryAsync"
@@ -55,7 +55,7 @@
     {
       "name": "NGB.PostgreSql.AuditLog.PostgresAuditEventWriter",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "389fe97c65e24c8f4391d74099afdc1cb2382bc61e8b0fb1bf0a69d4d64e808d",
+      "contractSha256": "ccefef31669fbe07d4fae58c0d824d351fe7fcf7128f9d627bff91aa8d3e36d3",
       "methods": [
         ".ctor",
         "WriteAsync",
@@ -66,7 +66,7 @@
     {
       "name": "NGB.PostgreSql.AuditLog.PostgresAuditHealthReader",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "6926b2eef1f6633547bf45d5b59eb90bec48d98163b01e525f98f76122e9a340",
+      "contractSha256": "ebbce8beabde81731617b2c264a668f1c90033590c509a6bbdb33b210b235ff4",
       "methods": [
         ".ctor",
         "ReadAsync"
@@ -76,7 +76,7 @@
     {
       "name": "NGB.PostgreSql.AuditLog.PostgresPlatformUserRepository",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "aec6832550324c3dbf3af0e94437af4bf376279d4e835112352336e767f0bcbf",
+      "contractSha256": "8ac0b9378f4ddbdbf3840113989074ce631dd62ed4b82191304d281c744cc01d",
       "methods": [
         ".ctor",
         "GetByAuthSubjectAsync",
@@ -93,7 +93,7 @@
     {
       "name": "NGB.PostgreSql.Bootstrap.DatabaseBootstrapper",
       "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
-      "contractSha256": "59b3f9f850248ef0dfd5bda0f254d89be68d30b417fbeb14161ebd69f748a91a",
+      "contractSha256": "6b3116e32f4c7d8840bd6e1124feea9263d65ddea2a074a5844432904c64e863",
       "methods": [
         "InitializeAsync",
         "RepairAsync"
@@ -126,7 +126,7 @@
     {
       "name": "NGB.PostgreSql.Bootstrap.SchemaInitRunner",
       "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
-      "contractSha256": "1573c12272a9f2d78bde263ac9e3d89adf096122e80c06ee832aa8aea3224e32",
+      "contractSha256": "967c0cc28b874a15a1886b550aef3c8c812677802177ed1e0d45e31b7823589e",
       "methods": [
         "RunAsync"
       ],
@@ -135,7 +135,7 @@
     {
       "name": "NGB.PostgreSql.Catalogs.PostgresCatalogEnrichmentReader",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "5611629d66dacc4437ce63eb4be50dbcf8fde42f832de19b3507225b6ae115da",
+      "contractSha256": "c5136b6370032a8fd8de811ee2d41001b7d3ea830db2ddd3338e2718496ea743",
       "methods": [
         ".ctor",
         "ResolveAsync",
@@ -146,7 +146,7 @@
     {
       "name": "NGB.PostgreSql.Catalogs.PostgresCatalogRepository",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "61915126f52991bf0651ff18b350c0f10a1220296e9981a3a62991b3754886fc",
+      "contractSha256": "8e6d0df9aca47bea37c9820c45c32d1edef9e1f4d2681bdb72b8c226c521eb78",
       "methods": [
         ".ctor",
         "CreateAsync",
@@ -218,7 +218,7 @@
     {
       "name": "NGB.PostgreSql.Dapper.DateOnlyTypeHandler",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "520477c0da8d3c92436795b4a68f2fd5a081877f638bff0e5f8c5790eaf0790e",
+      "contractSha256": "8b0e449b85f1032292aa27d7efc219e29eccf7c5d82ef534fc196bc8154a6f5a",
       "methods": [
         ".ctor",
         "Parse",
@@ -248,7 +248,7 @@
     {
       "name": "NGB.PostgreSql.DependencyInjection.PostgresServiceCollectionExtensions",
       "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
-      "contractSha256": "bfba44342bcdd368145ad49542b84536627bc420bcdde2899c398aae09d9837b",
+      "contractSha256": "f4275fd79b62b1b33aa6d08963ac69d3cf58d4a7061ac610614638b6504242d0",
       "methods": [
         "AddNgbPostgres",
         "AddPostgres"
@@ -268,7 +268,7 @@
     {
       "name": "NGB.PostgreSql.Dimensions.PostgresDimensionSetReader",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "d71226ea444168a30cb293536fee0d6b9f966874a6960d6529e95db2379eab14",
+      "contractSha256": "1d5f4763623fb046ab5be1f20f38eeea649bc05da0ac934f6db9577eb2f7b64e",
       "methods": [
         ".ctor",
         "GetBagsByIdsAsync"
@@ -278,7 +278,7 @@
     {
       "name": "NGB.PostgreSql.Dimensions.PostgresDimensionSetWriter",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "85ec4bd253559593bae3af4427008ba9cec6a4e5f4eddf1d6030013cedad34c9",
+      "contractSha256": "6549588e0492ccce061a2746e274b173c173fe9a909801167cc4f327dcf1f650",
       "methods": [
         ".ctor",
         "EnsureExistsAsync",
@@ -289,7 +289,7 @@
     {
       "name": "NGB.PostgreSql.Dimensions.PostgresDimensionValueEnrichmentReader",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "d874bbb63238ef1c0f14f520b03a488d337e900a203da3d01ffed58deaf06225",
+      "contractSha256": "502e015ad1b195ac88cd0c061bf5122122493fee57a77d4ec406a483a2984001",
       "methods": [
         ".ctor",
         "ResolveAsync"
@@ -299,7 +299,7 @@
     {
       "name": "NGB.PostgreSql.Documents.Actions.PostgresDocumentActionExecutionRepository",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "70b587e123b4021e7a4fe64f4cf3f3aabcc21d9f889bbddaa0e38d8877d86828",
+      "contractSha256": "4b22da8c7ccec9a2405962d946a67819c002f4fc8025f29582af61948096cfa0",
       "methods": [
         ".ctor",
         "MarkCompletedAsync",
@@ -310,7 +310,7 @@
     {
       "name": "NGB.PostgreSql.Documents.GeneralJournalEntry.PostgresGeneralJournalEntryRepository",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "cbc9f921079161c4d64237d75b740575c771f09df1bcfcc115742fabc21dac56",
+      "contractSha256": "e53dd0be7d40e49ca04313a457856ef69f47cac2d3a06f48e52edff3ec6fabb0",
       "methods": [
         ".ctor",
         "GetAllocationsAsync",
@@ -330,7 +330,7 @@
     {
       "name": "NGB.PostgreSql.Documents.GeneralJournalEntry.PostgresGeneralJournalEntryTypeStorage",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "f986e9888faaaadf3d5ecaadf6c1954b7f8454960fac9baadc8931910e66cc59",
+      "contractSha256": "392fbc6c2310dbb1070cf3ea8032486290a26d6aa8d687158474f41cb4b03023",
       "methods": [
         ".ctor",
         "CreateDraftAsync",
@@ -343,7 +343,7 @@
     {
       "name": "NGB.PostgreSql.Documents.GeneralJournalEntry.PostgresGeneralJournalEntryUiQueryRepository",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "6c74815e2ec6872583c33db523cdea6dee9e7f769319016706f46b7548d1946d",
+      "contractSha256": "6d23fc2e831016949e6ef072efa37ca056f3a14c914f0ff4ef64aae51cf50935",
       "methods": [
         ".ctor",
         "GetCursorPageAsync",
@@ -354,7 +354,7 @@
     {
       "name": "NGB.PostgreSql.Documents.IPostgresDocumentListFilterSqlContributor",
       "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
-      "contractSha256": "bb450df9a8f39aa6b8f38bf0525e05356feb5570a70956a0f1111d55e19473c1",
+      "contractSha256": "b8997cb53d70f71655e31df0c5ffc907b01faab12ecb1bf5808ed2279c4ab239",
       "methods": [
         "TryBuildClause"
       ],
@@ -374,7 +374,7 @@
     {
       "name": "NGB.PostgreSql.Documents.PostgresDocumentFilterSql",
       "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
-      "contractSha256": "36c881f0ab5544b603f46229b49c07dac3d0e6324e0fd993bb7dcb5c5421ee95",
+      "contractSha256": "79c4fea69120bdbe33de21842cb3af441b95c702dbb411b81f72c2219f863d03",
       "methods": [
         "BuildPredicate",
         "Qualify",
@@ -385,7 +385,7 @@
     {
       "name": "NGB.PostgreSql.Documents.PostgresDocumentOperationStateRepository",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "f5a9a701dbc98ddec3fdb8404f91e388802816aaea5ee5624017bfd3bcb247e6",
+      "contractSha256": "0778f1393394199366188206ac68527da2d04ebfe0441d793beae2630afb761f",
       "methods": [
         ".ctor",
         "ClearCompletedStateAsync",
@@ -398,7 +398,7 @@
     {
       "name": "NGB.PostgreSql.Documents.PostgresDocumentRelationshipRepository",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "7f1364cc31d830c2fb15683210771ae281435da85d097579e9b8f9b7788827e5",
+      "contractSha256": "5d28a3f947c597098a1c9120bfb8c12a4907c43f746562c40758f8b8d5109561",
       "methods": [
         ".ctor",
         "ExistsPathAsync",
@@ -419,7 +419,7 @@
     {
       "name": "NGB.PostgreSql.Documents.PostgresDocumentRelationshipsPhysicalSchemaHealthReader",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "cb2368bf43bfb83867887d6a5faa3cb9f7ee5854f79112822323a83e7dbfa784",
+      "contractSha256": "e5b9b3a88957414e8c5386aeb22123aa0aa39c97607b247de4172064a7f5af74",
       "methods": [
         ".ctor",
         "GetAsync"
@@ -429,7 +429,7 @@
     {
       "name": "NGB.PostgreSql.Documents.PostgresDocumentRepository",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "cb0aefe3c1783c01011cf929409191f8d4bb895f3432674f7e24b273e11e4081",
+      "contractSha256": "72169776da8ff4b4004f3642270d943acdef5bc000c7fa5e10f5890d3f197e5c",
       "methods": [
         ".ctor",
         "CreateAsync",
@@ -505,7 +505,7 @@
     {
       "name": "NGB.PostgreSql.Locks.PostgresAdvisoryLockManager",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "ebaa5d1b19199cc62b89156c3ab74a75a87d677325ceb2c9f823d80b70994411",
+      "contractSha256": "82cb639bbf3f4aae9634d53d02279a25ae35337ca0f6a0fa1f6ec55655235978",
       "methods": [
         ".ctor",
         "LockCatalogAsync",
@@ -985,7 +985,7 @@
     {
       "name": "NGB.PostgreSql.Migrations.Evolve.MigrationAssemblyDiscovery",
       "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
-      "contractSha256": "df3c6914a8d64f1e1cfc6a624d80b4f1da3933a4be68e59d6d2f787507904d7e",
+      "contractSha256": "4f248465480d240555e8fdf206cd595ebba8c7556b7b961381c02e94620a12f9",
       "methods": [
         "LoadForPackDiscovery"
       ],
@@ -994,7 +994,7 @@
     {
       "name": "NGB.PostgreSql.Migrations.Evolve.PlatformMigrationPackContributor",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "55bc681d349fd54087da9e38ccab696debb5b675021cb7b31dda1b7455d58262",
+      "contractSha256": "e3e3107adfefe0fa1548489c28dbc068e3fd7efe59c81a841b47993c74997f7f",
       "methods": [
         ".ctor",
         "GetPacks"
@@ -1004,7 +1004,7 @@
     {
       "name": "NGB.PostgreSql.Migrations.Evolve.PostgresEvolveMigrator",
       "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
-      "contractSha256": "24513d0d74f6cd2a19d983ac2349b35c0d226be79be2abfb17b67eeca4c84f27",
+      "contractSha256": "c75a627d95c15cfa9610740e965cd92336aa345ef167aab6ee2ec62ef9d50702",
       "methods": [
         "MigrateAsync"
       ],
@@ -1060,7 +1060,7 @@
     {
       "name": "NGB.PostgreSql.Migrations.Evolve.SchemaMigrator",
       "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
-      "contractSha256": "bfa03709aa9f63b8be0ea4338d6c11326e404dcb4386deecf3e5783d7857d4b9",
+      "contractSha256": "0be79cc4e826bc29df1e59748399a0f2a57aa4cbed34b44c93470cd44f7253c2",
       "methods": [
         "DiscoverPacks",
         "MigrateAsync",
@@ -1434,7 +1434,7 @@
     {
       "name": "NGB.PostgreSql.Migrations.PostgresMigrationRunner",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "fb6e16d77c1e16f3d05e5fbc7ab6e16d0b51a38f08bbdfd8a76f4898a08e748e",
+      "contractSha256": "9559a7520ef4ac8f71f492ddbc658c94f2ee8158010ba5493bb195db8fbd8128",
       "methods": [
         ".ctor",
         "RunAsync"
@@ -1577,7 +1577,7 @@
     {
       "name": "NGB.PostgreSql.OperationalRegisters.OperationalRegisterMetadataContext",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "231932cefa633f23fb684faa29cb2fc037530123a4e3f951329839d91c90aee9",
+      "contractSha256": "4561ff4ac6599c60fbba1170acc7eef1a0da5016b5d8d5d541a93a92371079da",
       "methods": [
         ".ctor",
         "<Clone>$",
@@ -1634,7 +1634,7 @@
     {
       "name": "NGB.PostgreSql.OperationalRegisters.PostgresOperationalRegisterAdminReader",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "ea295bc700e8a1698d93845ecedc1be281d63100956823dea96f4ede726a7590",
+      "contractSha256": "108f0a243cca43ee950fe4eec3f690b69798a1eee0739ad85fe7906a9b50df0a",
       "methods": [
         ".ctor",
         "GetDetailsByCodeAsync",
@@ -1646,7 +1646,7 @@
     {
       "name": "NGB.PostgreSql.OperationalRegisters.PostgresOperationalRegisterBalancesReader",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "bcf972a3f9d8b0ddfdbf80e4a85fc031a8124e6d429bf371e138d4eeaf2e2749",
+      "contractSha256": "7cb04d2a65facb52cf25fcb36f5bac1d3f0a671d62e60aebe9b3a76786fa4393",
       "methods": [
         ".ctor",
         "GetByMonthsAsync",
@@ -1657,7 +1657,7 @@
     {
       "name": "NGB.PostgreSql.OperationalRegisters.PostgresOperationalRegisterBalancesStore",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "aa7825cad37a0af25119e05d5661acc11a905217a98b82ab0bd9c1995cecf9f4",
+      "contractSha256": "426fcf7d596ea954246f69b186f71df81c353138e28b541cdaacbb0c9bfa299f",
       "methods": [
         ".ctor",
         "EnsureReadyForWriteAsync",
@@ -1670,7 +1670,7 @@
     {
       "name": "NGB.PostgreSql.OperationalRegisters.PostgresOperationalRegisterDefaultProjectionRebuilder",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "2d2020b53540b0e43b0f3b5b18af36d134d07967734233c0264e7b72088dcd52",
+      "contractSha256": "2c121fc6c50b1dfbffe134ff0aefea8ccff68e65cfbe444a2e33665fb07e9fb9",
       "methods": [
         ".ctor",
         "PrepareMonthAsync",
@@ -1681,7 +1681,7 @@
     {
       "name": "NGB.PostgreSql.OperationalRegisters.PostgresOperationalRegisterDimensionRuleRepository",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "6f01722417ab7e1b7a93cc4afef7dd5e7c3d4c3490046140954139e78d6656e1",
+      "contractSha256": "7e9706b2c0afa735388bf03c72f8b544876c0036bdd1cc50392576034b5cb5b6",
       "methods": [
         ".ctor",
         "GetByRegisterIdAsync",
@@ -1692,7 +1692,7 @@
     {
       "name": "NGB.PostgreSql.OperationalRegisters.PostgresOperationalRegisterFinalizationRepository",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "05212e71225952cfec1bbccf34af033d0335c1ba1eb0eaa5f34678cc5be90a10",
+      "contractSha256": "25335405ef2ae5cac60d8e68aa0320a94de5c175e99cbd42e1ff29c7e8ad243c",
       "methods": [
         ".ctor",
         "GetAsync",
@@ -1712,7 +1712,7 @@
     {
       "name": "NGB.PostgreSql.OperationalRegisters.PostgresOperationalRegisterMonthlyProjectionAggregator",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "c0f81bf9c81c2b6a3728976c5441363845b3710131826ba23fa9ebbb8ad07fbb",
+      "contractSha256": "fd0c3acbbeda83c407a0d2924019fd9f8ae00390b02661cd766aaeb8ee205a5b",
       "methods": [
         ".ctor",
         "AggregateMonthAsync"
@@ -1722,7 +1722,7 @@
     {
       "name": "NGB.PostgreSql.OperationalRegisters.PostgresOperationalRegisterMovementsQueryReader",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "72fe31baf4b50b42a0d808341ad6c4271c61c0644bd88283bdda29b670ee0187",
+      "contractSha256": "9198fdd56bdbf7453a0af2c14711df4cf2d4672f445d8c0b56b20ac9602088b6",
       "methods": [
         ".ctor",
         "GetByMonthsAsync",
@@ -1740,7 +1740,7 @@
     {
       "name": "NGB.PostgreSql.OperationalRegisters.PostgresOperationalRegisterMovementsReader",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "e69209a384ace62a13fbb4dcaaaea675fe0120ac97d0a8171e4db6486f7038a1",
+      "contractSha256": "c1e0e66bd6376a3eea0b9473f7bee86a1b3520efbeabe3413a583f796884032e",
       "methods": [
         ".ctor",
         "GetByMonthAsync",
@@ -1751,7 +1751,7 @@
     {
       "name": "NGB.PostgreSql.OperationalRegisters.PostgresOperationalRegisterMovementsStore",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "924df30ecd8228267b65beb95c488bcd31623cd2963e240da4c319ca39432481",
+      "contractSha256": "f1d09e8263ca5b30730bc0ebf044b581801aa3c55924b74a0dd4c0013d35f43e",
       "methods": [
         ".ctor",
         "AppendAsync",
@@ -1764,7 +1764,7 @@
     {
       "name": "NGB.PostgreSql.OperationalRegisters.PostgresOperationalRegisterPhysicalSchemaHealthReader",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "9c94fc55b7aa21ffdd5fde29a931de53098f60883d8253b849857c4cd61cb6fc",
+      "contractSha256": "d58043c1df741293c87042aab79a5db6efe52c4f8d48819607ff315da66cec13",
       "methods": [
         ".ctor",
         "GetByRegisterIdAsync",
@@ -1775,7 +1775,7 @@
     {
       "name": "NGB.PostgreSql.OperationalRegisters.PostgresOperationalRegisterRepository",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "f33acaae7e1666604ab5f9971f96c79e5f5de58465870c0484d852af5ae4831c",
+      "contractSha256": "f1b20696b409d40d30d9a98baeb6b2c304a194e5dd4c95f0dbfe5cdc014f705d",
       "methods": [
         ".ctor",
         "GetAllAsync",
@@ -1790,7 +1790,7 @@
     {
       "name": "NGB.PostgreSql.OperationalRegisters.PostgresOperationalRegisterResourceNetReader",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "9af893b7a1c37c7b9a6ae287203c7c324d82bf580f26ced5250103070658c35c",
+      "contractSha256": "950b32cffc3aaa68c560dba4e76780a923ce66cf521157a39773a23dae9aec22",
       "methods": [
         ".ctor",
         "GetNetByDimensionSetAsync",
@@ -1803,7 +1803,7 @@
     {
       "name": "NGB.PostgreSql.OperationalRegisters.PostgresOperationalRegisterResourceRepository",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "07852181c29a5f796d9d4a9ba58e8ff9acd6d050bea54fd95f8bb7a879c382ef",
+      "contractSha256": "0c5c4ccfb6828a29fa697e8b8fad07c8f3ca104f3b17f6d59ab5654621c11e29",
       "methods": [
         ".ctor",
         "GetByRegisterIdAsync",
@@ -1814,7 +1814,7 @@
     {
       "name": "NGB.PostgreSql.OperationalRegisters.PostgresOperationalRegisterTurnoversReader",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "3601f8de380c187457112bc00f780558d19fbaeffcf93d23513bc1024be0b900",
+      "contractSha256": "13ce0332d4e1503d6546e0ffc8ac7d81247b6ff379b9e33033b9f6db28a9cb16",
       "methods": [
         ".ctor",
         "GetByMonthsAsync",
@@ -1825,7 +1825,7 @@
     {
       "name": "NGB.PostgreSql.OperationalRegisters.PostgresOperationalRegisterTurnoversStore",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "ee21f8ae5533e64a295591ab3f90a9ed787835ef8059d229eb16d9c8d8268f59",
+      "contractSha256": "51b59542a7dfaa6c352a53d5f226c2882fe40e079b9e8149c503dece8723cccc",
       "methods": [
         ".ctor",
         "EnsureReadyForWriteAsync",
@@ -1838,7 +1838,7 @@
     {
       "name": "NGB.PostgreSql.OperationalRegisters.PostgresOperationalRegisterWriteStateRepository",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "8d4e6c0077d87ff8619008b7934c28e750a17a562a540967cffccc216c73962d",
+      "contractSha256": "f57f33580bf96e27dd6a6ba730e5c480801d16321e321b5cdabe919909071115",
       "methods": [
         ".ctor",
         "ClearCompletedStateByDocumentAsync",
@@ -1851,7 +1851,7 @@
     {
       "name": "NGB.PostgreSql.Outbox.PostgresOutboxEventRepository",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "0624a9c52cb31c36be823d07fbf1946197a3e43b3d02b68e1ab7c374f70a0df6",
+      "contractSha256": "3275651f49b5aeb1e29146c0520f852c8bf97d825976d8b79f1f4ff345cdb204",
       "methods": [
         ".ctor",
         "AppendAsync",
@@ -1878,7 +1878,7 @@
     {
       "name": "NGB.PostgreSql.Readers.PostgresAccountCardEffectivePageReader",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "5285072800d4bd04bd585fd86e42597edcfc825ae76e0f5cd771e1ae06713db3",
+      "contractSha256": "f81a50ecfe380649cd46cca451c119b4380fb023aa4d5b197abdcc9c8d9efeed",
       "methods": [
         ".ctor",
         "GetOpeningBalanceAsync",
@@ -1890,7 +1890,7 @@
     {
       "name": "NGB.PostgreSql.Readers.PostgresAccountCardReader",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "a6cc001927599f6935b42b74967087edf4bed65ce2b0dfee506a667c4277fff6",
+      "contractSha256": "033cb13a618ac03816d3b0596061aac25863fa860b34302148e8180062fdbc7c",
       "methods": [
         ".ctor",
         "GetAsync",
@@ -1901,7 +1901,7 @@
     {
       "name": "NGB.PostgreSql.Readers.PostgresAccountingBalanceReader",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "53ffc355da69072c798f3946a0c0476cea1cc47b9a32ee6ee477e556533d7623",
+      "contractSha256": "8c02bc6ae83110a8d0c2ecd859230b5e4d447bdcf3e74084c2200cd3ffe1c560",
       "methods": [
         ".ctor",
         "GetForPeriodAsync",
@@ -1912,7 +1912,7 @@
     {
       "name": "NGB.PostgreSql.Readers.PostgresAccountingConsistencyPageReader",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "e1333e2ea16e269d30128c10310fa68d37b6795843a688b21323a8f26db1b4f4",
+      "contractSha256": "f25a5a24bacaf2a89b26d36ec2ec869cf39990ad74b3b85653b9439e0c1d7db2",
       "methods": [
         ".ctor",
         "CountAsync",
@@ -1923,7 +1923,7 @@
     {
       "name": "NGB.PostgreSql.Readers.PostgresAccountingConsistencySnapshotReader",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "5b0a383c0e2a10833582ba4f6997dff537e396ebb8ca425be496b6e1b4050f06",
+      "contractSha256": "cfe25b5872e51b48475b0b7131d03c1d9ef43225643c3daff6290fbf8d4a3ab2",
       "methods": [
         ".ctor",
         "GetAsync",
@@ -1935,7 +1935,7 @@
     {
       "name": "NGB.PostgreSql.Readers.PostgresAccountingEntryReader",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "f7951b80fe7afe49c1d938406f39033d62683b02909eb13811216533f5217d63",
+      "contractSha256": "3c8a881f6bd4fe7febf0e1585b3cfc4691a5201a7e29a2b45af03027201bd704",
       "methods": [
         ".ctor",
         "GetByDocumentAsync"
@@ -1945,7 +1945,7 @@
     {
       "name": "NGB.PostgreSql.Readers.PostgresAccountingOperationalBalanceReader",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "8b9e9b9f0c151b7d16a385684def9a7516a339a668bee0f116720d565f9b5f5f",
+      "contractSha256": "ec63363ec5ce10ade04d4499a94c3d0ce7007040d818dab91560945a8bf30e9a",
       "methods": [
         ".ctor",
         "GetForKeysAsync"
@@ -1966,7 +1966,7 @@
     {
       "name": "NGB.PostgreSql.Readers.PostgresAccountingStatementAccountReader",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "ef84201cd2040ecb5bf00ea9642d0a6ddd7e7c54df9e64e66d80f70de175b830",
+      "contractSha256": "418ca073789fd7cbb2a7aaabe957c9977e5b2eb210bf4feae31c19010d482c58",
       "methods": [
         ".ctor",
         "ReadAsync"
@@ -1976,7 +1976,7 @@
     {
       "name": "NGB.PostgreSql.Readers.PostgresAccountingSummaryPageReader",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "44371e7da32e44affdab8738940042e44ae65a49f989bab7738bc49694a3a1c7",
+      "contractSha256": "60ca9b6f62ee6326a9a54eea02aa2c10ab43500cf7d263e91b588b9a2a4ec603",
       "methods": [
         ".ctor",
         "ReadAccountsAsync",
@@ -1998,7 +1998,7 @@
     {
       "name": "NGB.PostgreSql.Readers.PostgresAccountingTurnoverReader",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "ed7288db7ef461ab6394a6a89d20f246dd66208941ab2f69151c3b4cdf0bedd4",
+      "contractSha256": "1a715bbb7a11a4d6b55db12426346f292b3e2ad1d44e91367a90bfba910b43c0",
       "methods": [
         ".ctor",
         "GetForPeriodAsync",
@@ -2009,7 +2009,7 @@
     {
       "name": "NGB.PostgreSql.Readers.PostgresAccountLookupReader",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "c0afcc7b79e3259395312786acba202a830bfd8c8fa95c92edcc7c80e36d2372",
+      "contractSha256": "1445442aa11c8c4f02ad9209c78922349ee6b8ea89b83eabb66694626ef02422",
       "methods": [
         ".ctor",
         "GetByIdsAsync"
@@ -2019,7 +2019,7 @@
     {
       "name": "NGB.PostgreSql.Readers.PostgresBalanceSheetSnapshotReader",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "e63e10d68333d8d3f283513747c6b792737e008d77c0c473265485b3baa0da6c",
+      "contractSha256": "a791f0f29e95e4902c2d63727795a444543c803d23bc6f852fbd299d5947ff96",
       "methods": [
         ".ctor",
         "GetAsync"
@@ -2029,7 +2029,7 @@
     {
       "name": "NGB.PostgreSql.Readers.PostgresCashFlowIndirectSnapshotReader",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "e0da3a6be6e8e578a3fb9662913729ffe264b543da29155bbc1430fe9668d581",
+      "contractSha256": "c89346ed42359a0e87f5efd1d817428cb75fb7607e7484deabb66d5bfbe442ac",
       "methods": [
         ".ctor",
         "GetAsync"
@@ -2039,7 +2039,7 @@
     {
       "name": "NGB.PostgreSql.Readers.PostgresClosedPeriodReader",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "56b736bb945978b7b49a2cfc5009fd8fc5b1ba9edc1b03ebd575c9cc6011dab8",
+      "contractSha256": "68c3b30940d4988f5ed6db503667d6471c73e3eea69c258ba938d40772f1d4f5",
       "methods": [
         ".ctor",
         "ExistsClosedAfterAsync",
@@ -2051,7 +2051,7 @@
     {
       "name": "NGB.PostgreSql.Readers.PostgresDocumentDisplayReader",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "cda35bfbe5a11b17b3810d2decfca4ae0fcfd9de1503f1bbf03f60f6b0d0083a",
+      "contractSha256": "d2e1db9e7f9dcd7f4bca6cf951d0186626381d537df5cb4b62039937040916dc",
       "methods": [
         ".ctor",
         "ResolveAsync",
@@ -2062,7 +2062,7 @@
     {
       "name": "NGB.PostgreSql.Readers.PostgresDocumentRelationshipGraphReader",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "73bf01467c8483b8dc0ba40233e36f6a634f5e78369f62fe1af8ceef63de3434",
+      "contractSha256": "282d4f3ebd2dece6c89945a946edd430b848f6b331280f3df278a14aa6da54bf",
       "methods": [
         ".ctor",
         "GetGraphAsync",
@@ -2074,7 +2074,7 @@
     {
       "name": "NGB.PostgreSql.Readers.PostgresGeneralJournalReader",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "072aa5c2545ff591a6bca86e8aa08bd7853404e8e364cb4b0e2129d829ed4417",
+      "contractSha256": "7f55a14fa4adfc3caaa14330d53f7e5a13d73a86653ee661ae7d864514a86ad3",
       "methods": [
         ".ctor",
         "GetPageAsync"
@@ -2084,7 +2084,7 @@
     {
       "name": "NGB.PostgreSql.Readers.PostgresGeneralLedgerAggregatedReader",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "4e0232388d58c2564cad93f05e83c78f58e5198eda1d35240f0dd22f71eb794f",
+      "contractSha256": "7dd2acf0cdb1ef4f7fc0da173fa3ec98175710131b2b59ed54a507690511ef4f",
       "methods": [
         ".ctor",
         "GetPageAsync",
@@ -2095,7 +2095,7 @@
     {
       "name": "NGB.PostgreSql.Readers.PostgresGeneralLedgerAggregatedSnapshotReader",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "77fd26d9248dd7319e6564256bb21ede91216c84742d89f8cd320f450c85e0cb",
+      "contractSha256": "55616156c4cc9663bdbbe59462966aeac8b6a42632be6611aea097cb29fd25e9",
       "methods": [
         ".ctor",
         "GetAsync"
@@ -2105,7 +2105,7 @@
     {
       "name": "NGB.PostgreSql.Readers.PostgresIncomeStatementSnapshotReader",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "85adee4bd82e568ccf70df570b98674dbf83390277d8f0af15c3214319a2c798",
+      "contractSha256": "3079559ddc9db99b7f0e733e33dc086c87d82eeb5c6d4ab54b0628f132436761",
       "methods": [
         ".ctor",
         "GetAsync"
@@ -2115,7 +2115,7 @@
     {
       "name": "NGB.PostgreSql.Readers.PostgresLedgerAnalysisFlatDetailReader",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "4902cd23b270ed4c2e2f1fb7b5421f6a712d07f81d9c8742919b439eda8be6de",
+      "contractSha256": "55069c7b6122683d89cc0a104966a8217dfe1c196e9f7fb52e412a38535cee28",
       "methods": [
         ".ctor",
         "GetPageAsync"
@@ -2125,7 +2125,7 @@
     {
       "name": "NGB.PostgreSql.Readers.PostgresPostingStateReader",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "669436025371d22cdb5ae5e5fa58e4e382e1036da576649debba5ae309c5f131",
+      "contractSha256": "2414d9c1cb5ac69d75be38fcd84c2dcbb51c8a55bf126eeb711240a10dee6387",
       "methods": [
         ".ctor",
         "GetPageAsync"
@@ -2135,7 +2135,7 @@
     {
       "name": "NGB.PostgreSql.Readers.PostgresRecordReadScopeFactory",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "94e1ffdae48cf57d1939a5654a8467362b18e973b3a0eaf7273fe06d879feac9",
+      "contractSha256": "b963f5ac2b76188635c498164465665cb53665d8504a5c6d5037aba489cd9311",
       "methods": [
         ".ctor",
         "OpenAsync"
@@ -2145,7 +2145,7 @@
     {
       "name": "NGB.PostgreSql.Readers.PostgresReferencePayloadBatchEnrichmentReader",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "7a951a283edf7efddd708460c33307e7e5795c4307240c4095e4741a75574287",
+      "contractSha256": "cfeb8e431dcecfd43bebab879491d50a6308bd5651a8bea7e67fa1567536ffbb",
       "methods": [
         ".ctor",
         "ResolveAsync"
@@ -2155,7 +2155,7 @@
     {
       "name": "NGB.PostgreSql.Readers.PostgresRetainedEarningsAccountLookupReader",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "08514edc52461f16c22feecfe9280525434b69bd48bb67dd879ccf04b07debfc",
+      "contractSha256": "d0091a225e002ca8af7f32158d2bacee244b070106a573f9946115a53dcb32fc",
       "methods": [
         ".ctor",
         "SearchAsync"
@@ -2165,7 +2165,7 @@
     {
       "name": "NGB.PostgreSql.Readers.PostgresStatementOfChangesInEquitySnapshotReader",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "daafcb7e6bebc059fac043aa5996e48ed49ba16e2b3db77024abd5567a181c16",
+      "contractSha256": "187b8a2e9b00a22de50f50c129552b41698e7a00906d4c477e323ba64120973b",
       "methods": [
         ".ctor",
         "GetAsync"
@@ -2175,7 +2175,7 @@
     {
       "name": "NGB.PostgreSql.Readers.PostgresTrialBalanceAccountSummaryReader",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "6f486b8d420864148cd5fada8240c8ba620fda314eebe5ce846f43098610d395",
+      "contractSha256": "3bd9452854d279844f39ab8e704c45e4962e958f48889195a816fdb3549657a7",
       "methods": [
         ".ctor",
         "ReadAsync"
@@ -2185,7 +2185,7 @@
     {
       "name": "NGB.PostgreSql.Readers.PostgresTrialBalanceSnapshotReader",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "144d8c72b06392182eef6deb618734da535f52f285e62e6de10cc1513c8ab99b",
+      "contractSha256": "0f6c492ac4c9a662d7fc808ea887be263d46f83507743858ecab681a94a4d1a3",
       "methods": [
         ".ctor",
         "GetAsync"
@@ -2195,7 +2195,7 @@
     {
       "name": "NGB.PostgreSql.ReferenceRegisters.PostgresReferenceRegisterDimensionRuleRepository",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "ceba0f61d2ea1487ae4b2bbc6eac0f878e060c278e38a568d7ddf6262532826f",
+      "contractSha256": "58369e62dab04a2fd532f09f50fa8a1ffc6e94e16920c1de97455b7e74dcfaf2",
       "methods": [
         ".ctor",
         "CountByRegisterIdsAsync",
@@ -2207,7 +2207,7 @@
     {
       "name": "NGB.PostgreSql.ReferenceRegisters.PostgresReferenceRegisterFieldRepository",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "a0a2b77eea203a3c3a9ac3eb56bda2262a5ed25d369f03b08464a69d9ad9b95d",
+      "contractSha256": "118d7419f736ebba30d9ca375288c42c631326b3656d2aff37ef8f8b858c8fb0",
       "methods": [
         ".ctor",
         "CountByRegisterIdsAsync",
@@ -2219,7 +2219,7 @@
     {
       "name": "NGB.PostgreSql.ReferenceRegisters.PostgresReferenceRegisterIndependentWriteStateRepository",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "8faeb078c0509e4fc40458b46f35283e93ffb747c0344bf117a1e5ccffe650c1",
+      "contractSha256": "63de86b32c5733086aee2259e543d8b9f0f38cb8dfe32f26eddd9050c584e3c9",
       "methods": [
         ".ctor",
         "MarkCompletedAsync",
@@ -2240,7 +2240,7 @@
     {
       "name": "NGB.PostgreSql.ReferenceRegisters.PostgresReferenceRegisterPhysicalSchemaHealthReader",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "c4d9b3abea5ad7b2177ca7e6a81dbefc78b2ee5e81acc649e6e16ddc7ea8385f",
+      "contractSha256": "6d9ddf3f8a4b3fa8b8348e305d704788161db42acdd13cbc2c418c9ecc1a713b",
       "methods": [
         ".ctor",
         "GetByRegisterIdAsync",
@@ -2251,7 +2251,7 @@
     {
       "name": "NGB.PostgreSql.ReferenceRegisters.PostgresReferenceRegisterRecordsReader",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "7bef91ad7c2d6948c35df3f9d503e4907c010a7cde62dc727939eb75f625e6ec",
+      "contractSha256": "3697bea7734bc69a13384e1134ea6d483a88959998a92197385a564a24bd82c5",
       "methods": [
         ".ctor",
         "ListByRecorderDocumentAsync",
@@ -2271,7 +2271,7 @@
     {
       "name": "NGB.PostgreSql.ReferenceRegisters.PostgresReferenceRegisterRecordsStore",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "b4d28c2390ed39abc87af0abaccb756a9a8580cf690d193870bf586a2818a46b",
+      "contractSha256": "c0125f6b1dec3ad42fa0711c11d707dd88c5e29a1fca684f3b2895beafd26d24",
       "methods": [
         ".ctor",
         "AppendAsync",
@@ -2284,7 +2284,7 @@
     {
       "name": "NGB.PostgreSql.ReferenceRegisters.PostgresReferenceRegisterRepository",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "7deb6922f00e3fcf56e7d3be0e8c535da83b4ae79d7171e1274ed2cfd929d3c0",
+      "contractSha256": "91c83e343410876609a0097e9578b3ce43c00626848127fd71a48a9aca15672c",
       "methods": [
         ".ctor",
         "GetAllAsync",
@@ -2299,7 +2299,7 @@
     {
       "name": "NGB.PostgreSql.ReferenceRegisters.PostgresReferenceRegisterWriteStateRepository",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "994c740481c99bf24145a995be69ec676bd1c4f071e853581908e517c2836c90",
+      "contractSha256": "7925ebf05c307b6ba46ea7b78e82d0a36d5cac9baa4f65bff77a984546a611e9",
       "methods": [
         ".ctor",
         "ClearCompletedStateByDocumentAsync",
@@ -2326,7 +2326,7 @@
     {
       "name": "NGB.PostgreSql.ReferenceRegisters.ReferenceRegisterMetadataContext",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "2a15c6f4323930294cf865202fecf9254a101c9d0b3b41a5cc92ce06a8a58cdb",
+      "contractSha256": "3ab8723711dd9e2fb594353149e7ba50b6dbb62a3552bd40c3daaa9184d003df",
       "methods": [
         ".ctor",
         "<Clone>$",
@@ -2803,7 +2803,7 @@
     {
       "name": "NGB.PostgreSql.Reporting.PostgresReportSqlStatement",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "0bf6d1504987499e6efa089020b54461d5df89cd7b77d3a1db47fd0e645bf212",
+      "contractSha256": "14d35c55e27df193aeb6b61ff3ba5cbe974f1dd34e8d77f6780f8d8ff5e47491",
       "methods": [
         ".ctor",
         "<Clone>$",
@@ -2835,7 +2835,7 @@
     {
       "name": "NGB.PostgreSql.Reporting.PostgresReportVariantRepository",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "2cefbda8c4b1f56cdc8e332229bb83e2ea7c782a2a9edd977c6a172796fa4b27",
+      "contractSha256": "10a80cbacf08b05be3090aa82f6331db25f960d7507da6fd18582c3a22594481",
       "methods": [
         ".ctor",
         "ClearDefaultAsync",

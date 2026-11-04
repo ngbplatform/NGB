@@ -140,10 +140,10 @@ occurrence time, then movement ID. Carry both fields in
 The cursor method returns rows without `HasMore`: an adapter can request one
 extra row, display its bounded page and continue from the last displayed row.
 Use a bounded limit; a null offset-page limit explicitly disables paging.
-In SDK 3.4.0, the default PostgreSQL provider fails a first occurrence request
-with a null cursor (`SQLSTATE 42P08`). Start with a bounded offset page and derive
-the continuation from its last displayed row; non-null cursor continuation works.
-Do not invent a sentinel timestamp/ID. See
+In SDK 3.4.0, a null cursor starts the first bounded occurrence page. Continue
+from the last displayed row's time and movement ID; no sentinel timestamp/ID
+or offset-page workaround is needed. PostgreSQL parameters have explicit types,
+including for the first request. See
 [`operational-registers.null-occurrence-cursor`](../known-limitations.json).
 `GetByMonthsAsync` instead requires month-start bounds and seeks by movement ID,
 with optional dimension-set, document and storno filters. `GetMaxPeriodMonthAsync`

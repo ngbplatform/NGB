@@ -123,21 +123,19 @@ features can have null counts in `ngb_get_content_summary`.
 marking notifications read. Its DTO omits executable targets and primary actions.
 These reads do not perform a lifecycle transition or a work-item command.
 
-The built-in General Journal Entry is discoverable and its typed MCP list works.
-In SDK 3.4.0, `ngb_get_metadata`, `ngb_get_record` and compatibility `fetch` for
-that type return `internal_error`: generic detail metadata requires a `display`
-column absent from the built-in journal. This shares the metadata constraint
-documented for generic search. Use the existing authorized
-`/api/accounting/general-journal-entries/{id}` endpoint for journal detail.
-See [`mcp.general-journal-detail`](../known-limitations.json). Do not add a field
-to SDK metadata/storage, bypass authorization or claim this MCP path succeeds.
+The built-in General Journal Entry supports discovery, metadata, list, detail
+and compatibility `fetch` in 3.4.0. Metadata inspection does not require the
+storage descriptor used by generic document CRUD. Detail reads reuse the existing
+`IAuthorizedGeneralJournalEntryReadService` and its current-user permission checks.
+No journal storage fields or lifecycle paths are added. See
+[`mcp.general-journal-detail`](../known-limitations.json).
 
 `McpBuiltInReadTests` exercises all 18 built-in names through the actual HTTP
 endpoint. Known records, reports, note/audit pages, unread notifications and a
 real object-storage upload establish the returned identities and unchanged state.
 Both administrator identities are checked, and a reader receives catalog search
-only after public permission grants. A separate case records the journal detail
-limitation alongside working typed reads. These cases do not establish every
+only after public permission grants. A separate case verifies journal metadata/detail, compatibility fetch and
+denied access alongside the dedicated HTTP read. These cases do not establish every
 filter shape, transport, deployment limit or model response.
 
 ### Assistant providers

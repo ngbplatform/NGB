@@ -170,7 +170,7 @@ public sealed class SearchHttpTests
         var result = await SearchAsync(admin, "Inspection");
         Assert.Equal(equipment.Id, Assert.Single(result.Items).Id);
         Assert.True(result.Truncated);
-        Assert.Equal(new[] { "documents", "reports" }, result.UnavailableSources);
+        Assert.Equal(new[] { "reports" }, result.UnavailableSources);
         var catalog = await SearchAsync(admin, "Inspection", "&kind=Catalog");
         Assert.Equal(equipment.Id, Assert.Single(catalog.Items).Id);
         Assert.False(catalog.Truncated);
@@ -178,21 +178,30 @@ public sealed class SearchHttpTests
     }
 
     [Fact]
-    public async Task General_journal_metadata_reports_an_unavailable_source_in_generic_search()
+    public async Task General_journal_search_uses_specialized_reads_without_disabling_other_documents()
     {
         await using var host = new InspectionHost();
         await host.StartAsync();
         using var admin = await host.CreateClientAsync("administrator");
         var journal = await PostAsync<GeneralJournalEntryDetailsDto>(admin, "/api/accounting/general-journal-entries",
             new CreateGeneralJournalEntryDraftRequestDto(new DateTime(2026, 5, 17, 12, 0, 0, DateTimeKind.Utc)));
+        var inspection = await PostAsync<DocumentDto>(admin, "/api/documents/example.inspection",
+            Payload(("display", "Inspection alongside journal")));
         var scoped = await SearchAsync(admin, journal.Document.Number!, "&kind=GeneralJournalEntry");
-        Assert.Empty(scoped.Items);
-        Assert.True(scoped.Truncated);
-        Assert.Equal(new[] { "documents" }, scoped.UnavailableSources);
+        var hit = Assert.Single(scoped.Items);
+        Assert.Equal(journal.Document.Id, hit.Id);
+        Assert.Equal("generalJournalEntry", hit.Kind);
+        Assert.Equal(journal.Document.Number, hit.Title);
+        Assert.False(scoped.Truncated);
+        Assert.Empty(scoped.UnavailableSources);
+        var unscoped = await SearchAsync(admin, journal.Document.Number!);
+        Assert.Contains(unscoped.Items, item => item.Id == journal.Document.Id);
+        Assert.Empty(unscoped.UnavailableSources);
         var all = await SearchAsync(admin, "Inspection");
-        Assert.True(all.Truncated);
-        Assert.Equal(new[] { "documents" }, all.UnavailableSources);
+        Assert.False(all.Truncated);
+        Assert.Empty(all.UnavailableSources);
         Assert.Contains(all.Items, item => item.Kind == "report");
+        Assert.Contains(all.Items, item => item.Id == inspection.Id && item.Kind == "document");
 
         await using var scope = host.Services.CreateAsyncScope();
         var documents = scope.ServiceProvider.GetRequiredService<IDocumentService>();

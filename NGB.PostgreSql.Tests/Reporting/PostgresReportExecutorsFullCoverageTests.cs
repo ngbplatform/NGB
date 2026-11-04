@@ -2,6 +2,7 @@ using System.Data;
 using FluentAssertions;
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Reporting;
+using NGB.Core.Reporting.Exceptions;
 using NGB.PostgreSql.Reporting;
 using NGB.PostgreSql.Tests.TestDoubles;
 using NGB.Tools.Exceptions;
@@ -129,8 +130,82 @@ public sealed class PostgresReportExecutorsFullCoverageTests
                 sut, new("report", "Report"), new(), "dataset", [], [],
                 [new("name", "name_out", "Name", "string")], [], [], [],
                 [new("from_utc", invalid)], new(0, 10));
-            await act.Should().ThrowAsync<NgbConfigurationViolationException>();
+            await act.Should().ThrowAsync<ReportLayoutValidationException>();
         }
+    }
+
+    public static IEnumerable<object?[]> InvalidDates()
+    {
+        foreach (var path in new[] { "execute", "page", "stream" })
+        {
+            foreach (var code in new[] { "from_utc", "to_utc", "as_of_utc" })
+            {
+                foreach (var value in new[] { null, "", " ", "2026-02-30", "2026-2-01", "01/02/2026", "2026-01-02T00:00:00Z" })
+                    yield return [path, code, value];
+
+                if (code != "from_utc")
+                    yield return [path, code, "9999-12-31"];
+            }
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(InvalidDates))]
+    public async Task Invalid_dates_are_field_validation_errors_before_database_access(string path, string code, string? value)
+    {
+        var connection = new RecordingDbConnection();
+        var sut = CreatePlanExecutor(connection);
+        var query = new ReportDataQuery("report", "dataset", [], [], [], [], [], [], [new(code, value!)]);
+
+        var error = await Assert.ThrowsAsync<ReportLayoutValidationException>(async () =>
+        {
+            switch (path)
+            {
+                case "execute":
+                    await Execute(sut, new("report", "Report"), new(), "dataset", [], [], [], [], [], [], query.Parameters, new(0, 1));
+                    break;
+                case "page":
+                    await sut.ReadPageAsync(query, new(0, 1), null, default);
+                    break;
+                case "stream":
+                    await foreach (var _ in sut.ReadAsync(query, default))
+                    {
+                    }
+                    break;
+            }
+        });
+
+        error.Context.Should().Contain("fieldPath", $"parameters.{code}").And.Contain("reportCode", "report");
+        var errors = Assert.IsAssignableFrom<IReadOnlyDictionary<string, string[]>>(error.Context["errors"]);
+        Assert.Equal(error.Message, Assert.Single(errors[$"parameters.{code}"]));
+        connection.Commands.Should().BeEmpty();
+        connection.State.Should().Be(ConnectionState.Closed);
+    }
+
+    [Theory]
+    [InlineData("from_utc", "0001-01-01")]
+    [InlineData("from_utc", "9999-12-31")]
+    [InlineData("from_utc", "2024-02-29")]
+    [InlineData("to_utc", "2024-02-29")]
+    [InlineData("as_of_utc", "2024-02-29")]
+    [InlineData("to_utc", "9999-12-30")]
+    [InlineData("as_of_utc", "9999-12-30")]
+    public async Task Valid_date_boundaries_preserve_utc_and_exclusive_end_parameters(string code, string value)
+    {
+        var data = new DataTable();
+        data.Columns.Add("name_out", typeof(string));
+        var connection = new RecordingDbConnection(_ => data.CreateDataReader());
+        var sut = CreatePlanExecutor(connection);
+
+        await Execute(sut, new("report", "Report"), new(), "dataset", [], [],
+            [new("name", "name_out", "Name", "string")], [], [], [], [new(code, value)], new(0, 1));
+
+        var parameters = connection.Commands.Single().ParametersSnapshot.ToDictionary(x => x.ParameterName, x => x.Value);
+        var date = DateTime.SpecifyKind(DateOnly.ParseExact(value, "yyyy-MM-dd").ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
+        Assert.Equal(date, parameters[code]);
+        Assert.Equal(DateTimeKind.Utc, Assert.IsType<DateTime>(parameters[code]).Kind);
+        if (code != "from_utc")
+            Assert.Equal(date.AddDays(1), parameters[$"{code}_exclusive"]);
     }
 
     [Fact]

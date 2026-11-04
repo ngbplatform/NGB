@@ -104,7 +104,7 @@ public sealed class McpBuiltInReadTests
     }
 
     [Fact]
-    public async Task General_journal_detail_exposes_the_existing_generic_metadata_limitation()
+    public async Task General_journal_metadata_and_detail_reuse_the_specialized_authorized_read_contract()
     {
         await using var host = CreateHost();
         await host.StartAsync();
@@ -119,21 +119,36 @@ public sealed class McpBuiltInReadTests
         var records = await ReadAsync<RecordsResult>(admin, McpToolNames.ListRecords,
             new { kind = "generalJournalEntry", typeCode = "general_journal_entry", limit = 1 });
         Assert.Equal(journal.Document.Id, Assert.Single(records.Data.GeneralJournalEntries!.Items).Id);
-        Assert.Equal("internal_error", await ErrorAsync(admin, McpToolNames.GetMetadata,
-            new { kind = "generalJournalEntry", typeCode = "general_journal_entry" }));
-        Assert.Equal("internal_error", await ErrorAsync(admin, McpToolNames.GetRecord,
-            new { kind = "generalJournalEntry", typeCode = "general_journal_entry", id = journal.Document.Id }));
-        Assert.Equal("internal_error", await ErrorAsync(admin, McpToolNames.CompatibilityFetch,
-            new { id = $"generalJournalEntry:general_journal_entry:{journal.Document.Id}" }));
+        var detailMetadata = await ReadAsync<MetadataResult>(admin, McpToolNames.GetMetadata,
+            new { kind = "generalJournalEntry", typeCode = "general_journal_entry" });
+        Assert.Equal("general_journal_entry", detailMetadata.Data.Document!.DocumentType);
+        Assert.Equal(2, detailMetadata.Data.Document.Parts!.Count);
+        var detail = await ReadAsync<RecordResult>(admin, McpToolNames.GetRecord,
+            new { kind = "generalJournalEntry", typeCode = "general_journal_entry", id = journal.Document.Id });
+        Assert.Equal(journal.Document.Id, detail.Data.GeneralJournalEntry!.Document.Id);
+        Assert.Null(detail.Data.Document);
+        var fetched = await FetchAsync(admin, $"generalJournalEntry:general_journal_entry:{journal.Document.Id}");
+        var fetchedRecord = JsonSerializer.Deserialize<RecordResult>(fetched.Text, Json)!;
+        Assert.Equal(journal.Document.Id, fetchedRecord.GeneralJournalEntry!.Document.Id);
+        Assert.Equal($"https://inspection.example.test/accounting/general-journal-entries/{journal.Document.Id}",
+            detail.Data.Source!.OpenInNgb);
         Assert.Equal("invalid_input", await ErrorAsync(admin, McpToolNames.GetRecord,
             new { kind = "document", typeCode = "general_journal_entry", id = journal.Document.Id }));
         Assert.Equal(before, await admin.GetStringAsync(path));
 
+        await host.LinkUserAsync("reader", true, "example.journal-observer", "Journal observer");
+        using var reader = await host.CreateClientAsync("reader", authorizationCode: true);
+        Assert.Equal("unavailable", await ErrorAsync(reader, McpToolNames.GetMetadata,
+            new { kind = "generalJournalEntry", typeCode = "general_journal_entry" }));
+        Assert.Equal("unavailable", await ErrorAsync(reader, McpToolNames.GetRecord,
+            new { kind = "generalJournalEntry", typeCode = "general_journal_entry", id = journal.Document.Id }));
+        Assert.Equal("unavailable", await ErrorAsync(reader, McpToolNames.CompatibilityFetch,
+            new { id = $"generalJournalEntry:general_journal_entry:{journal.Document.Id}" }));
+
         await using var scope = host.Services.CreateAsyncScope();
-        var failure = await Assert.ThrowsAsync<NgbConfigurationViolationException>(() =>
-            scope.ServiceProvider.GetRequiredService<IDocumentService>()
-                .GetTypeMetadataAsync("general_journal_entry", CancellationToken.None));
-        Assert.Contains("display column", failure.Message);
+        var definition = await scope.ServiceProvider.GetRequiredService<IDocumentService>()
+            .GetTypeMetadataAsync("general_journal_entry", CancellationToken.None);
+        Assert.Equal("general_journal_entry", definition.DocumentType);
     }
 
     [Fact]
@@ -309,6 +324,7 @@ public sealed class McpBuiltInReadTests
             {
                 ["catalog"] = "/catalogs/{typeCode}/{id}",
                 ["document"] = "/documents/{typeCode}/{id}",
+                ["generalJournalEntry"] = "/accounting/general-journal-entries/{id}",
                 ["report"] = "/reports/{typeCode}"
             })));
     }

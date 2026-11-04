@@ -41,17 +41,17 @@
     },
     {
       "id": "search.general-journal-metadata",
-      "status": "unsupported",
+      "status": "resolved",
       "targetVersion": "3.4.0",
       "workflow": "Include built-in General Journal Entry in generic installed-definition document search",
-      "observedError": "Generic lookup requires a display column absent from the built-in journal metadata; search returns documents in UnavailableSources with Truncated=true.",
+      "observedError": "Earlier 3.4.0 candidates: Generic lookup requires a display column absent from the built-in journal metadata; search returns documents in UnavailableSources with Truncated=true.",
       "contracts": [
         "NGB.Application.Abstractions.Services.INgbSearchService",
         "NGB.Runtime.Documents.DocumentMetadataRuntimeExtensions",
         "NGB.Runtime.Documents.GeneralJournalEntry.GeneralJournalEntryDefinitionsContributor"
       ],
       "evidence": "examples/equipment-inspection/EquipmentInspection.IntegrationTests/SearchHttpTests.cs",
-      "decision": "Preserve the existing SDK. Use scoped application-document search or the existing typed General Journal Entry endpoint, and expose source-unavailable information for incomplete generic results. This task does not change built-in metadata or storage.",
+      "decision": "Corrected before 3.4.0 publication: the registered search service routes authorized General Journal Entry metadata to IAuthorizedGeneralJournalEntryReadService, preserving bounded results and current permissions. Ordinary documents retain the generic lookup path. No journal metadata or storage columns are added. The original four-argument constructor remains available for existing callers; manually composed search services need the specialized-reader overload to include journals.",
       "prohibitedWorkarounds": [
         "Adding an invented display field to the built-in journal metadata or database",
         "Suppressing UnavailableSources or claiming exhaustive document results",
@@ -60,10 +60,10 @@
     },
     {
       "id": "mcp.general-journal-detail",
-      "status": "unsupported",
+      "status": "resolved",
       "targetVersion": "3.4.0",
       "workflow": "Read built-in General Journal Entry detail metadata or record through MCP",
-      "observedError": "ngb_get_metadata, ngb_get_record and compatibility fetch return internal_error because generic document metadata requires a display column absent from the built-in journal.",
+      "observedError": "Earlier 3.4.0 candidates: ngb_get_metadata, ngb_get_record and compatibility fetch return internal_error because generic document metadata requires a display column absent from the built-in journal.",
       "contracts": [
         "NGB.Mcp.McpToolNames",
         "NGB.Mcp.Tools.RecordRequest",
@@ -71,7 +71,7 @@
         "NGB.Runtime.Documents.DocumentMetadataRuntimeExtensions"
       ],
       "evidence": "examples/equipment-inspection/EquipmentInspection.IntegrationTests/McpBuiltInReadTests.cs",
-      "decision": "Preserve the existing SDK. MCP discovery and the typed journal list remain usable. Use the existing authorized /api/accounting/general-journal-entries/{id} API for detail reads. The separately asserted direct metadata failure ties this limitation to the existing generic display-column requirement.",
+      "decision": "Corrected before 3.4.0 publication: metadata reads validate definitions without constructing a generic storage descriptor. MCP detail and compatibility fetch use the existing authorized specialized journal reader. Generic journal CRUD is not enabled; no schema or lifecycle changes are made.",
       "prohibitedWorkarounds": [
         "Adding a display field to SDK metadata or storage solely to satisfy MCP",
         "Advertising a failed detail read as supported",
@@ -80,39 +80,36 @@
     },
     {
       "id": "reporting.composable-date-error-mapping",
-      "status": "observed",
+      "status": "resolved",
       "targetVersion": "3.4.0",
       "workflow": "Execute a PostgreSQL composable report with malformed from_utc or to_utc date text",
-      "observedError": "The provider raises ngb.configuration.violation and the standard HTTP boundary returns 500 rather than a validation response of 400.",
+      "observedError": "Earlier 3.4.0 candidates: The provider raises ngb.configuration.violation and the standard HTTP boundary returns 500 rather than a validation response of 400.",
       "contracts": [
         "NGB.Contracts.Reporting.ReportParameterMetadataDto",
         "NGB.Application.Abstractions.Services.IAuthorizedReportReadService",
         "NGB.PostgreSql.Reporting.PostgresReportPlanExecutor"
       ],
       "evidence": "examples/equipment-inspection/EquipmentInspection.IntegrationTests/InspectionReportTests.cs",
-      "decision": "Preserve the existing SDK and document this error mapping separately from supported request-validation checks. Supply ISO yyyy-MM-dd dates. An application requirement for a 400 response to malformed date text needs its own explicit validation boundary; date metadata alone does not provide it.",
+      "decision": "Corrected before 3.4.0 publication: invalid from_utc, to_utc and as_of_utc values raise report.layout.invalid with a parameter field path and HTTP 400. Dates use strict yyyy-MM-dd; inclusive upper dates must be earlier than 9999-12-31 so the exclusive next day is representable. Actual configuration failures retain their original classification.",
       "prohibitedWorkarounds": [
         "Claiming that date metadata guarantees a 400 response for malformed text",
-        "Mapping all configuration failures to validation failures",
-        "Changing the SDK within AI Development Kit work"
+        "Mapping all configuration failures to validation failures"
       ]
     },
     {
       "id": "operational-registers.null-occurrence-cursor",
-      "status": "unsupported",
+      "status": "resolved",
       "targetVersion": "3.4.0",
       "workflow": "Start exact-date operational-register history with GetByOccurredAtCursorAsync and a null cursor",
-      "observedError": "The default PostgreSQL provider returns SQLSTATE 42P08 (could not determine data type of parameter) for the first null-cursor request against an existing movements table.",
+      "observedError": "Earlier 3.4.0 candidates: The default PostgreSQL provider returns SQLSTATE 42P08 (could not determine data type of parameter) for the first null-cursor request against an existing movements table.",
       "contracts": [
         "NGB.Persistence.OperationalRegisters.IOperationalRegisterMovementsQueryReader",
         "NGB.OperationalRegisters.Contracts.OperationalRegisterOccurredAtCursor"
       ],
       "evidence": "examples/equipment-inspection/EquipmentInspection.IntegrationTests/OperationalRegisterDimensionPagingTests.cs",
-      "decision": "Preserve SDK behavior. Start with a bounded GetByOccurredAtPageAsync request and continue from its last displayed row with a non-null occurrence/time-ID cursor. Do not advertise null-cursor startup as supported by this provider.",
+      "decision": "Corrected before 3.4.0 publication: PostgreSQL cursor parameters have explicit timestamptz/bigint casts. A null cursor starts the first bounded page; subsequent pages use the last displayed occurrence time and movement ID, preserving exact-date filters and ordering.",
       "prohibitedWorkarounds": [
-        "Changing provider SQL or parameter binding within AI Development Kit work",
-        "Inventing a sentinel cursor before all possible records",
-        "Suppressing the failure or claiming that the null-cursor first page succeeds"
+        "Inventing a sentinel cursor before all possible records"
       ]
     }
   ]

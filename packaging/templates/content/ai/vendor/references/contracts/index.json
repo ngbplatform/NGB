@@ -153,7 +153,7 @@
       "package": "NGB.Platform.PostgreSql",
       "reference": "references/contracts/NGB.Platform.PostgreSql.json",
       "types": 241,
-      "contractSha256": "b6658dd7dc4010c5c1c435f4af140c9683da5cfa045e88e1826ffc11ab6d946e"
+      "contractSha256": "214f2582742497d4a236b42d7458cf193c60ce80b7388f9175f75f16be48461c"
     },
     {
       "package": "NGB.Platform.PostgreSql.AspNetCore",
@@ -171,7 +171,7 @@
       "package": "NGB.Platform.Runtime",
       "reference": "references/contracts/NGB.Platform.Runtime.json",
       "types": 355,
-      "contractSha256": "03f36cbc2daa62e30a080d008bb26bad4f0569a33573379cf52d78a6690a7e4e"
+      "contractSha256": "9a694737983e420c5b715327901b2b34327d032d70247b3ec45547f4cf6100ea"
     },
     {
       "package": "NGB.Platform.Runtime.Hosting",
@@ -218,10 +218,10 @@
     "references/contracts/NGB.Platform.Notes.json": "2aa5c7a4f055b93142f7c7682dcbe2b4cfe6be3cf2757358b163b1b33efaba0c",
     "references/contracts/NGB.Platform.OperationalRegisters.json": "4eb5a6a2b2a2efd9227e1c38329a9f523fe095898d59b8e9074682b85aa645f7",
     "references/contracts/NGB.Platform.Persistence.json": "ee9d7832bbd3c8f1e4802c8ecb27d7c65bcbe9a9ec9601f7bc185313868684f9",
-    "references/contracts/NGB.Platform.PostgreSql.json": "dce7848203cb0e11da130e8e5c4a2d53fea448788f8b1f7b21b189018e808501",
+    "references/contracts/NGB.Platform.PostgreSql.json": "5f9d22ae209c45a243ecb3ea96cb400df4aef3377de2247cbf947f7c124c4b54",
     "references/contracts/NGB.Platform.PostgreSql.AspNetCore.json": "7d35855889197549df4f68393d9c19e54797f07355cf434625772c987fde8196",
     "references/contracts/NGB.Platform.ReferenceRegisters.json": "685127ab142ff7bcc4e7342b890cef4ab81ee927b8dd3ed5910c4ecaa7937e77",
-    "references/contracts/NGB.Platform.Runtime.json": "eca8d4f278462fe596fdf7b54b225aa9638ea41e639d26d3eaaa53d57d25f47a",
+    "references/contracts/NGB.Platform.Runtime.json": "04292cd2f64e6708f75494e701e60092c81cf35e7642f46cd4ea7fa1b51b58e9",
     "references/contracts/NGB.Platform.Runtime.Hosting.json": "c68acf4817288d181a71f01db25105e6993b7fee4e3e4208b10becad16cdbc72",
     "references/contracts/NGB.Platform.Tools.json": "61ac486fc3118d9f4950f67cae4c6a31a5b084a6b3eeaff39185844af64f9680",
     "references/contracts/NGB.Platform.Watchdog.json": "8d27bfc842d5e933734d3ad4baa3c2637799677e026bfb4c952c245ae4df70c3",

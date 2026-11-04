@@ -76,7 +76,7 @@ public sealed class DocumentService(
     }
 
     public Task<DocumentTypeMetadataDto> GetTypeMetadataAsync(string documentType, CancellationToken ct)
-        => Task.FromResult(ToDto(GetModel(documentType).Meta));
+        => Task.FromResult(ToDto(GetValidatedMetadata(documentType).Meta));
 
     public async Task<PageResponseDto<DocumentDto>> GetPageAsync(
         string documentType,
@@ -1251,6 +1251,15 @@ public sealed class DocumentService(
 
     private DocumentModel GetModel(string documentType)
     {
+        var (meta, columns, amountField) = GetValidatedMetadata(documentType);
+        var head = meta.CreateHeadDescriptor();
+
+        return new DocumentModel(meta, columns, meta.ListFilters ?? [], head, amountField);
+    }
+
+    private (DocumentTypeMetadata Meta, IReadOnlyList<DocumentColumnMetadata> Columns, string? AmountField) GetValidatedMetadata(
+        string documentType)
+    {
         if (string.IsNullOrWhiteSpace(documentType))
             throw new NgbArgumentRequiredException(nameof(documentType));
 
@@ -1284,9 +1293,7 @@ public sealed class DocumentService(
             amountField = amountColumn.ColumnName;
         }
 
-        var head = meta.CreateHeadDescriptor();
-
-        return new DocumentModel(meta, columns, meta.ListFilters ?? [], head, amountField);
+        return (meta, columns, amountField);
     }
 
     private static IReadOnlyList<DocumentHeadValue> ParseAndValidateFields(

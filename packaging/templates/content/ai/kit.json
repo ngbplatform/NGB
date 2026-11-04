@@ -12,8 +12,8 @@
     "package": "NGB.Platform.Templates",
     "version": "3.4.0"
   },
-  "payloadSha256": "f6ec3092e84d8107a81dd9aaec54af5e5fa394694bb7df73d527ce5d4a6f447c",
-  "capabilitySha256": "d6c64e3ebb8c85b364ec56de2beca0feafa78675f640ea3ac408b772476e58dd",
+  "payloadSha256": "3436ea553bbc06fc4fa4f521b3d5dd4bef39dac5cf69064460ca6170fae0ff1e",
+  "capabilitySha256": "a90867377959dc4a3f697f1c96f5a46e86eb8e8dcf3dc64afed7ad83cc1b3576",
   "files": [
     {
       "path": ".agents/skills/ngb-accounting/SKILL.md",
@@ -183,7 +183,7 @@
     {
       "path": "ai/vendor/capability-registry.json",
       "role": "file",
-      "sha256": "d6c64e3ebb8c85b364ec56de2beca0feafa78675f640ea3ac408b772476e58dd"
+      "sha256": "a90867377959dc4a3f697f1c96f5a46e86eb8e8dcf3dc64afed7ad83cc1b3576"
     },
     {
       "path": "ai/vendor/examples/equipment-inspection/Directory.Build.props",
@@ -503,7 +503,7 @@
     {
       "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/InspectionReportTests.cs",
       "role": "file",
-      "sha256": "e96d7ec356d7e6ce5a63c54393a1264607b88ca714b3a1d5feb3097148d72dd9"
+      "sha256": "20790645484d2e20e5c1fde289fa73d514eafcc4fba5b3dd6bb1dfcc4fd65936"
     },
     {
       "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/InspectionRequests.cs",
@@ -523,7 +523,7 @@
     {
       "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/McpBuiltInReadTests.cs",
       "role": "file",
-      "sha256": "b953e270010d48e5f5775006c20b023d81daa2eaf5d1b96f76c7a4e6bcc22a7a"
+      "sha256": "35446be7a801247f81fb466a3c058fcfeb2073c4fe97b10224feedec1508bd2c"
     },
     {
       "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/McpHttpTests.cs",
@@ -553,7 +553,7 @@
     {
       "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/OperationalRegisterDimensionPagingTests.cs",
       "role": "file",
-      "sha256": "e7173908f58f852f8b9ae2449060929cb9ecc1987a1d344c2af7fd8010f2f86a"
+      "sha256": "e15eaf1842acef3dd74517a0ec32d09c2114ca4858b81ed17d3278727fefe9c2"
     },
     {
       "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/OutboxDeliveryTests.cs",
@@ -608,7 +608,7 @@
     {
       "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/SearchHttpTests.cs",
       "role": "file",
-      "sha256": "bbb3868a680646ed3f89de7ced7a873c2de43149dfae52661726f06a9ba370e3"
+      "sha256": "df96ad8a6b7742bd6abf52e2c084e70f7a4dabce1d1c5ed8d0e12666f7019608"
     },
     {
       "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/SearchPipelineContractTests.cs",
@@ -1083,7 +1083,7 @@
     {
       "path": "ai/vendor/examples/equipment-inspection/README.md",
       "role": "file",
-      "sha256": "98b397f0ce1c3b6ed6b5c1150a08dca24eea17f0ef0e5354c05117426935bcaf"
+      "sha256": "bd6c16ea4019f10c33264d90e54dd6e51f270e39e2887e24b2e4569f814af3cf"
     },
     {
       "path": "ai/vendor/examples/equipment-inspection/web/index.html",
@@ -1208,7 +1208,7 @@
     {
       "path": "ai/vendor/known-limitations.json",
       "role": "file",
-      "sha256": "c7cad0da5151cf79b86daf056d498f70c7bee085ddff178660441f0f38fac447"
+      "sha256": "60fa25045262d46dd5c8ff158fbf430098667c26ec914f916f3ad2803ba6c9ee"
     },
     {
       "path": "ai/vendor/references/accounting.md",
@@ -1218,7 +1218,7 @@
     {
       "path": "ai/vendor/references/application.md",
       "role": "file",
-      "sha256": "458bec496a5b01665534cd239d2c6ba9211468b91abcb4fffd685450085fde48"
+      "sha256": "b25dc24645997c983ab949cf5f9f67f30326eec8eed7dda4d485774ba29d8613"
     },
     {
       "path": "ai/vendor/references/background-jobs.md",
@@ -1238,7 +1238,7 @@
     {
       "path": "ai/vendor/references/contracts/index.json",
       "role": "file",
-      "sha256": "a1d1177229cac122ff40855b1021d56b708f8880dd6c02b8d1ba2672b4f24e6d"
+      "sha256": "d38c454c5f54b7eddb29ecf02ea508b5cc6bdf4c238e1123998813d3e59ec710"
     },
     {
       "path": "ai/vendor/references/contracts/NGB.Platform.Accounting.json",
@@ -1368,7 +1368,7 @@
     {
       "path": "ai/vendor/references/contracts/NGB.Platform.PostgreSql.json",
       "role": "file",
-      "sha256": "dce7848203cb0e11da130e8e5c4a2d53fea448788f8b1f7b21b189018e808501"
+      "sha256": "5f9d22ae209c45a243ecb3ea96cb400df4aef3377de2247cbf947f7c124c4b54"
     },
     {
       "path": "ai/vendor/references/contracts/NGB.Platform.ReferenceRegisters.json",
@@ -1383,7 +1383,7 @@
     {
       "path": "ai/vendor/references/contracts/NGB.Platform.Runtime.json",
       "role": "file",
-      "sha256": "eca8d4f278462fe596fdf7b54b225aa9638ea41e639d26d3eaaa53d57d25f47a"
+      "sha256": "04292cd2f64e6708f75494e701e60092c81cf35e7642f46cd4ea7fa1b51b58e9"
     },
     {
       "path": "ai/vendor/references/contracts/NGB.Platform.Tools.json",
@@ -1428,7 +1428,7 @@
     {
       "path": "ai/vendor/references/mcp-assistant.md",
       "role": "file",
-      "sha256": "ef35264a41547e684a058cd08c85864f3e07267801f0f4ee908b52f8baf671ad"
+      "sha256": "afa7de092857f9bab51371f4cebc7c22c93260c88c65489547c31b1ed106a270"
     },
     {
       "path": "ai/vendor/references/persistence.md",
@@ -1443,7 +1443,7 @@
     {
       "path": "ai/vendor/references/registers.md",
       "role": "file",
-      "sha256": "58c7ea2ca94d069bbced940d30a898f0f1b9d647b25a29149785faab53132b44"
+      "sha256": "f84b43dfed436c691b619c88237d81dec656dd4a61ae5b2337e51f474c2b9f21"
     },
     {
       "path": "ai/vendor/references/release.md",
@@ -1453,7 +1453,7 @@
     {
       "path": "ai/vendor/references/reporting.md",
       "role": "file",
-      "sha256": "763642f113c57880adaa8d2cd094c7b0f23bde2182645945a89f328ff3f6e1cd"
+      "sha256": "fb6897301b7186bed8790eb13c101e5c0a0b35fe2e3a373ac23ae38eda6a3fb6"
     },
     {
       "path": "ai/vendor/references/security.md",

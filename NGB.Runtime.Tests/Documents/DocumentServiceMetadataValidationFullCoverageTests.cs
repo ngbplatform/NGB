@@ -1,5 +1,7 @@
 using FluentAssertions;
 using Moq;
+using NGB.Accounting.Documents;
+using NGB.Definitions;
 using NGB.Metadata.Base;
 using NGB.Metadata.Documents.Hybrid;
 using NGB.Metadata.Documents.Storage;
@@ -8,6 +10,7 @@ using NGB.Persistence.Documents.Universal;
 using NGB.Persistence.UnitOfWork;
 using NGB.Runtime.Documents;
 using NGB.Runtime.Documents.Derivations;
+using NGB.Runtime.Documents.GeneralJournalEntry;
 using NGB.Runtime.Documents.Posting;
 using NGB.Runtime.Ui;
 using NGB.Tools.Exceptions;
@@ -18,6 +21,54 @@ namespace NGB.Runtime.Tests.Documents;
 public sealed class DocumentServiceMetadataValidationFullCoverageTests
 {
     private const string TypeCode = "test.metadata_validation";
+
+    [Fact]
+    public async Task Specialized_journal_metadata_does_not_require_a_generic_storage_descriptor()
+    {
+        var builder = new DefinitionsBuilder();
+        new GeneralJournalEntryDefinitionsContributor().Contribute(builder);
+        var definitions = builder.Build();
+        Assert.True(definitions.TryGetDocument(AccountingDocumentTypeCodes.GeneralJournalEntry, out var definition));
+        var metadata = definition!.Metadata;
+        var registry = new Mock<IDocumentTypeRegistry>(MockBehavior.Strict);
+        registry.Setup(x => x.TryGet(metadata.TypeCode)).Returns(metadata);
+        registry.Setup(x => x.GetAll()).Returns([metadata]);
+        var sut = CreateSut(registry.Object);
+
+        var actual = await sut.GetTypeMetadataAsync(metadata.TypeCode, default);
+        var all = await sut.GetAllMetadataAsync(default);
+
+        actual.Should().BeEquivalentTo(Assert.Single(all));
+        Assert.Equal(metadata.TypeCode, actual.DocumentType);
+        Assert.Equal(2, actual.Parts!.Count);
+
+        Func<Task> genericRead = () => sut.GetByIdAsync(metadata.TypeCode, Guid.NewGuid(), default);
+        await genericRead.Should().ThrowAsync<NgbConfigurationViolationException>().WithMessage("*display column*");
+    }
+
+    [Fact]
+    public async Task Optional_presentation_and_explicit_empty_filters_preserve_generic_reads()
+    {
+        var metadata = new DocumentTypeMetadata(
+            TypeCode,
+            [
+                new DocumentTableMetadata(
+                    "doc_test",
+                    TableKind.Head,
+                    [
+                        new DocumentColumnMetadata("document_id", ColumnType.Guid, Required: true),
+                        new DocumentColumnMetadata("display", ColumnType.String, Required: true)
+                    ])
+            ],
+            ListFilters: []);
+        var sut = CreateSut(Registry(metadata));
+
+        var actual = await sut.GetTypeMetadataAsync(TypeCode, default);
+        Assert.Equal(TypeCode, actual.DocumentType);
+
+        Func<Task> missingRecord = () => sut.GetByIdAsync(TypeCode, Guid.NewGuid(), default);
+        await missingRecord.Should().ThrowAsync<NGB.Core.Documents.Exceptions.DocumentNotFoundException>();
+    }
 
     [Fact]
     public async Task Metadata_lookup_rejects_blank_unknown_and_missing_head_models()
