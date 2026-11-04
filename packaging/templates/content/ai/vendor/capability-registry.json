@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "version": "3.4.0",
-  "surfaceSha256": "87d12525ac7791a049e364d7de96f37b578e26b1121fbfa6aa0612a5c6d32bcb",
+  "surfaceSha256": "7e1fd62f7a8195feafe252267e85a74aa034f49c36e2156cd815ad8a01552267",
   "capabilities": [
     {
       "id": "accounting.account-card",
@@ -2315,6 +2315,26 @@
           "test": "Unauthorized_actor_cannot_replay_an_administrator_action_result",
           "cases": [
             "EquipmentInspection.IntegrationTests.InspectionLifecycleTests.Unauthorized_actor_cannot_replay_an_administrator_action_result"
+          ]
+        },
+        {
+          "id": "actions.retry.inactive",
+          "outcome": "A deactivated actor cannot retrieve its own completed action result while ordinary document reads and new actions are denied.",
+          "kind": "integration",
+          "source": "examples/equipment-inspection/EquipmentInspection.IntegrationTests/InspectionLifecycleTests.cs",
+          "test": "Deactivated_actor_cannot_replay_its_own_completed_action",
+          "cases": [
+            "EquipmentInspection.IntegrationTests.InspectionLifecycleTests.Deactivated_actor_cannot_replay_its_own_completed_action"
+          ]
+        },
+        {
+          "id": "actions.retry.concurrent",
+          "outcome": "Concurrent identical requests return the same completed execution and increment the document version only once.",
+          "kind": "integration",
+          "source": "examples/equipment-inspection/EquipmentInspection.IntegrationTests/InspectionLifecycleTests.cs",
+          "test": "Concurrent_repeats_of_one_post_return_one_completed_execution",
+          "cases": [
+            "EquipmentInspection.IntegrationTests.InspectionLifecycleTests.Concurrent_repeats_of_one_post_return_one_completed_execution"
           ]
         }
       ]
@@ -25806,7 +25826,7 @@
     },
     {
       "contract": "NGB.Platform.Runtime:NGB.Runtime.Documents.Actions.DocumentActionRegistry",
-      "sha256": "cf068cff4f6d15f6d21baf01939edbfe3c5d6a67a43753b6feb31eedb6566883",
+      "sha256": "05b36b67cd8f6353ca39ddf3f4e5f4fbc4ecebc88007000159a7c166d7ab809c",
       "kind": "implementation-visible",
       "reason": "Startup-built action registry combines standard actions, registered derivations and application contributors, checks identities/handlers and orders presentation. An advertised action does not authorize execution; the dispatcher remains the action boundary.",
       "capabilities": [

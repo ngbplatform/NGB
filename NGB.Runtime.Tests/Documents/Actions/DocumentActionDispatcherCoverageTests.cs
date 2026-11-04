@@ -194,12 +194,12 @@ public sealed class DocumentActionDispatcherCoverageTests
             Times.Never);
         harness.Documents.Verify(
             repository => repository.GetAsync(
-                It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
-            Times.Never);
+                harness.Source.Id, It.IsAny<CancellationToken>()),
+            Times.Once);
         harness.Reader.VerifyNoOtherCalls();
         harness.Permissions.Verify(
             provider => provider.RefreshCurrentAsync(It.IsAny<CancellationToken>()),
-            Times.Never);
+            Times.Once);
     }
 
     [Fact]
@@ -536,8 +536,10 @@ public sealed class DocumentActionDispatcherCoverageTests
 
             Handler = new RecordingHandler();
             Enricher = new RecordingEnricher();
+            Availability = new RecordingAvailabilityEvaluator();
             var services = new ServiceCollection()
                 .AddSingleton(Handler)
+                .AddSingleton(Availability)
                 .AddSingleton<PureAuthorizationEvaluator>()
                 .AddSingleton<FailingHandler>()
                 .BuildServiceProvider();
@@ -627,6 +629,7 @@ public sealed class DocumentActionDispatcherCoverageTests
         public Mock<IPermissionSnapshotProvider> Permissions { get; }
         public RecordingHandler Handler { get; }
         public RecordingEnricher Enricher { get; }
+        public RecordingAvailabilityEvaluator Availability { get; }
         public DocumentActionEvaluator Evaluator { get; }
         public DocumentService DocumentService { get; }
         public DocumentActionDispatcher Dispatcher { get; }
@@ -691,7 +694,8 @@ public sealed class DocumentActionDispatcherCoverageTests
                 SourceType,
                 Command("test.evaluated-command"),
                 handlerType: typeof(RecordingHandler),
-                authorizationEvaluatorType: typeof(PureAuthorizationEvaluator));
+                authorizationEvaluatorType: typeof(PureAuthorizationEvaluator),
+                availabilityEvaluatorType: typeof(RecordingAvailabilityEvaluator));
             builder.Add(
                 SourceType,
                 Command("test.failing-command"),
@@ -760,6 +764,7 @@ public sealed class DocumentActionDispatcherCoverageTests
         public string DocumentTypeCode => SourceType;
         public int CallCount { get; private set; }
         public DocumentActionContextRequest? LastRequest { get; private set; }
+        public bool Ready { get; set; } = true;
 
         public Task<IReadOnlyDictionary<string, object?>> LoadFactsAsync(
             DocumentActionContextRequest request,
@@ -768,7 +773,22 @@ public sealed class DocumentActionDispatcherCoverageTests
             CallCount++;
             LastRequest = request;
             return Task.FromResult<IReadOnlyDictionary<string, object?>>(
-                new Dictionary<string, object?> { ["ready"] = true });
+                new Dictionary<string, object?> { ["ready"] = Ready });
+        }
+    }
+
+    internal sealed class RecordingAvailabilityEvaluator : IDocumentActionAvailabilityEvaluator
+    {
+        public bool RejectEvaluation { get; set; }
+
+        public ValueTask<DocumentActionAvailabilityResult> EvaluateAsync(
+            DocumentActionEvaluationContext context,
+            CancellationToken ct)
+        {
+            if (RejectEvaluation)
+                throw new InvalidOperationException("A completed action must not evaluate execution availability.");
+
+            return ValueTask.FromResult(DocumentActionAvailabilityResult.Allowed);
         }
     }
 

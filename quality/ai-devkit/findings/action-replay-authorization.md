@@ -1,10 +1,10 @@
 # Document action replay authorization
 
-Status: a permission-check inconsistency was reproduced against the sealed
-3.4.0 SDK. The user explicitly declined an SDK change and requested continued
-Kit work. Preserve platform behavior and report the failing assertions accurately.
-Do not present these tests as evidence of an easily exploitable data leak or
-expand the Kit implementation into an SDK security investigation.
+Status: corrected in the SDK before 3.4.0 publication after explicit authorization
+to fix the replay path. Earlier sealed candidates retain the reproduced failures.
+Verification for the correction is recorded under
+`artifacts/ai-devkit/action-replay-fix-3.4.0/` and the replacement candidate's
+certification reports. These tests do not establish practical exploitability.
 
 ## Reproduction
 
@@ -46,29 +46,35 @@ failed regression alongside 25 passing tests and complete example source
 coverage. The separate deactivation probe is retained at
 `artifacts/ai-devkit/deactivated-replay-3.4.0/deactivated-replay.trx`.
 
-## Cause and proposed bounded correction
+## Original cause and correction
 
-`DocumentActionDispatcher.ExecuteCoreAsync` calls `TryBeginAsync` and returns a
-completed stored result before refreshing the caller's permission snapshot or
-running `DocumentActionEvaluator`. `AddNgbRuntimeAuthorization` does not decorate
-this dispatcher. Normal first execution checks permissions later inside the
-transaction, so ordinary denied-action tests do not detect the replay path.
+The original `DocumentActionDispatcher.ExecuteCoreAsync` called `TryBeginAsync`
+and returned a completed stored result before refreshing the caller's permission
+snapshot or running `DocumentActionEvaluator`. `AddNgbRuntimeAuthorization` does
+not decorate this dispatcher. Normal first execution checks permissions later
+inside the transaction, so ordinary denied-action tests did not detect that path.
 
-Proposed SDK change, outside the authorized implementation scope:
+The corrected completed-result branch:
 
-- Authorize access to the completed result using the current active actor,
+- Authorizes access to the completed result using the current active actor,
   current document access and the registered action's authorization contract,
   including custom authorization evaluators and facts where applicable.
-- Keep authorization separate from action availability. An authorized repeat of
+- Keeps authorization separate from action availability. An authorized repeat of
   Post must still return its original result after the document became Posted;
   it must not rerun the handler or fail because the original version is stale.
-- Check access to any created document before returning derivation results.
-  Preserve transaction behavior, conflict semantics and existing permission keys.
-- Add regression cases for a denied actor, a subsequently deactivated/revoked
-  actor, custom authorization, derivation data, successful authorized replay and
-  concurrent requests. Verify the existing action/performance suites before
-  repackaging and re-running independent acceptance.
+- Checks access to any created document before returning stored results, including
+  custom-handler results. It preserves transaction behavior, conflict semantics
+  and existing permission keys, and uses bounded reads without taking the source
+  document write lock.
+
+`DocumentActionReplayAuthorizationTests` covers refreshed/revoked permissions,
+inactive and unauthenticated actors, current custom facts, created-document access,
+missing documents, type mismatches and successful replay after status/version
+changes. The external HTTP suite keeps both original denial assertions, verifies
+authorized retry after a denied attempt and simultaneous retries with the same key.
+The custom-action example now expects one current authorization fact load on
+replay while retaining its unchanged document and single audit-entry assertions.
 
 Do not bypass the failure with a different lifecycle, controller-only special
-case, test exclusion or weakened expected result. No SDK code has been changed
-as part of this finding.
+case, test exclusion or weakened expected result. Historical failed reports must
+not be rewritten as passes.

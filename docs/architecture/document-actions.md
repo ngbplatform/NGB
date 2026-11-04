@@ -50,9 +50,13 @@ Content-Type: application/json
 }
 ```
 
-`documents.version` is incremented after every successful action. A stale `expectedVersion` fails with a conflict and does not run the handler.
+`documents.version` is incremented after every successful action. A new request with a stale `expectedVersion` fails with a conflict and does not run the handler.
 
-`platform_document_action_executions` stores the idempotency key, a SHA-256 request fingerprint, execution state, and completed response. Repeating the same request returns the stored response. Reusing a key for different input fails. A concurrent in-progress request is reported explicitly.
+`platform_document_action_executions` stores the idempotency key, a SHA-256 request fingerprint, execution state, and completed response. Repeating the same request returns the stored response after current authorization succeeds. Reusing a key for different input fails. A concurrent in-progress request is reported explicitly.
+
+Completed replay refreshes the caller's permission snapshot and requires an active authenticated actor, source-document View and the registered action's authorization. Custom authorization evaluators receive the current document and current facts. A saved result containing a created document also requires View of that document. A denied caller receives HTTP 403; knowing the original request and key does not grant access.
+
+An authorized replay preserves the original result and execution ID without taking the source document write lock, rerunning the handler or emitting another audit/outbox event. It does not check the original expected version or execution availability again: a successful Post may already have made the document Posted. The execution repository provides request deduplication; the dispatcher owns authorization of the returned result.
 
 ## Atomic side effects
 

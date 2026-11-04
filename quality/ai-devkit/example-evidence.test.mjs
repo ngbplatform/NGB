@@ -110,6 +110,13 @@ test('TRX parameter names preserve escaped whitespace and reject equivalent dupl
   assert.throws(() => passingTestCases(xml.replace('empty value', 'whitespace value: &#9;')), /duplicate/)
 })
 
+test('TRX acceptance reads large captured output without accepting failed or missing cases', () => {
+  const xml = trx().replace('<ResultSummary>', `<Output><StdOut>${'x'.repeat(2 * 1024 * 1024)}</StdOut></Output><ResultSummary>`)
+  assert.deepEqual(passingTestCases(xml), names)
+  assert.throws(() => passingTestCases(xml.replace('outcome="Passed"', 'outcome="Failed"')), /must pass/)
+  assert.throws(() => passingTestCases(xml.replace(/<UnitTestResult[^>]+\/>/, '')), /counters/)
+})
+
 test('example binding rejects stale packages, inputs, raw reports and unexecuted acceptance', () => {
   const mutations = [
     value => { value.report.schemaVersion = 1 },

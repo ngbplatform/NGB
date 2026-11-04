@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { browserTestCounts, frontendCoverage, frontendTestCounts, uniqueCoverageReport } from '../../packaging/templates/content/infrastructure/ngb/evidence.mjs'
 import { testCounts } from '../../packaging/templates/content/infrastructure/ngb/profiles.mjs'
+import { readProjectXml, readTestXml } from '../../packaging/templates/content/infrastructure/ngb/project-data.mjs'
 
 const frontend = () => ({
   success: true, numTotalTests: 1, numPassedTests: 1, numFailedTests: 0, numPendingTests: 0, numTodoTests: 0,
@@ -105,4 +106,19 @@ test('TRX evidence rejects empty discovery and skipped backend tests', () => {
     'total="bad" executed="1" passed="1" failed="0"']) {
     assert.throws(() => testCounts(report(counters)))
   }
+})
+
+test('TRX reports have separate bounded size and token budgets from project files', () => {
+  const output = `<TestRun><Output><StdOut>${'a'.repeat(2 * 1024 * 1024)}</StdOut></Output>
+<ResultSummary><Counters total="1" executed="1" passed="1" failed="0"/></ResultSummary></TestRun>`
+  assert.equal(testCounts(output).passed, 1)
+  assert.throws(() => readProjectXml(output), /size limit/)
+  const manyElements = `<TestRun>${'<Result/>'.repeat(10001)}</TestRun>`
+  assert.equal(readTestXml(manyElements).children.length, 10001)
+  assert.throws(() => readProjectXml(manyElements), /token limit/)
+  assert.throws(() => readTestXml(`<TestRun>${'<Result/>'.repeat(100001)}</TestRun>`), /token limit/)
+  assert.throws(() => readTestXml(`<TestRun>${'a'.repeat(8 * 1024 * 1024)}</TestRun>`), /size limit/)
+  assert.throws(() => readTestXml(`<TestRun>${'é'.repeat(4 * 1024 * 1024)}</TestRun>`), /size limit/)
+  assert.throws(() => readTestXml('<!DOCTYPE TestRun><TestRun/>'), /directives/)
+  assert.throws(() => readTestXml('<TestRun>'.repeat(33) + '</TestRun>'.repeat(33)), /nesting limit/)
 })

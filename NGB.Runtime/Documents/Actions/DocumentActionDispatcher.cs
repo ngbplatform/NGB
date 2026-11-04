@@ -12,6 +12,8 @@ using NGB.Core.AuditLog;
 using NGB.Core.Documents;
 using NGB.Core.Documents.Actions;
 using NGB.Core.Documents.Exceptions;
+using NGB.Core.Security;
+using NGB.Definitions.Documents.Actions;
 using NGB.Persistence.Documents;
 using NGB.Persistence.Documents.Actions;
 using NGB.Persistence.Outbox;
@@ -156,8 +158,8 @@ internal sealed class DocumentActionDispatcher(
 
         return await uow.ExecuteInUowTransactionAsync(async innerCt =>
         {
-            // Resolve idempotency before locking/materializing the document. Exact replays are
-            // served from the durable result without contending on the source document row.
+            // Resolve idempotency before taking the document write lock. Completed results
+            // still require current authorization, without executing the action again.
             var begin = await executions.TryBeginAsync(
                 normalizedKey,
                 fingerprint,
@@ -169,8 +171,12 @@ internal sealed class DocumentActionDispatcher(
 
             if (begin.Status == DocumentActionExecutionBeginStatus.Completed)
             {
-                return JsonSerializer.Deserialize<ExecuteDocumentActionResultDto>(begin.ResultJson!, Json)
+                var completed = JsonSerializer.Deserialize<ExecuteDocumentActionResultDto>(begin.ResultJson!, Json)
                     ?? throw new NgbInvariantViolationException("Stored document action result could not be deserialized.");
+
+                await AuthorizeReplayAsync(definition, documentId, completed, innerCt);
+
+                return completed;
             }
 
             if (begin.Status == DocumentActionExecutionBeginStatus.Conflict)
@@ -305,6 +311,44 @@ internal sealed class DocumentActionDispatcher(
 
             return result;
         }, ct);
+    }
+
+    private async Task AuthorizeReplayAsync(
+        DocumentActionDefinition definition,
+        Guid documentId,
+        ExecuteDocumentActionResultDto result,
+        CancellationToken ct)
+    {
+        var snapshot = await permissions.RefreshCurrentAsync(ct);
+        if (!snapshot.Has(NgbResourceKinds.Document, definition.DocumentTypeCode, NgbPermissionActions.View))
+            throw new DocumentActionForbiddenException(definition.DocumentTypeCode, definition.Metadata.Code.Value);
+
+        var document = await documentRepository.GetAsync(documentId, ct)
+            ?? throw new DocumentNotFoundException(documentId);
+
+        EnsureType(documentId, definition.DocumentTypeCode, document.TypeCode);
+
+        DocumentDto? documentDto = null;
+        IReadOnlyDictionary<string, object?> facts = new Dictionary<string, object?>();
+        if (definition.AuthorizationEvaluatorType is not null)
+        {
+            documentDto = await documentService.GetByIdAsync(document.TypeCode, documentId, ct);
+            facts = await evaluator.LoadFactsAsync(document, documentDto, snapshot, ct);
+        }
+
+        // An exact repeat carries the original version and may now refer to a Posted
+        // document. Recheck authorization only, not execution availability or version.
+        if (!await evaluator.IsAuthorizedAsync(definition, document, documentDto, snapshot, facts, ct))
+            throw new DocumentActionForbiddenException(document.TypeCode, definition.Metadata.Code.Value);
+
+        if (result.CreatedDocument is { } createdDto)
+        {
+            var created = await documentRepository.GetAsync(createdDto.Id, ct)
+                ?? throw new DocumentNotFoundException(createdDto.Id);
+
+            if (!snapshot.Has(NgbResourceKinds.Document, created.TypeCode, NgbPermissionActions.View))
+                throw new DocumentActionForbiddenException(document.TypeCode, definition.Metadata.Code.Value);
+        }
     }
 
     private async Task<DocumentActionHandlerResult> ExecuteDefinitionAsync(

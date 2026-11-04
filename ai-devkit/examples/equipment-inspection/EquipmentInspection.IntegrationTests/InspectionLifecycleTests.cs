@@ -96,6 +96,30 @@ public sealed class InspectionLifecycleTests
     }
 
     [Fact]
+    public async Task Concurrent_repeats_of_one_post_return_one_completed_execution()
+    {
+        await using var host = new InspectionHost();
+        await host.StartAsync();
+        using var admin = await host.CreateClientAsync("administrator");
+        var (path, version) = await CreateCompleteInspectionAsync(admin);
+        var responses = await Task.WhenAll(
+            ExecutePostAsync(admin, path, version, "same-post"),
+            ExecutePostAsync(admin, path, version, "same-post"));
+        using var first = responses[0];
+        using var second = responses[1];
+        var original = await ReadActionAsync(first);
+        var repeated = await ReadActionAsync(second);
+
+        Assert.Equal(original.ExecutionId, repeated.ExecutionId);
+        Assert.Equal(version + 1, original.DocumentVersion);
+        Assert.Equal(original.DocumentVersion, repeated.DocumentVersion);
+        var current = await admin.GetFromJsonAsync<DocumentEditorStateDto>(path + "/editor-state", Json);
+        Assert.Equal(version + 1, current!.DocumentVersion);
+        Assert.Equal(DocumentStatus.Posted, current.Document.Status);
+        await AssertNoEffectsAsync(admin, path);
+    }
+
+    [Fact]
     public async Task Unauthorized_actor_cannot_replay_an_administrator_action_result()
     {
         await using var host = new InspectionHost();
@@ -113,6 +137,9 @@ public sealed class InspectionLifecycleTests
         Assert.True(replay.StatusCode == HttpStatusCode.Forbidden,
             $"Expected HTTP 403; received {(int)replay.StatusCode}. " +
             $"Response contains the protected document ID: {body.Contains(original.Document.Id.ToString(), StringComparison.Ordinal)}.");
+
+        using var authorizedReplay = await ExecutePostAsync(admin, path, version, "protected-replay");
+        Assert.Equal(original.ExecutionId, (await ReadActionAsync(authorizedReplay)).ExecutionId);
     }
 
     [Fact]

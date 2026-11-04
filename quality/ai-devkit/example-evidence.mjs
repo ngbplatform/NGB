@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { posix } from 'node:path'
 import { digest, portablePath } from '../../packaging/templates/content/infrastructure/ngb/kit-contracts.mjs'
-import { readProjectXml } from '../../packaging/templates/content/infrastructure/ngb/project-data.mjs'
+import { readTestXml } from '../../packaging/templates/content/infrastructure/ngb/project-data.mjs'
 import { testCounts } from '../../packaging/templates/content/infrastructure/ngb/profiles.mjs'
 import { browserTestCounts, frontendCoverage, frontendTestCounts } from '../../packaging/templates/content/infrastructure/ngb/evidence.mjs'
 import { inspectCapabilities } from '../../ai-devkit/prepare.mjs'
@@ -21,7 +21,7 @@ export function exampleFrontendSources(inputs, name) {
 
 export function passingTestCases(xml) {
   const counts = testCounts(xml)
-  const root = readProjectXml(xml)
+  const root = readTestXml(xml)
   const groups = root.children.filter(node => node.name === 'Results')
   assert.equal(groups.length, 1, 'Expected one TRX result collection.')
   const cases = groups[0].children

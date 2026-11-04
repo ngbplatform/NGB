@@ -199,6 +199,29 @@ internal sealed class DocumentActionEvaluator(
             target);
     }
 
+    public ValueTask<bool> IsAuthorizedAsync(
+        DocumentActionDefinition definition,
+        DocumentRecord document,
+        DocumentDto? documentDto,
+        PermissionSnapshot snapshot,
+        IReadOnlyDictionary<string, object?> facts,
+        CancellationToken ct)
+    {
+        if (definition.AuthorizationEvaluatorType is null)
+            return ValueTask.FromResult(IsAuthorizedByMetadata(definition, snapshot));
+
+        if (documentDto is null)
+            throw new NgbInvariantViolationException($"Document action '{definition.Metadata.Code}' requires an enriched document context.");
+
+        var context = new DocumentActionEvaluationContext(
+            document,
+            documentDto,
+            ToSecurityContext(snapshot),
+            facts);
+
+        return IsAuthorizedAsync(definition, context, snapshot, ct);
+    }
+
     private async ValueTask<bool> IsAuthorizedAsync(
         DocumentActionDefinition definition,
         DocumentActionEvaluationContext context,

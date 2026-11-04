@@ -50,14 +50,16 @@ Compare JSON values semantically rather than relying on object-property order.
 Reusing a key for a different request returns `document_action.idempotency_conflict`;
 a new request with a stale expected version returns `document.version_conflict`.
 
-The 3.4.0 example records two failed assertions for replay of a completed action
-when the current actor's document GET is denied. These fixtures supply the complete
-original request and key; they do not establish practical exploitability. The
-inactive actor receives its own saved result without executing the action again.
-Keep the observed outcomes in reports, consistent with `known-limitations.json`,
-and continue Kit work within its scope. Do not turn these observations into a
-demonstrated-attack claim or an unrelated SDK investigation. Initial execution
-authorization and return of a saved result are separate behaviors.
+Completed replay refreshes the current actor's permissions before returning the
+saved result. It requires an active authenticated actor, source-document View and
+the registered action's authorization, including custom evaluators and current
+facts. A result containing a created document also requires View of that document.
+Denied or deactivated actors receive HTTP 403 even with the complete original
+request and idempotency key. The SDK does not execute the handler, check the old
+expected version or rerun action availability on a completed replay. The lifecycle
+tests also verify that simultaneous identical requests return one execution and
+that a denied replay does not prevent an authorized caller from receiving it.
+Earlier 3.4.0 candidate failures remain recorded in the historical reports.
 
 `PostgresHeadDocumentTypeStorage` supports a simple head table keyed by
 `document_id`. More complex typed storage implements the public persistence
@@ -242,9 +244,9 @@ registered relationship semantics; it does not automatically post that target.
 Relationship repositories and graph readers are lower-level storage/read services.
 Document-flow access must retain current document permissions and registered
 relationship rules. The action-execution repository stores request identity,
-fingerprint and a recorded result; it does not itself reauthorize a replay. See
-the documented SDK replay limitation and retained verification evidence rather
-than assuming that storage idempotency proves current authorization.
+fingerprint and a recorded result; it does not itself reauthorize a replay. The
+action dispatcher checks current authorization before returning that result.
+Storage idempotency alone does not prove current authorization.
 
 ## Batch relationships and provider list filters
 

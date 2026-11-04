@@ -8,7 +8,7 @@ import { assetPaths, readAsset, safePath } from './kit-files.mjs'
 import { report } from './kit.mjs'
 import { executionEnvironment, runTool } from './process.mjs'
 import { applicationConfiguration, validateApplication } from './validation.mjs'
-import { layerViolations, readProjectXml } from './project-data.mjs'
+import { layerViolations, readTestXml } from './project-data.mjs'
 import { browserTestCounts, frontendCoverage, frontendTestCounts, uniqueCoverageReport } from './evidence.mjs'
 import { applicationFiles, managedPackageFiles } from './application.mjs'
 import { assemblyMetadata, resolvedProject } from './resolved-data.mjs'
@@ -23,7 +23,7 @@ function processCheck(id, result) {
 }
 
 export function testCounts(xml) {
-  const root = readProjectXml(xml)
+  const root = readTestXml(xml)
   assert.equal(root.name, 'TestRun', 'Expected a TRX TestRun report.')
   let counters = null
   function visit(node) {

@@ -23,16 +23,16 @@
     },
     {
       "id": "documents.action-replay-authorization",
-      "status": "observed",
+      "status": "resolved",
       "targetVersion": "3.4.0",
       "workflow": "Return a completed document action result only to a currently authorized actor",
-      "observedError": "HTTP 200 on replay by an actor whose document GET returns HTTP 403",
+      "observedError": "Earlier 3.4.0 candidates returned HTTP 200 on replay by an actor whose document GET returned HTTP 403.",
       "contracts": [
         "NGB.Application.Abstractions.Services.IDocumentActionDispatcher",
         "NGB.Api.Controllers.DocumentControllerBase"
       ],
       "evidence": "examples/equipment-inspection/EquipmentInspection.IntegrationTests/InspectionLifecycleTests.cs",
-      "decision": "The user declined changing SDK authorization in this task. Preserve the recorded failing assertions and continue Kit implementation. These fixtures supply the complete original request and key; practical exploitability has not been established. The inactive actor receives its own saved result without re-execution. Do not describe these observations as a demonstrated attack or expand this task into an SDK investigation.",
+      "decision": "Corrected before 3.4.0 publication: completed replay refreshes current permissions, requires source View and action authorization, evaluates custom authorization with current facts, and checks View of any created document. It preserves the stored result without rerunning handlers, availability or expected-version checks. Keep the original denial regressions mandatory and preserve historical candidate failures. These fixtures supplied the original request and key; practical exploitability was not established.",
       "prohibitedWorkarounds": [
         "Treating a known idempotency key as authorization",
         "Skipping the denied-replay regression or accepting HTTP 200 as its expected outcome",

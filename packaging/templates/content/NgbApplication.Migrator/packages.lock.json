@@ -68,7 +68,7 @@
         "type": "Direct",
         "requested": "[3.4.0, 3.4.0]",
         "resolved": "3.4.0",
-        "contentHash": "M7ImM6kUewrp1uO952P521sNC8CCqq6Utab8CkpjVc79ubB7Mk2NuVYia/Izm8/z1BSerFgITP2xJ+Shww1LQA==",
+        "contentHash": "QcIfLId4jk3nC11y7CC97xbsIJVaJ4o5P00I+axDygGXrEpJOyGoge0jQ+pOcTI4TZjcEU03MVAh+6DYRI/qMQ==",
         "dependencies": {
           "Microsoft.Extensions.Caching.Memory": "10.0.13",
           "Microsoft.Extensions.Configuration": "10.0.13",

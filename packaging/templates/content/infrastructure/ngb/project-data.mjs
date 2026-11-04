@@ -47,14 +47,22 @@ function decodeXml(value) {
 }
 
 export function readProjectXml(source) {
-  assert.ok(typeof source === 'string' && source.length <= 1024 * 1024, 'Invalid project XML size.')
+  return readXml(source, 1024 * 1024, 10000, 'Project XML')
+}
+
+export function readTestXml(source) {
+  return readXml(source, 8 * 1024 * 1024, 100000, 'Test report XML')
+}
+
+function readXml(source, maxBytes, maxTokens, description) {
+  assert.ok(typeof source === 'string' && Buffer.byteLength(source, 'utf8') <= maxBytes, `${description} exceeds its size limit.`)
   const text = source.replace(/^\uFEFF/, '').replace(/^\s*<\?xml\s[^?]*\?>/, '').replace(/<!--[\s\S]*?-->/g, '')
   assert.ok(!/<!|<\?/.test(text), 'XML directives and DTDs are not supported by inspection.')
   const root = { name: '#document', attributes: {}, children: [], text: '' }
   const stack = [root]
   const tokens = text.match(/<[^>]*>|[^<]+/g) ?? []
   assert.equal(tokens.join(''), text, 'Malformed project XML.')
-  assert.ok(tokens.length <= 10000, 'Project XML exceeds its token limit.')
+  assert.ok(tokens.length <= maxTokens, `${description} exceeds its token limit.`)
   for (const token of tokens) {
     const parent = stack.at(-1)
     if (!token.startsWith('<')) {

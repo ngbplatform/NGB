@@ -171,7 +171,7 @@
       "package": "NGB.Platform.Runtime",
       "reference": "references/contracts/NGB.Platform.Runtime.json",
       "types": 355,
-      "contractSha256": "4ffc64c0988a5c14b496d5820fa41a968e9be0ffb47b79297acfa68a6edc5dfe"
+      "contractSha256": "03f36cbc2daa62e30a080d008bb26bad4f0569a33573379cf52d78a6690a7e4e"
     },
     {
       "package": "NGB.Platform.Runtime.Hosting",
@@ -221,7 +221,7 @@
     "references/contracts/NGB.Platform.PostgreSql.json": "dce7848203cb0e11da130e8e5c4a2d53fea448788f8b1f7b21b189018e808501",
     "references/contracts/NGB.Platform.PostgreSql.AspNetCore.json": "7d35855889197549df4f68393d9c19e54797f07355cf434625772c987fde8196",
     "references/contracts/NGB.Platform.ReferenceRegisters.json": "685127ab142ff7bcc4e7342b890cef4ab81ee927b8dd3ed5910c4ecaa7937e77",
-    "references/contracts/NGB.Platform.Runtime.json": "1f041abfc705cdb08b57ad235b22ac6d5e8255a5aa80b0751c2f26e0a5f7870d",
+    "references/contracts/NGB.Platform.Runtime.json": "eca8d4f278462fe596fdf7b54b225aa9638ea41e639d26d3eaaa53d57d25f47a",
     "references/contracts/NGB.Platform.Runtime.Hosting.json": "c68acf4817288d181a71f01db25105e6993b7fee4e3e4208b10becad16cdbc72",
     "references/contracts/NGB.Platform.Tools.json": "61ac486fc3118d9f4950f67cae4c6a31a5b084a6b3eeaff39185844af64f9680",
     "references/contracts/NGB.Platform.Watchdog.json": "8d27bfc842d5e933734d3ad4baa3c2637799677e026bfb4c952c245ae4df70c3",

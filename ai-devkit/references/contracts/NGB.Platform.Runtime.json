@@ -2,13 +2,13 @@
   "schemaVersion": 1,
   "package": "NGB.Platform.Runtime",
   "version": "3.4.0",
-  "packageSha256": "81207c42528049d1770a094b20e8cfadf9fe211e12dbee4c8fcd898c35db7fe6",
+  "packageSha256": "1da5c6c0919154b33606b46b152ae9067dd8400a4c07ae4c51f5f172618b3d6f",
   "assembly": {
     "name": "NGB.Runtime",
     "version": "3.0.0.0",
-    "sha256": "ee7949afa32cd3465ccadca063de605ec2f87322d50308d4cee46420a68022e2"
+    "sha256": "e470605812a1a969f34d769d5530c303666bcf3feba81b9723fa7f8323a6ae66"
   },
-  "contractSha256": "4ffc64c0988a5c14b496d5820fa41a968e9be0ffb47b79297acfa68a6edc5dfe",
+  "contractSha256": "03f36cbc2daa62e30a080d008bb26bad4f0569a33573379cf52d78a6690a7e4e",
   "types": [
     {
       "name": "NGB.Runtime.Accounting.AccountingNegativeBalanceForbiddenException",
@@ -702,7 +702,7 @@
     {
       "name": "NGB.Runtime.Documents.Actions.DocumentActionRegistry",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "cf068cff4f6d15f6d21baf01939edbfe3c5d6a67a43753b6feb31eedb6566883",
+      "contractSha256": "05b36b67cd8f6353ca39ddf3f4e5f4fbc4ecebc88007000159a7c166d7ab809c",
       "methods": [
         ".ctor",
         "Get",

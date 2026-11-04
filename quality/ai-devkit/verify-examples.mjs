@@ -170,16 +170,17 @@ try {
         continue
       }
       const trx = await readAsset(root, `${directory}/tests.trx`, 8 * 1024 * 1024)
-      const counts = testCounts(trx)
+      const trxArtifact = await save(`${name}/suite-${index}/tests.trx`, trx)
       const paths = (await assetPaths(root, directory)).filter(path => path.endsWith('/coverage.cobertura.xml'))
       const attachments = await Promise.all(paths.map(async path => ({ path,
         sha256: digest(await readAsset(root, path, 16 * 1024 * 1024)) })))
       const report = uniqueCoverageReport(attachments)
       const coverage = await readAsset(root, report.path, 16 * 1024 * 1024)
+      const coverageArtifact = await save(`${name}/suite-${index}/coverage.cobertura.xml`, coverage)
+      const counts = testCounts(trx)
       reports.push(parseCobertura(coverage, root))
       result.suites.push({ project, counts, sources: testSources.get(project), cases: passingTestCases(trx),
-        trx: await save(`${name}/suite-${index}/tests.trx`, trx),
-        coverage: await save(`${name}/suite-${index}/coverage.cobertura.xml`, coverage) })
+        trx: trxArtifact, coverage: coverageArtifact })
     }
     const requiredFiles = []
     const excludedFiles = []

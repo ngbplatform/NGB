@@ -206,7 +206,8 @@ effective versions, including future-effective buckets.
 `IDocumentOperationStateRepository` and register write-state repositories describe
 technical lifecycle coordination. They differ from `IDocumentActionExecutionRepository`
 and its stored HTTP action result. `Completed` is not current-user authorization;
-the existing denied-replay observation remains documented separately.
+the action dispatcher refreshes permissions and checks current source/action and
+created-document access before returning a completed result.
 
 `AccountingBalanceProjectionResult` reports total violation counts and a sample
 list. The sample length is not the total. Likewise, monthly activity/turnover reads

@@ -12,8 +12,8 @@
     "package": "NGB.Platform.Templates",
     "version": "3.4.0"
   },
-  "payloadSha256": "583ea5ead12070af6010e833c3fe2c3911f972da512cc1f042c6e690ce1ad5fa",
-  "capabilitySha256": "44e0799ab6883606a5f97a1a01d0e3e45bc5611e04c97abf5140f9ce63da6ba4",
+  "payloadSha256": "f6ec3092e84d8107a81dd9aaec54af5e5fa394694bb7df73d527ce5d4a6f447c",
+  "capabilitySha256": "d6c64e3ebb8c85b364ec56de2beca0feafa78675f640ea3ac408b772476e58dd",
   "files": [
     {
       "path": ".agents/skills/ngb-accounting/SKILL.md",
@@ -183,7 +183,7 @@
     {
       "path": "ai/vendor/capability-registry.json",
       "role": "file",
-      "sha256": "44e0799ab6883606a5f97a1a01d0e3e45bc5611e04c97abf5140f9ce63da6ba4"
+      "sha256": "d6c64e3ebb8c85b364ec56de2beca0feafa78675f640ea3ac408b772476e58dd"
     },
     {
       "path": "ai/vendor/examples/equipment-inspection/Directory.Build.props",
@@ -473,7 +473,7 @@
     {
       "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/InspectionDeferralHttpTests.cs",
       "role": "file",
-      "sha256": "4b693f52fb7c0049fd56495c8a7f12028d9a7028bcb82d2719c6d11d20d3e75a"
+      "sha256": "f3f730c4121627889a8da7dc9342fb1d832012d47956f37934011c7779658d35"
     },
     {
       "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/InspectionDeletionTests.cs",
@@ -493,7 +493,7 @@
     {
       "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/InspectionLifecycleTests.cs",
       "role": "file",
-      "sha256": "cf28ace2a04a0edc02758d285ab6f8c0172cbcec9f361944fc14e3e0e7fceda6"
+      "sha256": "978adc8ad32b31295dd946113b4247bb29ad7a877fac2dde44f130d81ef38056"
     },
     {
       "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/InspectionPermissionSource.cs",
@@ -1208,7 +1208,7 @@
     {
       "path": "ai/vendor/known-limitations.json",
       "role": "file",
-      "sha256": "2c4ac5ed9c785384907a1413641750d77296378786fe27f465910736fbe1d996"
+      "sha256": "c7cad0da5151cf79b86daf056d498f70c7bee085ddff178660441f0f38fac447"
     },
     {
       "path": "ai/vendor/references/accounting.md",
@@ -1238,7 +1238,7 @@
     {
       "path": "ai/vendor/references/contracts/index.json",
       "role": "file",
-      "sha256": "349b7b76cc84690456c30d970b330c17f95330875f9999c0a2b76bbeded4fad3"
+      "sha256": "a1d1177229cac122ff40855b1021d56b708f8880dd6c02b8d1ba2672b4f24e6d"
     },
     {
       "path": "ai/vendor/references/contracts/NGB.Platform.Accounting.json",
@@ -1383,7 +1383,7 @@
     {
       "path": "ai/vendor/references/contracts/NGB.Platform.Runtime.json",
       "role": "file",
-      "sha256": "1f041abfc705cdb08b57ad235b22ac6d5e8255a5aa80b0751c2f26e0a5f7870d"
+      "sha256": "eca8d4f278462fe596fdf7b54b225aa9638ea41e639d26d3eaaa53d57d25f47a"
     },
     {
       "path": "ai/vendor/references/contracts/NGB.Platform.Tools.json",
@@ -1403,12 +1403,12 @@
     {
       "path": "ai/vendor/references/custom-document-actions.md",
       "role": "file",
-      "sha256": "ea7fe1a7674036691aa5e30fd2bd385106e4bea8b8ac8aba5ac6d52052ee91de"
+      "sha256": "4b1cac7f05fc8282a513e36ad76e1c90686e08d4e3d28e2c227950695e84b0ec"
     },
     {
       "path": "ai/vendor/references/documents.md",
       "role": "file",
-      "sha256": "cdd2d1c1aead9636dc6230b74fb3b5461526abd1f02a171d1412c72ddb98fb89"
+      "sha256": "e6a8191965fd89188641278ad87cb9dd1a9cd6b1a9c9dea8dd38c80c0f1bfc03"
     },
     {
       "path": "ai/vendor/references/errors.md",
@@ -1433,7 +1433,7 @@
     {
       "path": "ai/vendor/references/persistence.md",
       "role": "file",
-      "sha256": "fd1dea2c67f883625dc1c93a87ddd76cbdced3e39a465364c3abe771f7a0f610"
+      "sha256": "551ca6f331ac8d764f5f426f143e06e113d0daa63921987bebf0ea20b1fa07b8"
     },
     {
       "path": "ai/vendor/references/recovery.md",

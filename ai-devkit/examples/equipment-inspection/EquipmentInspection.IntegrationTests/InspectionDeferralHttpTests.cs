@@ -66,7 +66,7 @@ public sealed class InspectionDeferralHttpTests
         reads.Clear();
         using var repeated = await DeferAsync(client, path, version, "one-deferral", "Equipment unavailable");
         Assert.Equal(result.ExecutionId, (await ReadActionAsync(repeated)).ExecutionId);
-        Assert.Empty(reads);
+        Assert.Equal(before.Id, Assert.Single(reads));
         Assert.Equal(after.DateUtc, (await RecordAsync(host, path)).DateUtc);
         Assert.Single(await ActionsAsync(host, before.Id));
         using var stale = await DeferAsync(client, path, version, "stale-deferral", "Another request");

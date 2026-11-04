@@ -35,9 +35,12 @@ a date that cannot be advanced. It performs no repository or network calls.
 An editor-state query loads one fact set. An executed custom action may load the
 old state and the refreshed state separately; the example verifies two bounded
 reads for execution, not a false promise of one read for the entire request.
-Completed idempotent replay returns its saved result without rerunning the handler
-or fact loading. Existing replay observations are recorded separately in
-`known-limitations.json`; this example does not change that SDK behavior.
+Completed idempotent replay refreshes permissions and evaluates the action's
+authorization before returning its saved result. When a custom authorization
+evaluator is registered, the SDK loads the current document and one current fact
+set. It does not rerun the handler or availability evaluator. Keep facts bounded
+and free of side effects; the example verifies one fact read for an authorized
+repeat, an unchanged document and a single action audit entry.
 
 ## Transaction and verification
 
