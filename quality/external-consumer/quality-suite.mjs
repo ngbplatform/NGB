@@ -13,9 +13,10 @@ const certification = args[0] === '--certification'
 if (certification) args.shift()
 assert.ok(args.length <= 1 && !args[0]?.startsWith('--'), 'Usage: quality-suite.mjs [--certification] [identity.json]')
 const identityFile = args[0]
+const identity = identityFile ? JSON.parse(await readFile(identityFile, 'utf8')) : null
 const scope = certification ? 'external-app-certification' : 'full-platform-quality'
 const stage = identityFile
-  ? await checkpointRunner(artifacts, { ...JSON.parse(await readFile(identityFile, 'utf8')), scope })
+  ? await checkpointRunner(artifacts, { ...identity, scope })
   : async (name, operation) => {
     console.log(`[start] ${name}`)
     await operation()
@@ -57,7 +58,7 @@ for (const [gate, path] of Object.entries(reportPaths)) {
 }
 const reportName = certification ? 'certification-quality.json' : 'full-quality.json'
 await atomicJson(join(artifacts, 'certification', reportName), {
-  schemaVersion: 1, status: 'passed', scope, reports,
+  schemaVersion: 1, status: 'passed', scope, reports, artifactManifestSha256: identity?.artifactManifestSha256 ?? null,
   performance: certification
     ? 'Offline diagnostic/metric contracts passed; volume regression tests and live load profiles were not run.'
     : 'Existing volume regression tests and offline diagnostic/metric contracts passed.',

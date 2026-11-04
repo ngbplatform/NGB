@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <IsTestProject>true</IsTestProject>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="../EquipmentInspection.Definitions/EquipmentInspection.Definitions.csproj" />
+        <ProjectReference Include="../EquipmentInspection.Runtime/EquipmentInspection.Runtime.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="NGB.Platform.Core" Version="[$(NgbPlatformVersion)]" />
+        <PackageReference Include="NGB.Platform.Definitions" Version="[$(NgbPlatformVersion)]" />
+        <PackageReference Include="NGB.Platform.ReferenceRegisters" Version="[$(NgbPlatformVersion)]" />
+        <PackageReference Include="NGB.Platform.Tools" Version="[$(NgbPlatformVersion)]" />
+        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
+        <PackageReference Include="xunit" Version="2.9.3" />
+        <PackageReference Include="xunit.runner.visualstudio" Version="4.0.0" PrivateAssets="all" />
+        <PackageReference Include="coverlet.collector" Version="10.1.0" PrivateAssets="all" />
+    </ItemGroup>
+</Project>

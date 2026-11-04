@@ -84,7 +84,8 @@ before explicitly opting the upgraded external API into MCP. The opt-in adds
 the public package and host calls, uses the existing application's OAuth client
 and user with Authorization Code + PKCE, then reads preserved custom data and
 enabled content through MCP and checks that application tables remain unchanged.
-The frozen 3.2 source and ordinary upgrade behavior stay unchanged; upgrading
+The current transition uses the frozen 3.3.0 source and targets 3.4.0. Historical
+source fixtures and their provenance remain intact; upgrading
 alone does not enable MCP.
 
 Unsealed local runs are diagnostic evidence. The release runner reruns these

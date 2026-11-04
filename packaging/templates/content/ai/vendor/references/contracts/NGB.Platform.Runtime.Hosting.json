@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "package": "NGB.Platform.Runtime.Hosting",
+  "version": "3.4.0",
+  "packageSha256": "863aaa52f799b67b3fa32a51ce2b2deb14be8c7816dc434a55c942bc23289020",
+  "assembly": {
+    "name": "NGB.Runtime.Hosting",
+    "version": "3.0.0.0",
+    "sha256": "fa3e061e7df2a7278a91dfd291d2b390f8ae67eec5956e986bedc5d4e9e085f1"
+  },
+  "contractSha256": "31155b49d013a3e8663f4cde1ddefb66894f89d551b0e80556a492c77a9aa050",
+  "types": [
+    {
+      "name": "NGB.Runtime.Hosting.RuntimeHostingServiceCollectionExtensions",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "31155b49d013a3e8663f4cde1ddefb66894f89d551b0e80556a492c77a9aa050",
+      "methods": [
+        "AddNgbRuntimeStartupValidation"
+      ],
+      "fields": []
+    }
+  ]
+}

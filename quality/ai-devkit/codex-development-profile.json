@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "id": "codex-terminal-development-macos-arm64-v3",
+  "clientVersion": "0.166.0-alpha.5.1",
+  "model": "gpt-6.1-sol",
+  "reasoningEffort": "low",
+  "projectRootMarkers": [".git", "ngb.config.json"],
+  "maximumSecondsPerAttempt": 1800,
+  "maximumReportedTokensPerAttempt": 2000000,
+  "disabledFeatures": [
+    "apps",
+    "plugins",
+    "hooks",
+    "memories",
+    "multi_agent",
+    "multi_agent_v2",
+    "browser_use",
+    "computer_use",
+    "image_generation"
+  ],
+  "disabledPersonalSkills": [
+    "review-agent",
+    "skill-creator",
+    "skill-installer",
+    "openai-docs",
+    "imagegen"
+  ],
+  "authentication": "Existing ChatGPT subscription through the client's own login; API keys are not inherited or copied.",
+  "personalInstructionsSha256": "47cd305f489a74b44bff3f9acd325091ccef874667c19caac7ecf76665e37239",
+  "isolation": "Ignore personal configuration and execution rules; retain managed policy and the declared global formatting/PostgreSQL instructions. Native filesystem restrictions allow the fresh application, prepared public dependencies, pinned tools and private scratch paths. SDK checkout, sibling fixtures, credentials, shell network, approval escalation, MCP, plugins and delegation are unavailable. Official/custom guidance is read-only for these four development tasks.",
+  "buildPolicy": "Prepare exact candidate dependencies before inference. The agent may edit application source and build using isolated offline caches. The environment prompt supplies direct offline build/unit-test commands and explains why provisioning CLI profiles cannot run inside the restricted editing sandbox. Database, identity-provider and browser acceptance run independently after reviewing the produced source; the agent receives no private harness or acceptance feedback.",
+  "budget": "The subprocess and its descendants have a hard 1800-second deadline. Record total/cached input and output tokens. Reject more than 2000000 total reported tokens or 150000 uncached-input-plus-output tokens. These post-run acceptance ceilings are not guaranteed billing caps.",
+  "attemptPolicy": "One attempt for each declared task and working directory. No resume, automatic retry, human hints or acceptance-feedback repair. Retain failed attempts and freeze any future profile revision separately.",
+  "maximumUncachedInputAndOutputTokensPerAttempt": 150000
+}

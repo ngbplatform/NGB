@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "id": "codex-terminal-discovery-macos-arm64-v2",
+  "clientVersion": "0.165.0-alpha.1.2",
+  "model": "gpt-6.1-sol",
+  "reasoningEffort": "low",
+  "maximumSecondsPerAttempt": 300,
+  "maximumReportedTokensPerAttempt": 100000,
+  "disabledFeatures": [
+    "apps",
+    "plugins",
+    "hooks",
+    "memories",
+    "multi_agent",
+    "multi_agent_v2",
+    "browser_use",
+    "computer_use",
+    "image_generation"
+  ],
+  "disabledPersonalSkills": [
+    "review-agent",
+    "skill-creator",
+    "skill-installer",
+    "openai-docs",
+    "imagegen"
+  ],
+  "authentication": "Existing ChatGPT subscription through the client's own login; API keys are not inherited or copied.",
+  "personalInstructions": "Retain and privately snapshot the existing global AGENTS.md as a declared input. It contains only the user's PostgreSQL access and code-formatting rules; it supplies no NGB API facts or evaluation answers. Refuse if it changes during evaluation.",
+  "isolation": "Ignore user config and execution rules. Disable personal skills, plugins, apps, hooks, memory and delegation. Tool reads are restricted to the fresh fixture and minimal operating-system runtime; writes, shell network and approval escalation are unavailable. Keep mandatory organization policy.",
+  "budget": "The subprocess has a hard 300-second deadline. Codex CLI exposes no monetary cap; record token usage and fail the attempt if reported usage exceeds the frozen acceptance ceiling. This is not a guaranteed billing cap.",
+  "attemptPolicy": "One attempt per working directory, no conversation resume, automatic retry or human assistance. The frozen response schema describes only the output shape. This profile alone does not certify the full agent matrix."
+}

@@ -1,0 +1,87 @@
+{
+  "schemaVersion": 1,
+  "package": "NGB.Platform.Notes",
+  "version": "3.4.0",
+  "packageSha256": "2f8bd503d35d5ec3a683f8fca05b65b6b346316a719e0b5535382fa0159dd2a8",
+  "assembly": {
+    "name": "NGB.Notes",
+    "version": "3.0.0.0",
+    "sha256": "d87fc213e25085062f2c3b0aec61f56e8f1ef57e744fdec8d43b75b3dbb28e24"
+  },
+  "contractSha256": "44507d8f15b8ed6d57f832515e26df8bdadd6c0fd695d869f531cb5e25248ce2",
+  "types": [
+    {
+      "name": "NGB.Notes.INoteService",
+      "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
+      "contractSha256": "2faba14e14071425a97f7d03ea828060de8ab7a85e3ccf414bf5e8355d133fca",
+      "methods": [
+        "CreateAsync",
+        "DeleteAsync",
+        "ListAsync",
+        "UpdateAsync"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Notes.NoteException",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "2f48ee472e9b71ed71e74999ee5f6895def45c3dd2e1dccebe6790cc9422ee98",
+      "methods": [
+        ".ctor"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Notes.NoteOptions",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "4fa1379031dabadb0ae078a087fd90156f80c548a23ec16fda43350ab53a6dde",
+      "methods": [
+        ".ctor",
+        "IsValid",
+        "get_MaxTextLength",
+        "set_MaxTextLength"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Notes.NoteRecord",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "c46457a1d8759b8bfaa870a9e0c5bd46911c9293bb9d951f6ede2f061111e69a",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_CreatedAtUtc",
+        "get_CreatedByDisplayName",
+        "get_CreatedByUserId",
+        "get_DeletedAtUtc",
+        "get_DeletedByUserId",
+        "get_Id",
+        "get_IsDeleted",
+        "get_Target",
+        "get_Text",
+        "get_UpdatedAtUtc",
+        "get_UpdatedByUserId",
+        "get_Version",
+        "op_Equality",
+        "op_Inequality",
+        "set_CreatedAtUtc",
+        "set_CreatedByDisplayName",
+        "set_CreatedByUserId",
+        "set_DeletedAtUtc",
+        "set_DeletedByUserId",
+        "set_Id",
+        "set_IsDeleted",
+        "set_Target",
+        "set_Text",
+        "set_UpdatedAtUtc",
+        "set_UpdatedByUserId",
+        "set_Version"
+      ],
+      "fields": []
+    }
+  ]
+}

@@ -1,0 +1,557 @@
+{
+  "schemaVersion": 1,
+  "package": "NGB.Platform.BackgroundJobs",
+  "version": "3.4.0",
+  "packageSha256": "352970bcc65540543872194e8adc6d9b65948c83e1fb16fe0f884708597a55b4",
+  "assembly": {
+    "name": "NGB.BackgroundJobs",
+    "version": "3.0.0.0",
+    "sha256": "3294440222203d907b6738d9a9c5717aa6acbbd57ee47d3f2e83477925c0f36f"
+  },
+  "contractSha256": "925e7f6097a0c069e556b1779eaccc11e9ff0294cd8172b736b91af6bcd9d99e",
+  "types": [
+    {
+      "name": "NGB.BackgroundJobs.Catalog.BackgroundJobCatalog",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "7e162472aca1c147174bc3a7a3c1a7742e46b1402a9d3fb121480c75fa4fdb3f",
+      "methods": [
+        ".ctor",
+        "get_All"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.BackgroundJobs.Catalog.IBackgroundJobCatalog",
+      "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
+      "contractSha256": "592bfb9f3df4f0463ee8b6cf8ecc5580bb1506b70e464436ce4afc858594fa4d",
+      "methods": [
+        "get_All"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.BackgroundJobs.Catalog.IBackgroundJobCatalogContributor",
+      "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
+      "contractSha256": "af1bff2a02bf4cc4784ea092ea402f484307dac09cd823f926fc87cfd05e9eae",
+      "methods": [
+        "GetJobIds"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.BackgroundJobs.Catalog.PlatformJobCatalog",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "f8fba456c98cea3016219f783a75a36d5beba6331d7d0537c43beface1a0fe08",
+      "methods": [],
+      "fields": [
+        "AccountingAggregatesDriftCheck",
+        "AccountingGeneralJournalEntryAutoReversePostDue",
+        "AccountingIntegrityScan",
+        "AccountingOperationsStuckMonitor",
+        "All",
+        "AuditHealth",
+        "NightlyPack",
+        "OperationalRegistersEnsureSchema",
+        "OperationalRegistersFinalizationRunDirtyMonths",
+        "PlatformSchemaValidate",
+        "ReferenceRegistersEnsureSchema"
+      ]
+    },
+    {
+      "name": "NGB.BackgroundJobs.Configuration.BackgroundJobsSchedulesOptions",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "521c232fcd3e1e2aadcadcfec13a88ebd269ef0c887bb8bbef46aa6bea2d8546",
+      "methods": [
+        ".ctor",
+        "get_DefaultTimeZoneId",
+        "get_Enabled",
+        "get_Jobs",
+        "get_NightlyCron",
+        "get_NightlyExcludedJobIds",
+        "set_DefaultTimeZoneId",
+        "set_Enabled",
+        "set_Jobs",
+        "set_NightlyCron",
+        "set_NightlyExcludedJobIds"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.BackgroundJobs.Configuration.ConfigurationJobScheduleProvider",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "21b08f3a428b739acca6d6a8c713a215443ccbd292e7634d24906259344377ee",
+      "methods": [
+        ".ctor",
+        "GetSchedule"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.BackgroundJobs.Configuration.JobScheduleOptions",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "87db92677911835ad00b03cf122b4d2abd42abf267b8d3bedd9c49b0ac443969",
+      "methods": [
+        ".ctor",
+        "get_Cron",
+        "get_Enabled",
+        "get_TimeZoneId",
+        "set_Cron",
+        "set_Enabled",
+        "set_TimeZoneId"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.BackgroundJobs.Contracts.BackgroundJobHealthRow",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "0c83808a482c29cb44756f1961cebaf92089387a1fbc58c9559f2f9e09a4d5b6",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_DesiredCron",
+        "get_DesiredEnabled",
+        "get_DesiredTimeZoneId",
+        "get_Error",
+        "get_HangfireCron",
+        "get_HangfireTimeZoneId",
+        "get_IsHangfireRegistered",
+        "get_IsMisconfigured",
+        "get_JobId",
+        "get_LastExecutionUtc",
+        "get_LastJobState",
+        "get_NextExecutionUtc",
+        "op_Equality",
+        "op_Inequality",
+        "set_DesiredCron",
+        "set_DesiredEnabled",
+        "set_DesiredTimeZoneId",
+        "set_Error",
+        "set_HangfireCron",
+        "set_HangfireTimeZoneId",
+        "set_IsHangfireRegistered",
+        "set_IsMisconfigured",
+        "set_JobId",
+        "set_LastExecutionUtc",
+        "set_LastJobState",
+        "set_NextExecutionUtc"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.BackgroundJobs.Contracts.BackgroundJobsHealthReport",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "f32ef559a3ca3d0fa0ed57c9d69a44214ee30be4167baf98c2b028e4c52437a2",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_CatalogJobCount",
+        "get_DesiredEnabledCount",
+        "get_GeneratedAtUtc",
+        "get_HangfireRegisteredCount",
+        "get_Jobs",
+        "get_MisconfiguredCount",
+        "op_Equality",
+        "op_Inequality",
+        "set_CatalogJobCount",
+        "set_DesiredEnabledCount",
+        "set_GeneratedAtUtc",
+        "set_HangfireRegisteredCount",
+        "set_Jobs",
+        "set_MisconfiguredCount"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.BackgroundJobs.Contracts.IBackgroundJobsHealthReporter",
+      "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
+      "contractSha256": "929766a321ab3c97cbb3eecef0c48e3d175b1330b0a3eaf93208deab50cf227c",
+      "methods": [
+        "GetReportAsync"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.BackgroundJobs.Contracts.IJobRunMetrics",
+      "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
+      "contractSha256": "8e5e017aafabc715ae158b7e86263c81732517602488e16fcabc58af644c8d8c",
+      "methods": [
+        "Increment",
+        "Set",
+        "Snapshot"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.BackgroundJobs.Contracts.IJobScheduleProvider",
+      "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
+      "contractSha256": "62ab348404525f3c0d4e83045aeec046e676a98e512198e97596ac59dc03a89e",
+      "methods": [
+        "GetSchedule"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.BackgroundJobs.Contracts.IPlatformBackgroundJob",
+      "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
+      "contractSha256": "954a0f89e45bf60504a149c2a7a95ff2255196c1b5884a4aa43257988c6d2f07",
+      "methods": [
+        "RunAsync",
+        "get_JobId"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.BackgroundJobs.Contracts.IPlatformJobNotifier",
+      "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
+      "contractSha256": "0a831b5cc74a144c55b58114459997412d800843e575720c0a5a0f6594fb270b",
+      "methods": [
+        "NotifyAsync"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.BackgroundJobs.Contracts.JobSchedule",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "aee2d459518a0171756b57d515521f7e8c67e7e735093ea23d8678e361e91c12",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_Cron",
+        "get_Enabled",
+        "get_JobId",
+        "get_TimeZoneId",
+        "op_Equality",
+        "op_Inequality",
+        "set_Cron",
+        "set_Enabled",
+        "set_JobId",
+        "set_TimeZoneId"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.BackgroundJobs.Contracts.PlatformJobRunOutcome",
+      "attributes": "Public, Sealed",
+      "contractSha256": "d58695c15a0978494518881480be78c01b7f6ac3816a7e2f3485c2c011f3e868",
+      "methods": [],
+      "fields": [
+        "Cancelled",
+        "Failed",
+        "SkippedNoImplementation",
+        "SkippedOverlap",
+        "Succeeded",
+        "value__"
+      ]
+    },
+    {
+      "name": "NGB.BackgroundJobs.Contracts.PlatformJobRunResult",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "051f56115ca04243749f2e56ebd09bb85ec47db61d9baf5f7860de5df9281d7a",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_Counters",
+        "get_DurationMs",
+        "get_Error",
+        "get_FinishedUtc",
+        "get_HasProblems",
+        "get_JobId",
+        "get_Outcome",
+        "get_RunId",
+        "get_StartedUtc",
+        "op_Equality",
+        "op_Inequality",
+        "set_Counters",
+        "set_DurationMs",
+        "set_Error",
+        "set_FinishedUtc",
+        "set_JobId",
+        "set_Outcome",
+        "set_RunId",
+        "set_StartedUtc"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.BackgroundJobs.DependencyInjection.NullPlatformJobNotifier",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "8def30ef48795f53c82e1bbcfed08774c8b9d55b0507433551d641afdea264b4",
+      "methods": [
+        ".ctor",
+        "NotifyAsync"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.BackgroundJobs.DependencyInjection.PlatformBackgroundJobsSchedulingServiceCollectionExtensions",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "fe108dbe31263e36addcca13df21333efc44645173d7827b80d4080e590eb7f9",
+      "methods": [
+        "AddPlatformBackgroundJobSchedulesFromConfiguration"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.BackgroundJobs.DependencyInjection.PlatformBackgroundJobsServiceCollectionExtensions",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "90de54c0ec2966fc1971b79e2aa49329cb5dce2854a2d4a15236653c58e01c05",
+      "methods": [
+        "AddPlatformBackgroundJobsHangfire"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.BackgroundJobs.DependencyInjection.PlatformHangfireOptions",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "09ae4af5b8576091bd47cdfd47fcac994bfe51e92917dbd94a359ef4498ff715",
+      "methods": [
+        ".ctor",
+        "get_ConnectionString",
+        "get_DistributedLockTimeoutSeconds",
+        "get_Queues",
+        "get_ServerName",
+        "get_StorageNamespace",
+        "get_WorkerCount",
+        "set_ConnectionString",
+        "set_DistributedLockTimeoutSeconds",
+        "set_Queues",
+        "set_ServerName",
+        "set_StorageNamespace",
+        "set_WorkerCount"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.BackgroundJobs.Hosting.BackgroundJobsHostingBootstrap",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "378f7d24017dcbcf5e3b927094b31124f91231dff71bd82db7f281ce7100fef1",
+      "methods": [
+        ".ctor",
+        "EnsureInfrastructureAsync",
+        "get_ApplicationConnectionString",
+        "get_HangfireConnectionString",
+        "get_Options"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.BackgroundJobs.Hosting.BackgroundJobsHostingExtensions",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "774ca694c4dbba68902b1b2f90014526c2ff89d22faaf5f8dad6c202c09451bc",
+      "methods": [
+        "AddNgbBackgroundJobs",
+        "MapNgbBackgroundJobs",
+        "UseNgbBackgroundJobs"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.BackgroundJobs.Hosting.BackgroundJobsHostingOptions",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "a513c80a0aeb637c0e29b1d1b43effbc18c9dc15791fd28e9a08bb574f79c548",
+      "methods": [
+        ".ctor",
+        "AddCustomStylesheet",
+        "get_AdminConsoleCallbackPath",
+        "get_AdminConsolePublicOrigin",
+        "get_ApplicationConnectionStringName",
+        "get_BackgroundJobsSectionName",
+        "get_DashboardBrandSubtitle",
+        "get_DashboardPath",
+        "get_DashboardStylesheetPaths",
+        "get_DashboardTitle",
+        "get_DistributedLockTimeoutSeconds",
+        "get_HangfireConnectionStringName",
+        "get_HangfireHealthCheckMaximumFailedJobs",
+        "get_HangfireHealthCheckName",
+        "get_HangfireStorageNamespace",
+        "get_HealthPath",
+        "get_MapAccountEndpoints",
+        "get_PostgresHealthCheckName",
+        "get_PrepareHangfireSchemaIfNecessary",
+        "get_Queues",
+        "get_RequireDashboardAuthorization",
+        "get_ServerName",
+        "get_WorkerCount",
+        "set_AdminConsoleCallbackPath",
+        "set_AdminConsolePublicOrigin",
+        "set_ApplicationConnectionStringName",
+        "set_BackgroundJobsSectionName",
+        "set_DashboardBrandSubtitle",
+        "set_DashboardPath",
+        "set_DashboardTitle",
+        "set_DistributedLockTimeoutSeconds",
+        "set_HangfireConnectionStringName",
+        "set_HangfireHealthCheckMaximumFailedJobs",
+        "set_HangfireHealthCheckName",
+        "set_HangfireStorageNamespace",
+        "set_HealthPath",
+        "set_MapAccountEndpoints",
+        "set_PostgresHealthCheckName",
+        "set_PrepareHangfireSchemaIfNecessary",
+        "set_RequireDashboardAuthorization",
+        "set_ServerName",
+        "set_WorkerCount"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.BackgroundJobs.Hosting.BackgroundJobStorageFactory",
+      "attributes": "Public, Sealed",
+      "contractSha256": "bd1d82c4e02846d39aabd3ee7571a0dc5d78486c91d725550e71bddbbcfefd84",
+      "methods": [
+        ".ctor",
+        "BeginInvoke",
+        "EndInvoke",
+        "Invoke"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.BackgroundJobs.Infrastructure.HangfireDashboardAuthorizationFilter",
+      "attributes": "Public, BeforeFieldInit",
+      "contractSha256": "53af1cc2a62091855286904b3f01271953cea00c4ef334731b6dd23231fbe9de",
+      "methods": [
+        ".ctor",
+        "Authorize"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.BackgroundJobs.Infrastructure.PlatformHangfireJobRunner",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "64819f96ec6e9a40cfb9a3e366b52aeca0f7008e23d80e8223afd9c92608d272",
+      "methods": [
+        ".ctor",
+        "RunAsync"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.BackgroundJobs.Infrastructure.PlatformHangfireRecurringJobsHostedService",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "a12b2c9ee8e6b13864b8de3e254c4e33101d961463fb3ba81afae19d46495b19",
+      "methods": [
+        ".ctor",
+        "StartAsync",
+        "StopAsync"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.BackgroundJobs.Jobs.AccountingAggregatesDriftCheckJob",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "2c2fe8af3ecd1f066d21ae6c40bc8e2cdfed3800c3fdb4d19df994a3066e5fb8",
+      "methods": [
+        ".ctor",
+        "RunAsync",
+        "get_JobId"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.BackgroundJobs.Jobs.AccountingIntegrityScanJob",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "67e93a94b2c63bdd3397207a570e900737dcd72269dc4aeddf919d2722d95481",
+      "methods": [
+        ".ctor",
+        "RunAsync",
+        "get_JobId"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.BackgroundJobs.Jobs.AccountingOperationsStuckMonitorJob",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "90234b78c9f6f1c23f95200fdddb3c9fe36b63cc8fc4fd028c53fe93d6b2eb2b",
+      "methods": [
+        ".ctor",
+        "RunAsync",
+        "get_JobId"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.BackgroundJobs.Jobs.AuditHealthJob",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "042b978690b958eb3e96cb1ae16d4baa8a86257a680be5bded73f41a218fd528",
+      "methods": [
+        ".ctor",
+        "RunAsync",
+        "get_JobId"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.BackgroundJobs.Jobs.GeneralJournalEntryAutoReversePostingJob",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "0f0971a12d6e52a53ae58fb2b68301c6236b88033571be4ce8b5e1b30ebe8db5",
+      "methods": [
+        ".ctor",
+        "RunAsync",
+        "get_JobId"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.BackgroundJobs.Jobs.OperationalRegistersEnsureSchemaJob",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "c296c753b587ca0139f40155521e91420fe7ce0acc112524a5e495fe81b9d811",
+      "methods": [
+        ".ctor",
+        "RunAsync",
+        "get_JobId"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.BackgroundJobs.Jobs.OperationalRegistersFinalizeDirtyMonthsJob",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "f486ca861c75718541c0fe7c264091f429abeddca9909e20a4d9315c487fc34d",
+      "methods": [
+        ".ctor",
+        "RunAsync",
+        "get_JobId"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.BackgroundJobs.Jobs.PlatformSchemaValidateJob",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "e61b9a36b799c3b20b9ab0f21035f0409829581addb9556768b3a08f13a6920c",
+      "methods": [
+        ".ctor",
+        "RunAsync",
+        "get_JobId"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.BackgroundJobs.Jobs.ReferenceRegistersEnsureSchemaJob",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "2817d8de6204552a60ec84d5d2472c66071648879527ed338ba99a99834eb05e",
+      "methods": [
+        ".ctor",
+        "RunAsync",
+        "get_JobId"
+      ],
+      "fields": []
+    }
+  ]
+}

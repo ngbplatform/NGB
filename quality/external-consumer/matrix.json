@@ -1,9 +1,9 @@
 {
-  "schemaVersion": 2,
-  "source": "3.2.0",
-  "target": "3.3.0",
-  "sourceFixture": "quality/upgrade-certification/fixtures/3.2.0",
-  "sourceManifest": "quality/upgrade-certification/source-3.2.0.json",
+  "schemaVersion": 3,
+  "source": "3.3.0",
+  "target": "3.4.0",
+  "sourceFixture": "quality/upgrade-certification/fixtures/3.3.0",
+  "sourceManifest": "quality/upgrade-certification/source-3.3.0.json",
   "baselines": "packaging/nuget/baselines.json",
   "infrastructure": {
     "postgres": "postgres:18.3-alpine",
@@ -39,7 +39,7 @@
   "profiles": {
     "clean-starter": {
       "source": null,
-      "target": "3.3.0",
+      "target": "3.4.0",
       "minio": false,
       "assertions": [
         "isolation",
@@ -54,7 +54,7 @@
     },
     "generated-extension": {
       "source": null,
-      "target": "3.3.0",
+      "target": "3.4.0",
       "minio": false,
       "assertions": [
         "isolation",
@@ -69,10 +69,11 @@
       ]
     },
     "core-upgrade": {
-      "source": "3.2.0",
-      "target": "3.3.0",
+      "source": "3.3.0",
+      "target": "3.4.0",
       "minio": false,
       "assertions": [
+        "coordinatedCliKitUpgrade",
         "isolation",
         "registeredPlatformJob",
         "realBrowserRoleLifecycle",
@@ -90,10 +91,11 @@
       ]
     },
     "notes-upgrade": {
-      "source": "3.2.0",
-      "target": "3.3.0",
+      "source": "3.3.0",
+      "target": "3.4.0",
       "minio": false,
       "assertions": [
+        "coordinatedCliKitUpgrade",
         "isolation",
         "registeredPlatformJob",
         "realBrowserRoleLifecycle",
@@ -113,10 +115,11 @@
       ]
     },
     "attachments-upgrade": {
-      "source": "3.2.0",
-      "target": "3.3.0",
+      "source": "3.3.0",
+      "target": "3.4.0",
       "minio": true,
       "assertions": [
+        "coordinatedCliKitUpgrade",
         "isolation",
         "registeredPlatformJob",
         "realBrowserRoleLifecycle",
@@ -365,6 +368,93 @@
         "actualFourApiHosts",
         "installedSurfaceParity",
         "nativeMcpClient"
+      ]
+    },
+    {
+      "id": "ai-kit-artifacts",
+      "blocks": "candidate",
+      "command": "node quality/ai-devkit/certify.mjs artifacts <candidate>",
+      "assertions": [
+        "shared-cli-parity",
+        "kit-payload",
+        "public-contract-inventory",
+        "package-identities"
+      ]
+    },
+    {
+      "id": "ai-kit-contracts",
+      "blocks": "candidate",
+      "command": "node quality/ai-devkit/certify.mjs contracts <candidate>",
+      "assertions": [
+        "tooling-coverage",
+        "source-inventory",
+        "process-failures",
+        "architecture",
+        "reference-links"
+      ]
+    },
+    {
+      "id": "ai-kit-independent-app",
+      "blocks": "candidate",
+      "command": "node quality/ai-devkit/certify.mjs application <candidate>",
+      "assertions": [
+        "public-sdk-only",
+        "capability-workflows",
+        "real-http-browser",
+        "coverage",
+        "performance"
+      ]
+    },
+    {
+      "id": "ai-kit-upgrade",
+      "blocks": "candidate",
+      "command": "node quality/ai-devkit/certify.mjs upgrade <candidate>",
+      "assertions": [
+        "frozen-3.3-source",
+        "coordinated-cli-kit-upgrade",
+        "customization-preservation",
+        "rollback-and-recovery"
+      ]
+    },
+    {
+      "id": "ai-kit-agents",
+      "blocks": "candidate",
+      "command": "node quality/ai-devkit/certify.mjs agents <candidate>",
+      "assertions": [
+        "codex-and-claude",
+        "versioned-compatibility-matrix",
+        "frozen-task-evaluations",
+        "independent-acceptance"
+      ]
+    },
+    {
+      "id": "full-backend-coverage",
+      "blocks": "candidate",
+      "command": "bash run-backend-full-coverage.sh",
+      "assertions": [
+        "platform-and-four-applications",
+        "per-file-lines-branches-methods-100",
+        "complete-source-discovery"
+      ]
+    },
+    {
+      "id": "full-frontend-coverage",
+      "blocks": "candidate",
+      "command": "bash run-frontend-full-coverage.sh",
+      "assertions": [
+        "shared-ui-and-four-applications",
+        "per-file-lines-branches-functions-statements-100",
+        "required-e2e-not-skipped"
+      ]
+    },
+    {
+      "id": "full-quality",
+      "blocks": "candidate",
+      "command": "bash run-full-quality.sh",
+      "assertions": [
+        "all-required-suites",
+        "runtime-regressions",
+        "candidate-bound-evidence"
       ]
     }
   ]

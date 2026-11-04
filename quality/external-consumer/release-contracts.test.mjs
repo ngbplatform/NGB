@@ -6,7 +6,7 @@ import test from 'node:test'
 import { strToU8, zipSync } from 'fflate'
 import {
   artifactIdentity, assertArtifactIdentity, assertArtifactInventory, assertTemplatePackage, canonicalNugetPayload,
-  digest, templateContentExcludes, validateMatrix,
+  digest, includesAiKit, templateContentExcludes, validateMatrix,
 } from './release-contracts.mjs'
 
 const zip = entries => zipSync(Object.fromEntries(Object.entries(entries).map(([name, text]) => [name, strToU8(text)])))
@@ -128,7 +128,12 @@ test('artifact inventory classifies templates separately and rejects missing or 
 test('matrix binds all mandatory gates, stages, exact versions and profiles', async () => {
   const matrix = JSON.parse(await readFile(new URL('./matrix.json', import.meta.url), 'utf8'))
   validateMatrix(matrix)
-  assert.equal(matrix.gates.filter(gate => gate.blocks === 'candidate').length, 22)
+  for (const id of ['core-upgrade', 'notes-upgrade', 'attachments-upgrade']) {
+    const incomplete = structuredClone(matrix)
+    incomplete.profiles[id].assertions = incomplete.profiles[id].assertions.filter(value => value !== 'coordinatedCliKitUpgrade')
+    assert.throws(() => validateMatrix(incomplete), /Missing coordinated CLI\/Kit upgrade assertion/)
+  }
+  assert.equal(matrix.gates.filter(gate => gate.blocks === 'candidate').length, 30)
   for (const id of ['backend-quality', 'frontend-quality', 'regression-quality']) {
     assert.ok(!matrix.gates.some(gate => gate.id === id))
     const stale = structuredClone(matrix)
@@ -161,9 +166,26 @@ test('historical 3.2 certification retains all original gates and 3.3 cannot dro
   const prior = JSON.parse(await readFile(new URL('./history/matrix-3.2.0.json', import.meta.url), 'utf8'))
   validateMatrix(prior)
   assert.equal(prior.gates.length, 21)
-  const current = JSON.parse(await readFile(new URL('./matrix.json', import.meta.url), 'utf8'))
+  const current = JSON.parse(await readFile(new URL('./history/matrix-3.3.0.json', import.meta.url), 'utf8'))
+  validateMatrix(current)
   current.schemaVersion = 1
   assert.throws(() => validateMatrix(current), /MCP gates are mandatory/)
+})
+
+test('AI Kit releases require both npm artifacts and all Kit and complete regression gates', async () => {
+  assert.equal(includesAiKit('3.3.0'), false)
+  assert.equal(includesAiKit('2.9.0'), false)
+  assert.equal(includesAiKit('3.4.0'), true)
+  assert.equal(includesAiKit('4.0.0'), true)
+  const matrix = JSON.parse(await readFile(new URL('./matrix.json', import.meta.url), 'utf8'))
+  validateMatrix(matrix)
+  assert.throws(() => validateMatrix({ ...matrix, schemaVersion: 2 }), /AI Kit and full regression/)
+  const inventory = { target: '3.4.0', packages: [{ id: 'T', kind: 'template' }] }
+  const manifest = { schemaVersion: 1, version: '3.4.0', artifacts: [
+    'nuget-release/T.3.4.0.nupkg', 'npm/ngbplatform-ui-3.4.0.tgz', 'npm/ngbplatform-cli-3.4.0.tgz',
+  ].map(path => ({ path })) }
+  assertArtifactInventory(manifest, inventory)
+  assert.throws(() => assertArtifactInventory({ ...manifest, artifacts: manifest.artifacts.slice(0, -1) }, inventory), /incomplete/)
 })
 
 test('every MCP upgrade profile must prove opt-in and persistent read-only state', async () => {

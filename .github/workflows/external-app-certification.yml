@@ -39,6 +39,7 @@ jobs:
           node ui/scripts/pack-platform-ui.mjs --local-candidate
           bash packaging/nuget/pack-platform.sh
           bash packaging/nuget/verify-platform-packages.sh
+          time node packaging/cli/pack.mjs
           node quality/external-consumer/release.mjs seal
       - name: Certify the immutable candidate
         run: node quality/external-consumer/release.mjs certify
@@ -57,6 +58,7 @@ jobs:
           path: |
             artifacts/certification/
             artifacts/coverage/
+            artifacts/ai-devkit/
             artifacts/release-candidate/certification/
             artifacts/release-candidate/run-state.json
           retention-days: 7

@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "id": "codex-terminal-upgrade-macos-arm64-v2",
+  "clientVersion": "0.166.0-alpha.5.1",
+  "model": "gpt-6.1-sol",
+  "reasoningEffort": "low",
+  "maximumSecondsPerAttempt": 1800,
+  "maximumReportedTokensPerAttempt": 2000000,
+  "disabledFeatures": [
+    "apps",
+    "plugins",
+    "hooks",
+    "memories",
+    "multi_agent",
+    "multi_agent_v2",
+    "browser_use",
+    "computer_use",
+    "image_generation"
+  ],
+  "disabledPersonalSkills": [
+    "review-agent",
+    "skill-creator",
+    "skill-installer",
+    "openai-docs",
+    "imagegen"
+  ],
+  "authentication": "Existing ChatGPT subscription through the client's own login; API keys are not inherited or copied.",
+  "personalInstructionsSha256": "47cd305f489a74b44bff3f9acd325091ccef874667c19caac7ecf76665e37239",
+  "isolation": "The frozen 3.3.0 application and private scratch are writable; supplied target CLI and candidate are read-only. The native sandbox permits only public NuGet/npm registry hosts, denies the SDK checkout and unrelated home/temp files, and allows the .NET runtime shared-memory/lock directories required for first-run restore. No Docker, personal MCP servers, hooks, web tools or delegation. The task explicitly permits managed instruction/adaptor updates; independent acceptance verifies exact ownership and source preservation. Explicit write grants cover only the application skill directories needed by the upgrade; Git and client configuration remain read-only.",
+  "buildPolicy": "The target CLI performs the upgrade and lock regeneration in its private temporary staging area. Third-party dependencies may restore from the two declared public registry hosts; NGB package identities must match the supplied immutable candidate. Preflight proves transport and filesystem boundaries before any inference; the independent oracle performs clean locked builds afterward.",
+  "budget": "The subprocess and its descendants have a hard 1800-second deadline. Record total/cached input and output tokens. Reject more than 2000000 total reported tokens or 150000 uncached-input-plus-output tokens. These post-run acceptance ceilings are not guaranteed billing caps.",
+  "attemptPolicy": "One attempt for each declared task and working directory. No resume, automatic retry, human hints or acceptance-feedback repair. Retain failed attempts and freeze any future profile revision separately.",
+  "maximumUncachedInputAndOutputTokensPerAttempt": 150000,
+  "networkDomains": [
+    "api.nuget.org",
+    "registry.npmjs.org"
+  ],
+  "runtimeDirectories": [
+    "/private/tmp/.dotnet/shm",
+    "/private/tmp/.dotnet/lockfiles"
+  ],
+  "managedSkillDirectories": [
+    ".agents/skills",
+    ".claude/skills"
+  ]
+}

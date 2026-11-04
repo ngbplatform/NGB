@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+    <ItemGroup>
+        <ProjectReference Include="../EquipmentInspection.Runtime/EquipmentInspection.Runtime.csproj" />
+        <ProjectReference Include="../EquipmentInspection.PostgreSql/EquipmentInspection.PostgreSql.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="NGB.Platform.BackgroundJobs" Version="[$(NgbPlatformVersion)]" />
+        <PackageReference Include="NGB.Platform.BackgroundJobs.PostgreSql" Version="[$(NgbPlatformVersion)]" />
+        <PackageReference Include="NGB.Platform.PostgreSql" Version="[$(NgbPlatformVersion)]" />
+        <PackageReference Include="NGB.Platform.PostgreSql.AspNetCore" Version="[$(NgbPlatformVersion)]" />
+        <PackageReference Include="NGB.Platform.Runtime" Version="[$(NgbPlatformVersion)]" />
+        <PackageReference Include="NGB.Platform.Runtime.Hosting" Version="[$(NgbPlatformVersion)]" />
+        <PackageReference Include="Serilog.Sinks.Console" Version="6.1.1" />
+    </ItemGroup>
+</Project>

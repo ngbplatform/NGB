@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "package": "NGB.Platform.AiAssistant.OpenAI",
+  "version": "3.4.0",
+  "packageSha256": "1e05a8c932c237d9a0a9949a685e33b52437696c2951d2c6953190ecc3aab9bf",
+  "assembly": {
+    "name": "NGB.AiAssistant.OpenAI",
+    "version": "3.0.0.0",
+    "sha256": "c1fd8d3c96fc2acd635aa15d3c762951df065ffb7ace8b0a358a00462002745c"
+  },
+  "contractSha256": "ae0c212c4ff6b71580a3bc7b4742281436d4c36a0bd9759fc3c26e0807d9331e",
+  "types": [
+    {
+      "name": "NGB.AiAssistant.OpenAI.DependencyInjection",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "46fc1ad174914a7eabf56cc78ce50b17bc686f7aa294517759e33fe6ef07f77c",
+      "methods": [
+        "AddNgbOpenAiChatClient"
+      ],
+      "fields": [
+        "HttpClientName"
+      ]
+    },
+    {
+      "name": "NGB.AiAssistant.OpenAI.OpenAiAssistantOptions",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "20222611ee248ffc0e5eb3f25acecb6ad7f74d16fdab7077722b17876a266265",
+      "methods": [
+        ".ctor",
+        "get_ApiKey",
+        "get_Endpoint",
+        "get_Model",
+        "set_ApiKey",
+        "set_Endpoint",
+        "set_Model"
+      ],
+      "fields": [
+        "SectionName"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+    <ItemGroup>
+        <ProjectReference Include="../EquipmentInspection.Definitions/EquipmentInspection.Definitions.csproj" />
+        <ProjectReference Include="../EquipmentInspection.Runtime/EquipmentInspection.Runtime.csproj" />
+        <ProjectReference Include="../EquipmentInspection.PostgreSql/EquipmentInspection.PostgreSql.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="NGB.Platform.AiAssistant.AspNetCore" Version="[$(NgbPlatformVersion)]" />
+        <PackageReference Include="NGB.Platform.AiAssistant.OpenAI" Version="[$(NgbPlatformVersion)]" />
+        <PackageReference Include="NGB.Platform.AiAssistant.Anthropic" Version="[$(NgbPlatformVersion)]" />
+        <PackageReference Include="NGB.Platform.AiAssistant.Bedrock" Version="[$(NgbPlatformVersion)]" />
+        <PackageReference Include="NGB.Platform.AiAssistant.Ollama" Version="[$(NgbPlatformVersion)]" />
+        <PackageReference Include="NGB.Platform.Api" Version="[$(NgbPlatformVersion)]" />
+        <PackageReference Include="NGB.Platform.Application.Abstractions" Version="[$(NgbPlatformVersion)]" />
+        <PackageReference Include="NGB.Platform.Attachments.MinIO" Version="[$(NgbPlatformVersion)]" />
+        <PackageReference Include="NGB.Platform.Definitions" Version="[$(NgbPlatformVersion)]" />
+        <PackageReference Include="NGB.Platform.Mcp.AspNetCore" Version="[$(NgbPlatformVersion)]" />
+        <PackageReference Include="NGB.Platform.Hosting.AspNetCore" Version="[$(NgbPlatformVersion)]" />
+        <PackageReference Include="NGB.Platform.PostgreSql" Version="[$(NgbPlatformVersion)]" />
+        <PackageReference Include="NGB.Platform.PostgreSql.AspNetCore" Version="[$(NgbPlatformVersion)]" />
+        <PackageReference Include="NGB.Platform.Runtime" Version="[$(NgbPlatformVersion)]" />
+        <PackageReference Include="NGB.Platform.Runtime.Hosting" Version="[$(NgbPlatformVersion)]" />
+    </ItemGroup>
+</Project>

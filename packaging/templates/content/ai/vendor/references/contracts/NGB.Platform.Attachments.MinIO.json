@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "package": "NGB.Platform.Attachments.MinIO",
+  "version": "3.4.0",
+  "packageSha256": "5883bafe2c78ae9da786dbe9a67bf124ffda3cdd5b3634017d6aa27dfe8d8243",
+  "assembly": {
+    "name": "NGB.Attachments.MinIO",
+    "version": "3.0.0.0",
+    "sha256": "d7ce9c734d049fc8ce9d89a29bf099c327621093be46efec1cace94ce121405f"
+  },
+  "contractSha256": "41a9cdf5ef9880d09c6fccd1848af5f2d16b9df3f442e16d342100bdf62ae624",
+  "types": [
+    {
+      "name": "NGB.Attachments.MinIO.MinioAttachmentOptions",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "0d27cb6e80f74b9aba50bbb0b4b8d422fd032013d5c019d489403936f3a1600d",
+      "methods": [
+        ".ctor",
+        "IsValid",
+        "get_AccessKey",
+        "get_AllowInsecureHttp",
+        "get_Bucket",
+        "get_InternalEndpoint",
+        "get_PublicEndpoint",
+        "get_Region",
+        "get_RequestTimeoutSeconds",
+        "get_SecretKey",
+        "set_AccessKey",
+        "set_AllowInsecureHttp",
+        "set_Bucket",
+        "set_InternalEndpoint",
+        "set_PublicEndpoint",
+        "set_Region",
+        "set_RequestTimeoutSeconds",
+        "set_SecretKey"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Attachments.MinIO.MinioAttachmentServiceCollectionExtensions",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "d88da68c0c68e827dd6a47703ab3acd2d079a113e6af23c5b39bf98c09e1e048",
+      "methods": [
+        "AddNgbMinioAttachments"
+      ],
+      "fields": []
+    }
+  ]
+}

@@ -1,0 +1,556 @@
+{
+  "schemaVersion": 1,
+  "package": "NGB.Platform.ReferenceRegisters",
+  "version": "3.4.0",
+  "packageSha256": "5d90aff244aa8be80d259f3cc689f29a1ab9ad242dae332fdd959fd6b99db163",
+  "assembly": {
+    "name": "NGB.ReferenceRegisters",
+    "version": "3.0.0.0",
+    "sha256": "953053a84bd61f9529fc88fae297761b23db21101ed759f1b7b8e79bb90d72f0"
+  },
+  "contractSha256": "4e62f2f0a0926218af1cc8c58694dda7448ee7066fe0802322e833f6cbf432d9",
+  "types": [
+    {
+      "name": "NGB.ReferenceRegisters.Contracts.IReferenceRegisterRecordsBuilder",
+      "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
+      "contractSha256": "30fbc42e35d200e369c46d89d47c69232ab47b17a0a61e9417fa596396c4e684",
+      "methods": [
+        "Add"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.ReferenceRegisters.Contracts.ReferenceRegisterAdminDetails",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "adb14b3e2bb0fcfbedca2bafd54117d30f7572d724f9d488bacebe294cabede4",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_DimensionRules",
+        "get_Fields",
+        "get_Register",
+        "op_Equality",
+        "op_Inequality",
+        "set_DimensionRules",
+        "set_Fields",
+        "set_Register"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.ReferenceRegisters.Contracts.ReferenceRegisterAdminItem",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "83c88470158e54e6879364c5acbd73a8592ff5e5a062c2fa67fda5f9e01c1d54",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_Code",
+        "get_CodeNorm",
+        "get_CreatedAtUtc",
+        "get_HasRecords",
+        "get_Name",
+        "get_Periodicity",
+        "get_RecordMode",
+        "get_RegisterId",
+        "get_TableCode",
+        "get_UpdatedAtUtc",
+        "op_Equality",
+        "op_Inequality",
+        "set_Code",
+        "set_CodeNorm",
+        "set_CreatedAtUtc",
+        "set_HasRecords",
+        "set_Name",
+        "set_Periodicity",
+        "set_RecordMode",
+        "set_RegisterId",
+        "set_TableCode",
+        "set_UpdatedAtUtc"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.ReferenceRegisters.Contracts.ReferenceRegisterDimensionRule",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "f4d8a15bfe4781a6242804b385e2e5f96b996e53803a101a20307565ea8df874",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_DimensionCode",
+        "get_DimensionId",
+        "get_IsRequired",
+        "get_Ordinal",
+        "op_Equality",
+        "op_Inequality",
+        "set_DimensionCode",
+        "set_DimensionId",
+        "set_IsRequired",
+        "set_Ordinal"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.ReferenceRegisters.Contracts.ReferenceRegisterField",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "c473871623d678e454807a16b315c6711030184f7b6beabbb59af75f58e6d645",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_Code",
+        "get_CodeNorm",
+        "get_ColumnCode",
+        "get_ColumnType",
+        "get_CreatedAtUtc",
+        "get_IsNullable",
+        "get_Name",
+        "get_Ordinal",
+        "get_RegisterId",
+        "get_UpdatedAtUtc",
+        "op_Equality",
+        "op_Inequality",
+        "set_Code",
+        "set_CodeNorm",
+        "set_ColumnCode",
+        "set_ColumnType",
+        "set_CreatedAtUtc",
+        "set_IsNullable",
+        "set_Name",
+        "set_Ordinal",
+        "set_RegisterId",
+        "set_UpdatedAtUtc"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.ReferenceRegisters.Contracts.ReferenceRegisterFieldDefinition",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "a1a474fcc334e18e55366c665d84c49ea170e5701c678cb29ad542ec6a2a8eed",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_Code",
+        "get_ColumnType",
+        "get_IsNullable",
+        "get_Name",
+        "get_Ordinal",
+        "op_Equality",
+        "op_Inequality",
+        "set_Code",
+        "set_ColumnType",
+        "set_IsNullable",
+        "set_Name",
+        "set_Ordinal"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.ReferenceRegisters.Contracts.ReferenceRegisterIndependentWriteOperation",
+      "attributes": "Public, Sealed",
+      "contractSha256": "ecdcbb19bc43476d3f2d8749701e9b8836d246388141abda8d5fcafca210a5e5",
+      "methods": [],
+      "fields": [
+        "Tombstone",
+        "Upsert",
+        "value__"
+      ]
+    },
+    {
+      "name": "NGB.ReferenceRegisters.Contracts.ReferenceRegisterPhysicalSchemaHealth",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "9644dbe3413ec7869fa147aefb827ae4191d9dca265cdeba21063bfa7468fe02",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_IsOk",
+        "get_Records",
+        "get_Register",
+        "op_Equality",
+        "op_Inequality",
+        "set_Records",
+        "set_Register"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.ReferenceRegisters.Contracts.ReferenceRegisterPhysicalSchemaHealthReport",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "1c09eef0af185a559f4e7aab2789b8312eb5c82c38d62a621cc5151e39125e4e",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_Items",
+        "get_OkCount",
+        "get_TotalCount",
+        "op_Equality",
+        "op_Inequality",
+        "set_Items"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.ReferenceRegisters.Contracts.ReferenceRegisterPhysicalTableHealth",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "84bdb856e5df6068ad5cf6c40dbf0147440dd154ca1a4867d944f2d45bb80438",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_Exists",
+        "get_HasAppendOnlyGuard",
+        "get_IsOk",
+        "get_MissingColumns",
+        "get_MissingIndexes",
+        "get_TableName",
+        "op_Equality",
+        "op_Inequality",
+        "set_Exists",
+        "set_HasAppendOnlyGuard",
+        "set_MissingColumns",
+        "set_MissingIndexes",
+        "set_TableName"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.ReferenceRegisters.Contracts.ReferenceRegisterRecordRead",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "12026f155ac8d91a204b62a4dd1a7583fdd29a058830d99e32b8ebe13765a5fc",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_DimensionSetId",
+        "get_IsDeleted",
+        "get_PeriodBucketUtc",
+        "get_PeriodUtc",
+        "get_RecordId",
+        "get_RecordedAtUtc",
+        "get_RecorderDocumentId",
+        "get_Values",
+        "op_Equality",
+        "op_Inequality",
+        "set_DimensionSetId",
+        "set_IsDeleted",
+        "set_PeriodBucketUtc",
+        "set_PeriodUtc",
+        "set_RecordId",
+        "set_RecordedAtUtc",
+        "set_RecorderDocumentId",
+        "set_Values"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.ReferenceRegisters.Contracts.ReferenceRegisterUpsert",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "2320ecfee478a40bee626b3e98416587ebda80ea3eb8d83b9249e8c64a0daf2f",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_Code",
+        "get_Name",
+        "get_Periodicity",
+        "get_RecordMode",
+        "get_RegisterId",
+        "op_Equality",
+        "op_Inequality",
+        "set_Code",
+        "set_Name",
+        "set_Periodicity",
+        "set_RecordMode",
+        "set_RegisterId"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.ReferenceRegisters.Contracts.ReferenceRegisterWriteOperation",
+      "attributes": "Public, Sealed",
+      "contractSha256": "dd07d06262d854114390ee65df36c55898f98c9c1f1b577599dd70a993a51204",
+      "methods": [],
+      "fields": [
+        "Post",
+        "Repost",
+        "Unpost",
+        "value__"
+      ]
+    },
+    {
+      "name": "NGB.ReferenceRegisters.Exceptions.ReferenceRegisterCodeNormMismatchException",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "ed83a72e2691759e16d7e97cf9809442d3a8c262a44bf3914317e90298be9b46",
+      "methods": [
+        ".ctor",
+        "get_RegisterId"
+      ],
+      "fields": [
+        "Code"
+      ]
+    },
+    {
+      "name": "NGB.ReferenceRegisters.Exceptions.ReferenceRegisterDimensionRulesAppendOnlyViolationException",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "06bc230b5d6b040d7113e7387673886ef652b113d15d48b6d040208e5b386878",
+      "methods": [
+        ".ctor",
+        "get_Reason",
+        "get_RegisterId"
+      ],
+      "fields": [
+        "Code"
+      ]
+    },
+    {
+      "name": "NGB.ReferenceRegisters.Exceptions.ReferenceRegisterDimensionRulesValidationException",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "c495124c38cf74d3aef40a169a437035cda208eec7e2bb29817824061e1e2d92",
+      "methods": [
+        ".ctor",
+        "get_Reason",
+        "get_RegisterId"
+      ],
+      "fields": [
+        "Code"
+      ]
+    },
+    {
+      "name": "NGB.ReferenceRegisters.Exceptions.ReferenceRegisterDocumentNotFoundException",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "9ad3fad762ae800887cf719992cc4c6eedc3dba96e7f84404a648461a30eedf1",
+      "methods": [
+        ".ctor",
+        "get_DocumentId"
+      ],
+      "fields": [
+        "Code"
+      ]
+    },
+    {
+      "name": "NGB.ReferenceRegisters.Exceptions.ReferenceRegisterFieldDefinitionsValidationException",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "f1f65af20086cd8a0acb2e39d0068cc48262868f26c47e9740a3c7985d363c99",
+      "methods": [
+        ".ctor",
+        "get_Reason",
+        "get_RegisterId"
+      ],
+      "fields": [
+        "Code"
+      ]
+    },
+    {
+      "name": "NGB.ReferenceRegisters.Exceptions.ReferenceRegisterIndependentWriteAlreadyInProgressException",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "d552c830ce8f8e2cfdba6e809d1ec4714c149b4badfd83f6713174c724e81384",
+      "methods": [
+        ".ctor",
+        "get_CommandId",
+        "get_Operation",
+        "get_RegisterId"
+      ],
+      "fields": [
+        "Code"
+      ]
+    },
+    {
+      "name": "NGB.ReferenceRegisters.Exceptions.ReferenceRegisterMetadataImmutabilityViolationException",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "89b97cd93c714bb9b2ef3b2292fad7029a18f6c96a40998834a0b141888a6298",
+      "methods": [
+        ".ctor",
+        "get_Reason",
+        "get_RegisterId"
+      ],
+      "fields": [
+        "Code"
+      ]
+    },
+    {
+      "name": "NGB.ReferenceRegisters.Exceptions.ReferenceRegisterNotFoundException",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "00460250172986ece17d12956d09bd829f36f3f1f31e9d8691f4944fa260f822",
+      "methods": [
+        ".ctor",
+        "get_RegisterId"
+      ],
+      "fields": [
+        "Code"
+      ]
+    },
+    {
+      "name": "NGB.ReferenceRegisters.Exceptions.ReferenceRegisterRecordsValidationException",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "c727753c66781e86da852f3552f87bb18ab0f77e4be0cc4d40b2bd92e0c75765",
+      "methods": [
+        ".ctor",
+        "get_Reason",
+        "get_RegisterId"
+      ],
+      "fields": [
+        "Code"
+      ]
+    },
+    {
+      "name": "NGB.ReferenceRegisters.Exceptions.ReferenceRegisterSchemaDriftAfterRecordsExistException",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "4439073badc985f670c0a185e4c446d5ff6e6e6066097619c18a797eb8ca6d9d",
+      "methods": [
+        ".ctor",
+        "get_Reason",
+        "get_RegisterId",
+        "get_Table"
+      ],
+      "fields": [
+        "Code"
+      ]
+    },
+    {
+      "name": "NGB.ReferenceRegisters.Exceptions.ReferenceRegisterTableCodeCollisionException",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "fa568c6631f9775b5160085fe07e67bd5989b4b4932b8e663286f9397de2d06d",
+      "methods": [
+        ".ctor",
+        "get_CodeNorm",
+        "get_CodeValue",
+        "get_CollidesWithRegisterId",
+        "get_TableCode"
+      ],
+      "fields": [
+        "Code"
+      ]
+    },
+    {
+      "name": "NGB.ReferenceRegisters.Exceptions.ReferenceRegisterWriteAlreadyInProgressException",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "ea27f6c6b699f117d21a73589970feda11ce1ef46669c113487aa70d9f27f85f",
+      "methods": [
+        ".ctor",
+        "get_DocumentId",
+        "get_Operation",
+        "get_RegisterId"
+      ],
+      "fields": [
+        "Code"
+      ]
+    },
+    {
+      "name": "NGB.ReferenceRegisters.ReferenceRegisterId",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "3e5104a7a8020f75dd0f7880a87a88b4f3666fc266f03ab6d56bc2ce811fc601",
+      "methods": [
+        "FromCode",
+        "NormalizeCode"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.ReferenceRegisters.ReferenceRegisterNaming",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "d9c3f3374fb73b4b35050a3faa29a5f5b9f3aaf8013edf8ba32b441e0c2ae493",
+      "methods": [
+        "NormalizeColumnCode",
+        "NormalizeTableCode",
+        "RecordsTable"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.ReferenceRegisters.ReferenceRegisterPeriodBucket",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "72f7e99122509adec40be04f4d4ea95343bcef5832ee5de377de36fd7556c5f8",
+      "methods": [
+        "ComputeUtc"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.ReferenceRegisters.ReferenceRegisterPeriodicity",
+      "attributes": "Public, Sealed",
+      "contractSha256": "078f47a58036ab57df1bd8326e851c3686d6518f8eb28b89e7d6d3c83f2f0328",
+      "methods": [],
+      "fields": [
+        "Day",
+        "Month",
+        "NonPeriodic",
+        "Quarter",
+        "Second",
+        "Year",
+        "value__"
+      ]
+    },
+    {
+      "name": "NGB.ReferenceRegisters.ReferenceRegisterRecordMode",
+      "attributes": "Public, Sealed",
+      "contractSha256": "61c38504791fbe6b75c714cf4d06bcbdf89f353e533d854798dbdd98af17bb79",
+      "methods": [],
+      "fields": [
+        "Independent",
+        "SubordinateToRecorder",
+        "value__"
+      ]
+    },
+    {
+      "name": "NGB.ReferenceRegisters.ReferenceRegisterRecordWrite",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "b53542c12df66acf224a3bfa2f4f696af63c3cc3bedb0f836cff46a1349ca31b",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_DimensionSetId",
+        "get_IsDeleted",
+        "get_PeriodUtc",
+        "get_RecorderDocumentId",
+        "get_Values",
+        "op_Equality",
+        "op_Inequality",
+        "set_DimensionSetId",
+        "set_IsDeleted",
+        "set_PeriodUtc",
+        "set_RecorderDocumentId",
+        "set_Values"
+      ],
+      "fields": []
+    }
+  ]
+}

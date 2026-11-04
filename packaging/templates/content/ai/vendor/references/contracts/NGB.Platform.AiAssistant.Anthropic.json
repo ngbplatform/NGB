@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "package": "NGB.Platform.AiAssistant.Anthropic",
+  "version": "3.4.0",
+  "packageSha256": "f2e5fa5afbe20d864ea3963dffc402b802ed45db36757d429be9bb55945b620f",
+  "assembly": {
+    "name": "NGB.AiAssistant.Anthropic",
+    "version": "3.0.0.0",
+    "sha256": "875428d8f622dcbc17788dcdddcaee7fef7770ff184ed978b942d904237dd69f"
+  },
+  "contractSha256": "3dafc7b8117bc4fb23e12f0a234d03ed8ac10714bd7debb822658b76c7e8db11",
+  "types": [
+    {
+      "name": "NGB.AiAssistant.Anthropic.AnthropicAssistantOptions",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "e8f03ccfb7c4eaf1283d4cce2646a0563571abc6637d8b45e4c78135b1ca8068",
+      "methods": [
+        ".ctor",
+        "get_ApiKey",
+        "get_Model",
+        "set_ApiKey",
+        "set_Model"
+      ],
+      "fields": [
+        "SectionName"
+      ]
+    },
+    {
+      "name": "NGB.AiAssistant.Anthropic.DependencyInjection",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "856ab7e1e9558a3d45eb6e766766aa2b8ecc4948139baabf061f0bde9f98d5bb",
+      "methods": [
+        "AddNgbAnthropicChatClient"
+      ],
+      "fields": [
+        "HttpClientName"
+      ]
+    }
+  ]
+}

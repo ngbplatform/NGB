@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "starter-http-v1",
+  "k6Version": "1.2.2",
+  "scope": "Authenticated starter role and menu reads against a fresh disposable database; no application business-workload claim.",
+  "data": "Standard migration and administrator seed; one test administrator without a linked platform user.",
+  "repetitions": 3,
+  "warmupIterations": 20,
+  "virtualUsers": 4,
+  "iterationsPerUser": 50,
+  "maximumDuration": "2m",
+  "requestTimeout": "5s",
+  "endpoints": [
+    { "name": "roles", "path": "/api/security/roles" },
+    { "name": "menu", "path": "/api/main-menu" }
+  ],
+  "budgets": {
+    "p95Milliseconds": 500,
+    "p99Milliseconds": 1000,
+    "failureRate": 0
+  },
+  "baseline": "Initial versioned acceptance budgets, frozen before the first measurement. No historical performance comparison is asserted."
+}

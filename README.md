@@ -585,26 +585,36 @@ See:
 Use .NET 10 SDK, Node.js 24.19.x and Docker with Compose v2. Once the template and its matching NuGet/npm packages are published, run these commands in the directory that should contain your new application. No NGB repository checkout is required:
 
 ```bash
-dotnet new install NGB.Platform.Templates
+dotnet new install NGB.Platform.Templates@3.4.0
 dotnet new ngb -n MyApplication
 cd MyApplication
 node infrastructure/configure.mjs administrator@example.com
 node infrastructure/ngb.mjs start
 ```
 
-This installs the latest published stable template and starts the application's local development stack. Open http://localhost:5182 and sign in with the configured email and `BOOTSTRAP_PASSWORD` from the generated `.env` file. Run `configure.mjs` only once.
+This installs the exact 3.4.0 template, including the AI Development Kit, and starts the application's local development stack. Open http://localhost:5182 and sign in with the configured email and `BOOTSTRAP_PASSWORD` from the generated `.env` file. Run `configure.mjs` only once.
 
 See the [application guide](docs/architecture/external-app-upgrades.md#create-an-application) for setup and next steps. Before publication, use its [local package instructions](docs/architecture/external-app-upgrades.md#before-publication).
 
 ### Upgrade an existing application
 
-Follow the [3.2.0 → 3.3.0 upgrade guide](docs/architecture/external-app-upgrades.md#migrate-320-to-330)
+Follow the [3.3.0 → 3.4.0 upgrade guide](docs/architecture/external-app-upgrades.md#migrate-330-to-340)
 for the current transition, preview/apply commands, application validation, backups
-and database migration. The guide also retains the registered 3.1.0 → 3.2.0 path;
-it does not define a direct 3.1.0 → 3.3.0 upgrade. Installing a newer template does
-not update an existing application.
+and database migration. The guide also retains the registered 3.1.0 → 3.2.0 and
+3.2.0 → 3.3.0 paths; it does not define a direct 3.1.0 → 3.4.0 upgrade. Installing
+a newer template does not update an existing application.
 
-The upgrade command uses published NuGet/npm packages by default. For an older application without the bundled `infrastructure/ngb.mjs`, run the CLI from an NGB checkout for the target release; a standalone installable CLI package is not currently provided.
+The upgrade command uses published NuGet/npm packages by default. After publication,
+acquire the exact target CLI without an NGB checkout:
+
+```bash
+npm exec --ignore-scripts --package=@ngbplatform/cli@3.4.0 -- ngb upgrade --app ../MyApplication --to 3.4.0
+npm exec --ignore-scripts --package=@ngbplatform/cli@3.4.0 -- ngb upgrade --app ../MyApplication --to 3.4.0 --apply
+```
+
+The [AI Development Kit guide](docs/guides/ai-development-kit.md) describes official
+and application-owned instructions, validation, testing and coordinated updates.
+Version 3.4.0 is a candidate until release certification and publication complete.
 
 The following sections cover the bundled demos and development in this repository.
 

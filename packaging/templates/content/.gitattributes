@@ -1,0 +1,4 @@
+ai/vendor/** text eol=lf
+infrastructure/ngb/** text eol=lf
+.agents/skills/ngb-*/** text eol=lf
+.claude/skills/ngb-*/** text eol=lf

@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <ItemGroup>
+        <EmbeddedResource Include="db/migrations/*.sql">
+            <LogicalName>$(AssemblyName).db.migrations.%(Filename)%(Extension)</LogicalName>
+        </EmbeddedResource>
+    </ItemGroup>
+</Project>

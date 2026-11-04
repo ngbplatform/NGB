@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "id": "claude-terminal-development-macos-arm64-v3",
+  "clientVersion": "2.1.308",
+  "modelSelection": "client-default",
+  "maximumSecondsPerAttempt": 1800,
+  "maximumEstimatedCostUsdPerAttempt": 10,
+  "maximumTurnsPerAttempt": 100,
+  "tools": ["Read", "Glob", "Grep", "Skill", "Edit", "Write", "Bash"],
+  "permissionMode": "dontAsk",
+  "settingSources": ["project"],
+  "settings": {
+    "disableAllHooks": true,
+    "disableSkillShellExecution": true,
+    "disableBundledSkills": true,
+    "disableClaudeAiConnectors": true,
+    "syncClaudeAiSkills": false,
+    "syncClaudeAiPlugins": false,
+    "autoMemoryEnabled": false,
+    "enableWorkflows": false,
+    "permissions": {
+      "blockReadsOutsideWorkingDirectories": true,
+      "deny": ["PowerShell", "NotebookEdit", "WebFetch", "WebSearch", "Agent", "mcp__*"]
+    },
+    "sandbox": {
+      "enabled": true,
+      "failIfUnavailable": true,
+      "autoAllowBashIfSandboxed": true,
+      "allowUnsandboxedCommands": false,
+      "excludedCommands": [],
+      "filesystem": { "disabled": false },
+      "network": {
+        "allowedDomains": [],
+        "deniedDomains": ["*"],
+        "allowLocalBinding": false,
+        "allowUnixSockets": [],
+        "allowAllUnixSockets": false
+      }
+    }
+  },
+  "environment": {
+    "DISABLE_AUTOUPDATER": "1",
+    "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "CLAUDE_CODE_AUTO_CONNECT_IDE": "false"
+  },
+  "sandboxPreflight": {
+    "package": "@anthropic-ai/sandbox-runtime",
+    "version": "0.0.81",
+    "integrity": "sha512-bjHDu87gjIR7+Oxy9jPiK3v8CvSELCzfpXa3fjqfSKdvlZET2iF51xcXILWPayTpowB3xtZeQVf2JR916nVW/w==",
+    "scope": "Standalone runtime probe of the declared filesystem/network rules. The installed Claude client still enforces its own native sandbox and file-tool restrictions. This probe does not claim binary equivalence between the two runtimes."
+  },
+  "authentication": "Existing claude.ai subscription only; no API keys, provider credentials or personal MCP configuration are inherited.",
+  "isolation": "Only the fresh application and isolated scratch directory are added to the client. File tools refuse other working directories; shell reads deny user homes, shared temporary data and volumes with explicit allowances for the application, scratch and pinned tools. Guidance and candidate packages remain read-only. No unsandboxed command fallback, shell network, hooks, web tools or delegation.",
+  "buildPolicy": "Prepare exact candidate dependencies before inference. The agent may edit application source and build offline after completing all source and test edits. Use a private short temporary directory for native sandbox compiler files. Local socket binding, shell network and Docker remain denied, so test runners and provisioning CLI profiles run only in independent acceptance after source review. No acceptance feedback is returned to the agent.",
+  "attemptPolicy": "One attempt per task and working directory; no automatic retry, conversation resume, human hints or acceptance-feedback repair. Record actual model, usage, client-side cost estimate, transcript and produced source. A process completion alone is not acceptance."
+}

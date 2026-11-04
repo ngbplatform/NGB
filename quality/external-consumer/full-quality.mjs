@@ -110,7 +110,8 @@ try {
         'npm cache add artifacts/npm/*.tgz',
         'npm --prefix ui ci',
         'npm --prefix quality ci',
-        `node quality/external-consumer/quality-suite.mjs ${certification ? '--certification ' : ''}/workspace/quality-identity.json`,
+        certification ? 'node quality/external-consumer/quality-suite.mjs --certification /workspace/quality-identity.json'
+          : 'bash run-full-quality.sh /workspace/quality-identity.json',
       ].join('\n'),
     ], { cwd: repository })
   } finally {
@@ -125,6 +126,13 @@ try {
   await mkdir(join(candidate, 'certification'), { recursive: true })
   for (const name of [reportName, 'tooling.json', 'cross-browser.json', 'performance.json']) {
     await cp(join(root, 'artifacts/certification', name), join(candidate, 'certification', name))
+  }
+  if (!certification) {
+    for (const name of ['backend-full', 'frontend-full']) {
+      const directory = join(candidate, 'certification/coverage', name)
+      await mkdir(directory, { recursive: true })
+      await cp(join(root, 'artifacts/coverage', name, 'coverage-summary.json'), join(directory, 'coverage-summary.json'))
+    }
   }
   await cp(join(root, 'artifacts/run-state.json'), join(candidate, 'certification', `${workspaceName}-stages.json`))
   console.log(`Complete Linux quality diagnostics: ${root}`)

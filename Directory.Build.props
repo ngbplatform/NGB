@@ -1,7 +1,7 @@
 <Project>
   <PropertyGroup>
     <!-- Product / release version -->
-    <Version>3.3.0</Version>
+    <Version>3.4.0</Version>
     <NgbPlatformAssemblyVersion>3.0.0.0</NgbPlatformAssemblyVersion>
     <AssemblyVersion>$(NgbPlatformAssemblyVersion)</AssemblyVersion>
     <FileVersion>$(Version).0</FileVersion>
@@ -25,7 +25,7 @@
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageIcon>icon.png</PackageIcon>
     <PackageTags>NGB;NGB Platform;.NET;PostgreSQL;business applications</PackageTags>
-    <PackageReleaseNotes>Opt-in MCP server and AI Assistant using the current user and existing permissions. Includes native Ollama, replaceable cloud adapters, shared UI and external application support. Setup: https://docs.ngbplatform.com/guides/ai-assistant</PackageReleaseNotes>
+    <PackageReleaseNotes>AI Development Kit for independent applications: versioned Codex and Claude Code guidance, shared CLI delivery, starter tests, deterministic validation and coordinated SDK/Kit upgrades. Guide: https://docs.ngbplatform.com/guides/ai-development-kit</PackageReleaseNotes>
     <Copyright>Copyright (c) NGB Platform 2026</Copyright>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <EmbedUntrackedSources>true</EmbedUntrackedSources>

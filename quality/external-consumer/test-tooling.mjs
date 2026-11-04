@@ -14,6 +14,7 @@ run('node', [
   '--test', '--experimental-test-coverage',
   ...inventory.measuredJavaScript.map(path => `--test-coverage-include=${path}`),
   '--test-coverage-lines=100', '--test-coverage-functions=100', '--test-coverage-branches=100',
+  'quality/ai-devkit/commands.test.mjs',
   'quality/external-consumer/contracts.test.mjs', 'quality/external-consumer/layering.test.mjs', 'quality/external-consumer/release-contracts.test.mjs',
   'quality/external-consumer/registry-fetch.test.mjs', 'quality/external-consumer/sequencing.test.mjs',
   'quality/external-consumer/configuration.test.mjs', 'quality/upgrade-certification/scenarios.test.mjs',

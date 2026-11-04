@@ -1,0 +1,200 @@
+{
+  "schemaVersion": 1,
+  "package": "NGB.Platform.Attachments",
+  "version": "3.4.0",
+  "packageSha256": "9b306e61438497bf28bc713ef2d8e80b5ea6dc829b6fbcdb08eb5ebd2c46206e",
+  "assembly": {
+    "name": "NGB.Attachments",
+    "version": "3.0.0.0",
+    "sha256": "810312be117e74eddc1157bb2268d4830a790f58cd07b4e0466e66ccfc4f6e80"
+  },
+  "contractSha256": "e75d995ee7a626bceb215845a8756d699032eb5581b7514b2516367a78ae382f",
+  "types": [
+    {
+      "name": "NGB.Attachments.AttachmentException",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "89deab0172512b6f2e41d2c5496f4b3593e701b9482266dbde6e6337af7a4ed0",
+      "methods": [
+        ".ctor"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Attachments.AttachmentOptions",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "1cc1b8f2e3030aad2c6c4d0756d0b82b7c64730ade4e6da9ec54981f9965f6b2",
+      "methods": [
+        ".ctor",
+        "IsValid",
+        "get_DownloadLifetime",
+        "get_ExpirationBatchSize",
+        "get_MaxActivePerObject",
+        "get_MaxSizeBytes",
+        "get_PendingStaleAge",
+        "get_UploadLifetime",
+        "set_DownloadLifetime",
+        "set_ExpirationBatchSize",
+        "set_MaxActivePerObject",
+        "set_MaxSizeBytes",
+        "set_PendingStaleAge",
+        "set_UploadLifetime"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Attachments.AttachmentRecord",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "59a272a164eb09586d8f333f75086c98f410cd0fd4dd50a1db9c2c4f45476fbe",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_CompletedAtUtc",
+        "get_ContentType",
+        "get_CreatedAtUtc",
+        "get_CreatedByDisplayName",
+        "get_CreatedByUserId",
+        "get_DeletedAtUtc",
+        "get_DeletedByUserId",
+        "get_FileName",
+        "get_Id",
+        "get_SizeBytes",
+        "get_Status",
+        "get_StorageDeletedAtUtc",
+        "get_StorageObjectKey",
+        "get_Target",
+        "get_UploadExpiresAtUtc",
+        "get_UploadObjectKey",
+        "op_Equality",
+        "op_Inequality",
+        "set_CompletedAtUtc",
+        "set_ContentType",
+        "set_CreatedAtUtc",
+        "set_CreatedByDisplayName",
+        "set_CreatedByUserId",
+        "set_DeletedAtUtc",
+        "set_DeletedByUserId",
+        "set_FileName",
+        "set_Id",
+        "set_SizeBytes",
+        "set_Status",
+        "set_StorageDeletedAtUtc",
+        "set_StorageObjectKey",
+        "set_Target",
+        "set_UploadExpiresAtUtc",
+        "set_UploadObjectKey"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Attachments.AttachmentStatus",
+      "attributes": "Public, Sealed",
+      "contractSha256": "46d5d015ef5a18173bb1a8d7a3b768363e36494cfbf74564ec711d5ff1aac372",
+      "methods": [],
+      "fields": [
+        "Deleted",
+        "PendingUpload",
+        "Ready",
+        "value__"
+      ]
+    },
+    {
+      "name": "NGB.Attachments.AttachmentStorageUnavailableException",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "c8515488ad685efda2f9830fc0daac8a80138c0fae2ce47e129d9aa52d7f84df",
+      "methods": [
+        ".ctor"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Attachments.AttachmentStoredObject",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "7b70a133013c6d0e7ffd9071ba618a3b397f8adb8b09560ff78c59ad4a5bbecc",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_ContentType",
+        "get_ETag",
+        "get_SizeBytes",
+        "op_Equality",
+        "op_Inequality",
+        "set_ContentType",
+        "set_ETag",
+        "set_SizeBytes"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Attachments.AttachmentUploadTarget",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "ca82529d5e5e08062c9107173f3986cdf3105bf0b60913a9a3eb5a161b4b6422",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_Headers",
+        "get_Url",
+        "op_Equality",
+        "op_Inequality",
+        "set_Headers",
+        "set_Url"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Attachments.IAttachmentAuditService",
+      "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
+      "contractSha256": "307b62570c382dcf8fa363cad924b9c5d1c26c689d0ac3b2ca8d2171bac6169b",
+      "methods": [
+        "DownloadAsync"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Attachments.IAttachmentObjectStorage",
+      "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
+      "contractSha256": "e553de12821d0f3e4e0f2cde08960e84f79660f18455c76561d4c67b1eacae47",
+      "methods": [
+        "CreateDownloadTargetAsync",
+        "CreateUploadTargetAsync",
+        "DeleteObjectAsync",
+        "GetObjectInfoAsync",
+        "SealUploadAsync"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Attachments.IAttachmentService",
+      "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
+      "contractSha256": "9ff00293c3766a1a54e36fd5c2bc13a62f45cec2079e9dbec231fba5ac9c2c36",
+      "methods": [
+        "CompleteAsync",
+        "CreateUploadAsync",
+        "DeleteAsync",
+        "DownloadAsync",
+        "ListAsync"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Attachments.IAttachmentUploadExpirationService",
+      "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
+      "contractSha256": "294bc005b795bed169786736cb09e4cc381a15af6547ad152062c434fef82476",
+      "methods": [
+        "ExpirePendingAsync"
+      ],
+      "fields": []
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+<Solution>
+  <Project Path="EquipmentInspection.Api/EquipmentInspection.Api.csproj" />
+  <Project Path="EquipmentInspection.BackgroundJobs/EquipmentInspection.BackgroundJobs.csproj" />
+  <Project Path="EquipmentInspection.Migrator/EquipmentInspection.Migrator.csproj" />
+  <Project Path="EquipmentInspection.Setup/EquipmentInspection.Setup.csproj" />
+  <Project Path="EquipmentInspection.Definitions/EquipmentInspection.Definitions.csproj" />
+  <Project Path="EquipmentInspection.Runtime/EquipmentInspection.Runtime.csproj" />
+  <Project Path="EquipmentInspection.Tests/EquipmentInspection.Tests.csproj" />
+  <Project Path="EquipmentInspection.PostgreSql/EquipmentInspection.PostgreSql.csproj" />
+  <Project Path="EquipmentInspection.IntegrationTests/EquipmentInspection.IntegrationTests.csproj" />
+  <Project Path="MigrationFixtures/Baseline/EquipmentInspection.MigrationBaseline.csproj" />
+  <Project Path="MigrationFixtures/ChecksumDrift/EquipmentInspection.MigrationChecksumDrift.csproj" />
+</Solution>

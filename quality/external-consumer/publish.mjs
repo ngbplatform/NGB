@@ -22,13 +22,22 @@ for (const artifact of manifest.artifacts.filter(item => item.path.endsWith('.nu
   // Do not propagate child_process errors: their command text contains the key.
   assert.equal(pushed.status, 0, `NuGet upload failed: ${artifact.path}`)
 }
-const npm = manifest.artifacts.find(item => item.path.endsWith('.tgz'))
-const metadata = await fetch(`https://registry.npmjs.org/@ngbplatform%2fui/${manifest.version}`, { signal: AbortSignal.timeout(30_000) })
-if (metadata.ok) {
-  assert.equal((await metadata.json()).dist.integrity, npm.integrity, 'Existing npm version differs; publish a corrected new version.')
-} else {
-  assert.equal(metadata.status, 404, 'Unable to determine whether the npm version already exists.')
-  execFileSync('npm', ['publish', join(root, npm.path), '--access', 'public'], { cwd: root, stdio: 'inherit' })
+for (const npm of manifest.artifacts.filter(item => item.path.endsWith('.tgz'))) {
+  const name = npm.path === `npm/ngbplatform-cli-${manifest.version}.tgz` ? 'cli' : 'ui'
+  assert.equal(npm.path, `npm/ngbplatform-${name}-${manifest.version}.tgz`, 'Unexpected npm artifact.')
+  const metadata = await fetch(`https://registry.npmjs.org/@ngbplatform%2f${name}/${manifest.version}`, {
+    signal: AbortSignal.timeout(30_000), redirect: 'error',
+  })
+  if (metadata.ok) {
+    const published = await metadata.json()
+    assert.equal(published.name, `@ngbplatform/${name}`)
+    assert.equal(published.version, manifest.version)
+    assert.equal(published.dist.integrity, npm.integrity, 'Existing npm version differs; publish a corrected new version.')
+  } else {
+    assert.equal(metadata.status, 404, 'Unable to determine whether the npm version already exists.')
+    execFileSync('npm', ['publish', join(root, npm.path), '--access', 'public', '--ignore-scripts',
+      '--registry=https://registry.npmjs.org'], { cwd: root, stdio: 'inherit' })
+  }
 }
 await writeFile(join(root, 'upload-receipt.json'), `${JSON.stringify({
   schemaVersion: 1, artifactManifestSha256: digest(bytes), status: 'uploaded-awaiting-registry-verification',

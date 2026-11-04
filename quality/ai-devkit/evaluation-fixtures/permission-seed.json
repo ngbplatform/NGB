@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "task": "permission-correction",
+  "base": "sealed candidate ai/vendor/examples/equipment-inspection; overlay before capturing the trusted inventory",
+  "verifiedCandidateSha256": "9e0a20481f359ab2dfe168fedb73d1e2a5a7be174220dfc8dfd5feee406b86ef",
+  "files": {
+    "EquipmentInspection.Api/Program.cs": "f4315f1dc6dcd6512d8e26830dbdc3a7c8cba99049160f95d396127c3bf211b2",
+    "web/src/main.ts": "477fd654f69d92b31f810b06284b89c512b6515c299d03c46ca0aa233c269e18"
+  }
+}

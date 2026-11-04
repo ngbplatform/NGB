@@ -19,3 +19,7 @@ var app = builder.Build();
 app.UseNgbBackgroundJobs();
 app.MapNgbBackgroundJobs();
 app.Run();
+
+public partial class Program
+{
+}

@@ -1,0 +1,10 @@
+<Project>
+    <PropertyGroup>
+        <NgbPlatformVersion>3.4.0</NgbPlatformVersion>
+        <TargetFramework>net10.0</TargetFramework>
+        <Nullable>enable</Nullable>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <IsPackable>false</IsPackable>
+        <DisableTransitiveProjectReferences>true</DisableTransitiveProjectReferences>
+    </PropertyGroup>
+</Project>

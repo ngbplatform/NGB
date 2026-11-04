@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "task": "new-catalog",
+  "observableContract": {
+    "typeCode": "example.equipment_category",
+    "fields": "code: required nonwhitespace string, maximum 64 characters; name: required nonwhitespace string, maximum 200 characters, used as catalog display.",
+    "uniqueness": "Exactly equal code values are unique across the catalog, including simultaneous creates and updates. A duplicate returns HTTP 409 without changing saved records. No additional case-folding rule is required.",
+    "workflow": "Use the existing public /api/catalogs/{type} metadata-driven create/read/update and lookup workflow. Partial updates preserve unspecified fields.",
+    "authorization": "Both trusted ngb-admin without a platform record and an active application administrator with the registered role code receive the new capability without manual grants. Ungranted readers, inactive users and users with only an Administrator display name remain denied. Anonymous mutation is unauthorized.",
+    "persistence": "New immutable application migration, database-enforced uniqueness and preserved records after repeated migrator execution. Existing migrations remain byte-identical.",
+    "layering": "Definitions owns metadata, Runtime owns any provider-neutral validation, PostgreSql owns storage and SQL. Preserve project/dependency/build configuration, installed guidance and the existing six application entry points."
+  },
+  "acceptance": [
+    "public-sdk-only",
+    "layering",
+    "real-create-read-update",
+    "duplicate-code-refused",
+    "unauthorized-refused",
+    "migration-idempotent"
+  ],
+  "prompt": "Add an EquipmentCategory catalog with type code example.equipment_category through the existing public NGB catalog API workflow. Its code field is required, nonwhitespace, unique and at most 64 characters; name is required, nonwhitespace, at most 200 characters and supplies the display text. Preserve unspecified fields on partial updates. Exactly equal duplicate codes must return HTTP 409 on create/update, including concurrent creates; no case-folding rule is required. Include an immutable application migration and database-enforced uniqueness. Preserve authorization for both active application administrators and trusted ngb-admin without manual grants; ungranted readers, inactive users, display-name-only administrators and anonymous users must not gain access. Use Definitions for metadata, Runtime for provider-neutral validation and PostgreSql for SQL/storage. Use only supplied public SDK packages, preserve existing migrations, project/dependency/build configuration, installed guidance and application entry points, and include appropriate tests. Invalid missing, empty, whitespace and oversized fields must return HTTP 400 on create/update. The complete application solution, including its tests, must still build."
+}

@@ -1,0 +1,246 @@
+{
+  "schemaVersion": 1,
+  "package": "NGB.Platform.Hosting.AspNetCore",
+  "version": "3.4.0",
+  "packageSha256": "e59657facc0bb5159e92bb94a558ed57844e50992f30cada8b218fbc21d62197",
+  "assembly": {
+    "name": "NGB.Hosting.AspNetCore",
+    "version": "3.0.0.0",
+    "sha256": "a746b85f7a75549b4622321ecec3724b6b3922243791bcb415071d31b4c18bf8"
+  },
+  "contractSha256": "880caf5a05bbea952ceec33e6f5220acb698662ee1e6201810f03b3809bf05c1",
+  "types": [
+    {
+      "name": "NGB.Hosting.AspNetCore.Branding.NgbBrandingAssets",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "c087bc41a9e3bc15ac931f00e387277d763b9a4f18271958dd1111610b1c6176",
+      "methods": [],
+      "fields": [
+        "DefaultFaviconHref"
+      ]
+    },
+    {
+      "name": "NGB.Hosting.AspNetCore.Branding.NgbStandaloneTheme",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "760d08592969bf8cbb6cbd13eeb9d5d610be2ea750b74a93a0f92b1ade493885",
+      "methods": [],
+      "fields": [
+        "HeadScriptTag",
+        "ThemeModeKey"
+      ]
+    },
+    {
+      "name": "NGB.Hosting.AspNetCore.ConfigurationTools",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "ddce74cb8cde977404fc7355a51b800104fe3c035499d8969504535071779773",
+      "methods": [
+        "GetSettings"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Hosting.AspNetCore.DependencyInjection",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "dc4d74d3647766f69514f792950310fcacc2d1aaf0c46c0f1099bd4b1523485e",
+      "methods": [
+        "AddCompletelyAllowedCorsPolicy",
+        "AddHealthCheckHttpClient",
+        "AddSerilog",
+        "UseCompletelyAllowedCorsPolicy"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Hosting.AspNetCore.ErrorHandling.DependencyInjection",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "fb235588e73191c322c25adbfa147b330fe5ab8136d387e9cbf0d66d5d8c1152",
+      "methods": [
+        "AddGlobalErrorHandling"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Hosting.AspNetCore.ErrorHandling.GlobalExceptionHandler",
+      "attributes": "Public, BeforeFieldInit",
+      "contractSha256": "ed5cba622d052d1af38695fb503e76421a319b70bfd657aaa36732bcbf52a039",
+      "methods": [
+        ".ctor",
+        "TryHandleAsync"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Hosting.AspNetCore.ErrorHandling.INgbExceptionHttpMapper",
+      "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
+      "contractSha256": "005dcbebfeeb5f2e452cf022bb1e212868f106bd76cc0070d64ca9bd12818bfe",
+      "methods": [
+        "TryMap"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Hosting.AspNetCore.ErrorHandling.NgbExceptionHttpMapping",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "cee7adca0ccad87d5ac8b1238646d233666173538f94f0a15ec6e3ccd42364ac",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_Context",
+        "get_ErrorCode",
+        "get_Kind",
+        "get_StatusCode",
+        "op_Equality",
+        "op_Inequality",
+        "set_Context",
+        "set_ErrorCode",
+        "set_Kind",
+        "set_StatusCode"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Hosting.AspNetCore.Health.BaseHttpExternalHealthCheck",
+      "attributes": "Public, Abstract, BeforeFieldInit",
+      "contractSha256": "583ad0b66ae1bbea8d2e53eae19af77a61f855a392ed811f2b1df29561c2d6f5",
+      "methods": [
+        ".ctor",
+        "CheckHealthAsync"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Hosting.AspNetCore.Health.NgbHealthCheckResponseWriter",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "445274af4a28a03eb2422082128904e3e1b651eb1f1091feace5a89231cd5ddc",
+      "methods": [
+        "WriteAsync"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Hosting.AspNetCore.Identity.AdminConsoleAuthOptions",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "afb053eb785edab87c8535ada46083904fc454584f24292858fbffe383f7fc5a",
+      "methods": [
+        ".ctor",
+        "get_CallbackPath",
+        "get_ForceHttpsRedirectUri",
+        "get_PublicOrigin",
+        "set_CallbackPath",
+        "set_ForceHttpsRedirectUri",
+        "set_PublicOrigin"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Hosting.AspNetCore.Identity.DependencyInjection",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "14dc2e8f795aae1c83f8a21acdd8b12e33109f7438b4c10c856a4fd58c883a7b",
+      "methods": [
+        "AddKeycloak",
+        "AddKeycloakForAdminConsole",
+        "GlobalCookieRequireAuthorization",
+        "MapAccountEndpoints",
+        "UseCustomForwardedHeaders"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Hosting.AspNetCore.Identity.FormBearerTokenAttribute",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "58f958ce1aa17047fdcfcf72287df312d0e9e3eabfd4598a43ae18d9e9cecb13",
+      "methods": [
+        ".ctor",
+        "ReadTokenAsync"
+      ],
+      "fields": [
+        "MaximumBodyBytes"
+      ]
+    },
+    {
+      "name": "NGB.Hosting.AspNetCore.Identity.KeycloakHealthCheck",
+      "attributes": "Public, BeforeFieldInit",
+      "contractSha256": "7b3e38bc9c7a9afa502cb5006bfdba63a78783d99c9ebf62f3dff764980d2217",
+      "methods": [
+        ".ctor"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Hosting.AspNetCore.Identity.KeycloakSettings",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "18c1670d587f946f71aed6648ac45032931ccf6361df45ea2b151e8c7899517c",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_ClientIds",
+        "get_Issuer",
+        "get_MetadataAddress",
+        "get_RequireHttpsMetadata",
+        "op_Equality",
+        "op_Inequality",
+        "set_ClientIds",
+        "set_Issuer",
+        "set_MetadataAddress",
+        "set_RequireHttpsMetadata"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Hosting.AspNetCore.Identity.MemoryCacheTicketStore",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "d110c3841cb6e5d625b6f55ea5bfbd38bea77a56a764c96a52572ee7adc42e50",
+      "methods": [
+        ".ctor",
+        "Dispose",
+        "RemoveAsync",
+        "RenewAsync",
+        "RetrieveAsync",
+        "StoreAsync"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Hosting.AspNetCore.Identity.SecurityKeyParameters",
+      "attributes": "Public, BeforeFieldInit",
+      "contractSha256": "3875528440292e124d622a54fbfe31fbf79fee2624b0b58e7eb37145b65f2d15",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "PrintMembers",
+        "ToString",
+        "get_EqualityContract",
+        "get_Exponent",
+        "get_Modulus",
+        "op_Equality",
+        "op_Inequality",
+        "set_Exponent",
+        "set_Modulus"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Hosting.AspNetCore.NgbHostingOptions",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "0567c79861ac3e02e2b98c94e067343577f2826be3d74b0232e22749f16d12a0",
+      "methods": [
+        ".ctor",
+        "get_PublicApiUrl",
+        "set_PublicApiUrl"
+      ],
+      "fields": [
+        "ConfigurationSection"
+      ]
+    }
+  ]
+}

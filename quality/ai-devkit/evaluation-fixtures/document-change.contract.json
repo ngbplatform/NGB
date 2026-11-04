@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "task": "existing-document-change",
+  "observableContract": {
+    "typeCode": "example.inspection",
+    "field": "completion_note",
+    "fieldType": "nullable string, maximum 2000 characters; oversized Draft create/update must return HTTP 400 without changing saved content",
+    "draft": "Missing, empty and whitespace completion notes remain saveable as Draft.",
+    "post": "Post requires a persisted nonempty nonwhitespace completion note in addition to existing requirements.",
+    "persistence": "The valid note round-trips unchanged through the public document API. Existing migration scripts remain byte-identical.",
+    "concurrency": "The existing ExpectedVersion and idempotency contract remains unchanged; a stale version is refused.",
+    "effects": "An explicitly registered empty handler posts without accounting/OR/RR effects; removing that registration still refuses Post.",
+    "projectContract": "Keep the six application project entry points and public host composition usable by external tests. Do not alter SDK packages or add project references outside the application. Existing dependency, project, build configuration and installed guidance files remain byte-identical; this task permits application C#/SQL, TypeScript test sources under web/tests/unit or web/tests/e2e, and optional documentation. Preserve frontend application source and test/build configuration; existing successful Post browser workflows must provide the new required note."
+  },
+  "acceptance": [
+    "draft-preserved",
+    "post-validation",
+    "stale-write-refused",
+    "missing-handler-refused",
+    "empty-handler-supported",
+    "no-sdk-business-changes"
+  ],
+  "prompt": "Extend example.inspection with a completion_note text field (maximum 2000 characters). It must be persisted and round-trip through the existing public document API. Require a nonempty, nonwhitespace note at Post time while allowing missing/empty/whitespace notes in Draft saves. Preserve the other Post requirements, action version checks and idempotency, no-effect posting with the existing explicitly registered handler, and refusal when that handler is not configured. Add an application migration without changing any existing migration script. Preserve application project names/entry points, use only the supplied public packages, and do not change SDK business behavior. Use local Kit guidance and include appropriate tests. Keep existing project/dependency/build configuration and installed guidance unchanged; this task permits application C#/SQL, TypeScript tests under web/tests/unit or web/tests/e2e, and optional documentation. Update existing browser workflows to supply a valid completion note where Post succeeds, and run the frontend unit and E2E suites; frontend application source and test/build configuration must remain unchanged. Oversized notes must be rejected with HTTP 400 on create/update without truncation or partial writes. The complete application solution, including its tests, must still build."
+}

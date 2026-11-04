@@ -1807,6 +1807,25 @@ test('supports scalar required filters, active badges, private variants, and pre
   expect(document.querySelector('[data-testid="stub-drawer"]')).toBeNull()
 })
 
+test('renders a single date parameter without requiring a reserved parameter name', async () => {
+  await page.viewport(1280, 900)
+  reportPageMocks.state.variants = []
+  reportPageMocks.state.definition = clone({
+    ...baseDefinition,
+    filters: [],
+    parameters: [
+      { code: 'inspection_date', label: 'Inspection date', dataType: 'Date Only', isRequired: true, defaultValue: '2026-04-15' },
+    ],
+  })
+
+  const { view } = await renderReportPage()
+  await expect.element(view.getByTestId('stub-date-picker:Inspection date')).toBeVisible()
+  expect(document.querySelector('[data-testid="stub-date-range"]')).toBeNull()
+  expect(reportPageMocks.state.executeRequests.at(-1)).toMatchObject({
+    parameters: { inspection_date: '2026-04-15' },
+  })
+})
+
 test('does not invent a date control when several date parameters do not form a known range', async () => {
   await page.viewport(1280, 900)
   reportPageMocks.state.variants = []
@@ -2180,6 +2199,32 @@ test('does not load an unknown requested variant and uses the available default'
   const { view } = await renderReportPage('/reports/pm.occupancy.summary?variant=unknown-view')
   await expect.element(view.getByText('variant:portfolio-view')).toBeVisible()
   expect(document.body.textContent ?? '').not.toContain('unknown-view is selected')
+})
+
+test('does not publish the previous report context when variant saving finishes during navigation', async () => {
+  await page.viewport(1280, 900)
+  const saving = createDeferred<ReportVariantDto>()
+  const loading = createDeferred<ReportDefinitionDto>()
+  reportPageMocks.saveReportVariant.mockReturnValueOnce(saving.promise)
+  const { router, view } = await renderReportPage()
+  clickHeaderButtonByTitle('Composer')
+  await view.getByRole('button', { name: 'Composer save variant' }).click()
+  expect(reportPageMocks.saveReportVariant).toHaveBeenCalledTimes(1)
+
+  reportPageMocks.getReportDefinition.mockReturnValueOnce(loading.promise)
+  reportPageMocks.state.variants = []
+  await router.push('/reports/next-report')
+  await flushUi()
+  saving.resolve(clone(baseVariants[0]!))
+  await expect.poll(() => reportPageMocks.getReportVariants.mock.calls.length).toBe(3)
+  await flushUi()
+
+  expect(router.currentRoute.value.params.reportCode).toBe('next-report')
+  expect(router.currentRoute.value.query.ctx).toBeUndefined()
+  expect(router.currentRoute.value.query.variant).toBeUndefined()
+  view.unmount()
+  loading.resolve(clone(baseDefinition))
+  await flushUi()
 })
 
 test('does not call report APIs for an empty route report code', async () => {

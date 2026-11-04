@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "package": "NGB.Platform.PostgreSql.AspNetCore",
+  "version": "3.4.0",
+  "packageSha256": "916a4e4dceea4e0ba00fc8eed96ebcf1f053cc82dc3287ace82e21f05f01f126",
+  "assembly": {
+    "name": "NGB.PostgreSql.AspNetCore",
+    "version": "3.0.0.0",
+    "sha256": "4c4f4f618b101cb8806cb87df3bc0d8e11d235af24041759272b285254e968a1"
+  },
+  "contractSha256": "0d40d1a284242d921fb9b345b8b86566d626aa9b33ceda91ec5996ce210f298e",
+  "types": [
+    {
+      "name": "NGB.PostgreSql.AspNetCore.DependencyInjection.PostgresAspNetCoreServiceCollectionExtensions",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "8f6fc554ae87cf2f2803c1eafe191d800aae12aa17172c43ef347238562ed176",
+      "methods": [
+        "AddNgbPostgresExceptionMapping",
+        "AddNgbPostgresHealthCheck"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.PostgreSql.AspNetCore.ErrorHandling.PostgresExceptionHttpMapper",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "ff44e75a60e4772a1b246ce74f4c8a4a603b4dcd419713c41c0a00a70c613a37",
+      "methods": [
+        ".ctor",
+        "TryMap"
+      ],
+      "fields": []
+    }
+  ]
+}

@@ -5,8 +5,12 @@ Use the [platform publishing runbook](../../packaging/PUBLISHING.md) for operato
 external account configuration and release requirements. Application users
 start with [External applications and upgrades](../../docs/architecture/external-app-upgrades.md).
 The executable matrix is [matrix.json](matrix.json); it contains exact versions,
-five profiles, 19 candidate gates and two post-publication gates, infrastructure
-images and subsystem scope.
+five external-consumer profiles, five Kit profiles, 30 candidate gates and two
+post-publication gates, infrastructure images and subsystem scope.
+
+The approved [v3.4.0 release requirements](v3.4.0-release-requirements.md) retain
+full platform and application regressions outside the AI Development Kit.
+Readiness requires successful evidence for each mandatory gate of the assessed candidate.
 
 Run from the NGB repository root on macOS/Linux or in WSL2, with Node and local
 Docker Compose available. Packaging also needs .NET 10. Certification uses the
@@ -47,6 +51,8 @@ ngb_candidate="artifacts/release-candidate-local-$(date +%Y%m%d-%H%M%S)"
   node ui/scripts/pack-platform-ui.mjs --local-candidate
   bash packaging/nuget/pack-platform.sh
   bash packaging/nuget/verify-platform-packages.sh
+  node ai-devkit/prepare.mjs
+  node packaging/cli/pack.mjs
   node quality/external-consumer/release.mjs seal "$ngb_candidate"
   node quality/external-consumer/release.mjs certify "$ngb_candidate" \
     2>&1 | tee "${ngb_candidate}.log"
@@ -55,10 +61,11 @@ ngb_candidate="artifacts/release-candidate-local-$(date +%Y%m%d-%H%M%S)"
 ```
 
 Success ends with both `Release certify: passed` and `Release verify-candidate: passed`.
-Certification does not run the complete backend/frontend coverage suites. Run
-`run-full-quality.sh` separately, locally before release, for the existing platform
-and vertical tests at their unchanged 100% thresholds. A certification pass does
-not certify those local results.
+For v3.4.0, certification runs the complete backend/frontend coverage suites and
+requires their exact candidate-bound reports at the unchanged 100% thresholds.
+The legacy `--certification` quality mode excludes full coverage and cannot
+satisfy the v3.4.0 full-quality gate. Local `run-full-quality.sh` results are useful
+development evidence but do not replace the candidate-bound run.
 
 The npm archive must exist before NuGet template packing. `pack-platform.sh`
 generates the template and CRM lockfiles from the candidate; review and commit
@@ -125,22 +132,26 @@ non-root hosts, health and browser login. The generated Dockerfiles are used unc
 local package acquisition is part of the public app tool. Upgrade profiles use the
 public `ngb.mjs upgrade --apply` command against the frozen consumer copy.
 
-`release.mjs certify` runs compatibility, all five profiles, performance-tooling
-contracts and the framework component matrix in Chromium, Firefox and WebKit.
-It does not invoke `run-backend-full-coverage.sh` or `run-frontend-full-coverage.sh`.
+`release.mjs certify` runs compatibility, all five external-consumer profiles,
+performance-tooling contracts and the framework component matrix in Chromium,
+Firefox and WebKit. For v3.4.0 it also runs the five Kit profiles and invokes
+`run-backend-full-coverage.sh` and `run-frontend-full-coverage.sh` through full quality.
 `test-tooling.mjs` adds measured 100% coverage
 for the explicit helper inventory plus negative process tests. A numeric result
 for process launching is never manufactured. The prepared Linux image supplies
 Chromium, Firefox, WebKit and their operating-system dependencies.
 The release runner uses `Dockerfile.quality` and a private source copy to run the
-certification checks on Linux through `full-quality.mjs --certification`.
+checks on Linux through `full-quality.mjs`. The legacy `--certification` mode
+remains separate from the v3.4.0 full-quality path.
 Tooling, the browser matrix and performance contracts have separate checkpoints,
-so a later failure does not repeat earlier gates. Their report is
-`certification/certification-quality.json`; it contains no backend/frontend aggregate
-coverage claims. The wrapper without `--certification` still runs full local quality.
+so a later failure does not repeat earlier gates. Full-quality results are written
+to `certification/full-quality.json` with separately hashed backend/frontend
+reports. Legacy `certification/certification-quality.json` contains no full-coverage
+claims and is not accepted in their place.
 It never copies host `node_modules`, `bin`, `obj` or registry caches. The private Linux
 workspace and its own caches are retained for the same candidate's retries. Its path
-is in `certification-quality-workspace.json`. If unfinished checks must run again after
+is in `quality-workspace.json` (or `certification-quality-workspace.json` for the
+legacy mode). If unfinished checks must run again after
 that workspace was deleted, it starts its stages from scratch.
 Final evidence is written only after all profiles and required stages pass; neither
 a partial checkpoint nor a cached package is sufficient to authorize publication.

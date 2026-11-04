@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RunSettings>
+    <DataCollectionRunSettings>
+        <DataCollectors>
+            <DataCollector friendlyName="XPlat Code Coverage">
+                <Configuration>
+                    <Format>cobertura</Format>
+                    <Include>[NgbApplication.*]*,[Ngb.Validation]*</Include>
+                    <IncludeTestAssembly>true</IncludeTestAssembly>
+                    <ExcludeByFile>**/NgbApplication.Tests/**/*.cs,**/NgbApplication.IntegrationTests/**/*.cs,**/obj/**/*.cs</ExcludeByFile>
+                    <SkipAutoProps>false</SkipAutoProps>
+                </Configuration>
+            </DataCollector>
+        </DataCollectors>
+    </DataCollectionRunSettings>
+</RunSettings>

@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "task": "report-extension",
+  "observableContract": {
+    "seed": "The frozen application already contains example.equipment_category with code/name and nullable category_id on example.equipment. Category name is unique in the synthetic fixture. The report must use those saved relationships.",
+    "identity": "Report and dataset code example.inspection_by_category; public composable reporting definitions and PostgreSQL binding, no bespoke HTTP endpoint.",
+    "rows": "One category_name group per category with Posted inspections; inspection_count is Count. Exclude Draft inspections, uncategorized equipment and categories without matching inspections. Sort ascending by category_name and include grand totals.",
+    "parameters": "Required from_utc and to_utc date parameters with inclusive UTC days; use the public normalized exclusive upper bound in provider SQL.",
+    "filters": "category_id supports a UUID array; category_name supports exact text matching. Values remain parameterized. Filtering changes rows and grand totals.",
+    "paging": "Public cursor paging, bounded provider-side aggregation before sheet rendering, no duplicate/skipped groups. Reject arbitrary offsets, DisablePaging and a cursor reused with different filters.",
+    "authorization": "Both active administrator kinds can read definitions and execute without manual grants. Ungranted readers, inactive users and display-name-only administrators are denied; anonymous execution is unauthorized.",
+    "preservation": "Preserve installed guidance, existing migrations, project/dependency/build files and all application entry points. The complete solution must build. SQL belongs in PostgreSql; provider-neutral report definitions belong in Runtime."
+  },
+  "acceptance": [
+    "public-report-contracts",
+    "known-totals",
+    "paging",
+    "filters",
+    "unauthorized-refused",
+    "bounded-provider-query"
+  ],
+  "prompt": "Add a composable inspection summary with report and dataset code example.inspection_by_category through the public reporting contracts and PostgreSQL dataset binding. The application already has example.equipment_category (code/name) and nullable category_id on example.equipment. Group by category_name, sort ascending, and provide inspection_count using Count plus grand totals. Count only Posted inspections on categorized equipment; omit Drafts, uncategorized equipment and categories with no matching inspections. Add required from_utc/to_utc inclusive UTC date parameters, a category_id UUID-array filter and exact category_name text filter. Use parameterized provider-side aggregation and bounded public cursor paging; reject DisablePaging, arbitrary offsets and cursors reused with changed filters. Verify known synthetic totals and both administrator kinds without manual grants; ungranted readers, inactive users, display-name-only administrators and anonymous users must remain denied. Keep SQL in PostgreSql and provider-neutral definitions in Runtime. Preserve existing migrations, build/dependency files, installed guidance and application entry points. Include appropriate tests and keep the whole solution buildable."
+}

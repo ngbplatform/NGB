@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "package": "NGB.Platform.AiAssistant.Ollama",
+  "version": "3.4.0",
+  "packageSha256": "40ebdf37b5cf91a61d9f2ffa353519c05b478e17f05087b241bba4c723cf4695",
+  "assembly": {
+    "name": "NGB.AiAssistant.Ollama",
+    "version": "3.0.0.0",
+    "sha256": "595a1d654eecef0bbe2865f5f7373d03a5e26404a3a419f14490d618ced15e60"
+  },
+  "contractSha256": "750b704314434bd368f9a31aa45efade72f6bb661195aaf5773fe2a111b97f7a",
+  "types": [
+    {
+      "name": "NGB.AiAssistant.Ollama.DependencyInjection",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "6cbbf6e5dcfff26877e550f1b8edcc3d2a19ae6bfa76d020560b4d1f921a2a0f",
+      "methods": [
+        "AddNgbOllamaChatClient"
+      ],
+      "fields": [
+        "HttpClientName"
+      ]
+    },
+    {
+      "name": "NGB.AiAssistant.Ollama.OllamaAssistantOptions",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "c32cd71832b3457645be225ca582e3bacf0bdb946726c249c6341399b738fd4a",
+      "methods": [
+        ".ctor",
+        "get_AllowInsecureHttp",
+        "get_ContextLength",
+        "get_Endpoint",
+        "get_Model",
+        "set_AllowInsecureHttp",
+        "set_ContextLength",
+        "set_Endpoint",
+        "set_Model"
+      ],
+      "fields": [
+        "MaximumContextLength",
+        "SectionName"
+      ]
+    }
+  ]
+}

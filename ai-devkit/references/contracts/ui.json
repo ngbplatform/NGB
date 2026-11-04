@@ -1,0 +1,102 @@
+{
+  "schemaVersion": 1,
+  "package": "@ngbplatform/ui",
+  "version": "3.4.0",
+  "packageSha256": "7fb3878f8da07eeb13194c89ebec838c9ce26ad36190f3b2332980e762ae43f7",
+  "exports": [
+    {
+      "subpath": ".",
+      "files": [
+        {
+          "path": "./src/index.ts",
+          "sha256": "008959c1895ee04ce7369ddc08d59335645456502a5af8f94ba63176a54f72b8"
+        }
+      ]
+    },
+    {
+      "subpath": "./contracts",
+      "files": [
+        {
+          "path": "./src/contracts.ts",
+          "sha256": "75421e4d459997573fece2a2a76aab8f876674806bdd5306ed60d8b30a7aa930"
+        }
+      ]
+    },
+    {
+      "subpath": "./editor",
+      "files": [
+        {
+          "path": "./src/editor.ts",
+          "sha256": "b30d81fbab5938b789c6ae9c20ac6553b8e88d9bbb893c998e52ad7e45d3324b"
+        }
+      ]
+    },
+    {
+      "subpath": "./layout",
+      "files": [
+        {
+          "path": "./src/layout.ts",
+          "sha256": "5e733a4554997de56834875806f4cba2d8e454ee4147b6043e8a7b02dee5b0d3"
+        }
+      ]
+    },
+    {
+      "subpath": "./lazy",
+      "files": [
+        {
+          "path": "./src/lazy.ts",
+          "sha256": "ba368445176ac0e0f6ff40926d2ddd868ffd1a696a665aff90ad28d63d9884d0"
+        }
+      ]
+    },
+    {
+      "subpath": "./navigation",
+      "files": [
+        {
+          "path": "./src/navigation.ts",
+          "sha256": "cea24a6ff3d418a58dc25ddeac46cc7a5ec2d56e700faa17fa0d824dc3884285"
+        }
+      ]
+    },
+    {
+      "subpath": "./work-center",
+      "files": [
+        {
+          "path": "./src/work-center.ts",
+          "sha256": "a7c1934833ff3dc8c051598739fb56ed2698b297f8dde25b920826b2d175d7b0"
+        }
+      ]
+    },
+    {
+      "subpath": "./styles",
+      "files": [
+        {
+          "path": "./src/styles/tailwind.css",
+          "sha256": "f4ee04c167c651753eefdee5091ff119ce9cd3f8a8774000419ab2873f47728c"
+        }
+      ]
+    },
+    {
+      "subpath": "./vite-public-assets",
+      "files": [
+        {
+          "path": "./vite-public-assets.js",
+          "sha256": "ab7aa22a760cc0452035edc5b7a4ae5ce5e75fa1121566697bc4f7d4d8b5e1e5"
+        }
+      ]
+    },
+    {
+      "subpath": "./tailwind-preset",
+      "files": [
+        {
+          "path": "./tailwind-preset.d.ts",
+          "sha256": "73b333f87f5558271b2edf03581b2a2eb86b5e26f167c8f9ace769f3c75861e3"
+        },
+        {
+          "path": "./tailwind-preset.js",
+          "sha256": "f77cb343166ae8f1c86751dec286fe766f3ec14bf1fe591be52b109eba876f2b"
+        }
+      ]
+    }
+  ]
+}

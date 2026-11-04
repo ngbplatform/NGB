@@ -19,7 +19,7 @@
 
     <ItemGroup>
         <Content Include="content/**/*"
-                 Exclude="content/**/bin/**;content/**/obj/**;content/**/node_modules/**;content/**/dist/**;content/.env;content/.local/**"
+                 Exclude="content/**/bin/**;content/**/obj/**;content/**/node_modules/**;content/**/dist/**;content/**/TestResults/**;content/**/coverage/**;content/**/test-results/**;content/.env;content/.local/**;content/.ngb/**"
                  PackagePath="content/"
                  Pack="true" />
     </ItemGroup>

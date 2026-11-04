@@ -4,8 +4,39 @@ import test from 'node:test'
 import {
   classifyCoverageExclusion,
   evaluateCoverage,
+  mergeCoverage,
   parseCobertura,
 } from './verify-backend-full-coverage.mjs'
+
+test('empty discovery cannot pass and combined reports do not invent disjoint branch hits', () => {
+  const thresholds = { lines: 100, branches: 100, methods: 100 }
+  assert.equal(evaluateCoverage({ requiredFiles: [], excludedFiles: [], reportFiles: new Map(), thresholds }).passed, false)
+  const report = (hits, covered = 1, total = 2) => parseCobertura(`<coverage><class name="Example" filename="Example.cs">
+    <methods><method name="Run" signature="()"><lines><line number="1" hits="${hits}" /></lines></method></methods>
+    <lines><line number="1" hits="${hits}" condition-coverage="50% (${covered}/${total})" /></lines>
+    </class></coverage>`, '/app')
+  const combined = mergeCoverage([report(0), report(1)])
+  assert.equal(combined.get('Example.cs').lines.get(1), 1)
+  assert.equal([...combined.get('Example.cs').methods.values()][0], true)
+  assert.deepEqual([...combined.get('Example.cs').branches.values()][0], { covered: 1, total: 2 })
+  assert.equal(evaluateCoverage({ requiredFiles: ['Example.cs'], excludedFiles: [], reportFiles: combined, thresholds }).passed, false)
+  assert.throws(() => mergeCoverage([report(1), report(1, 2, 3)]), /inventory changed/)
+  assert.equal(evaluateCoverage({ requiredFiles: ['Example.cs'], excludedFiles: [],
+    reportFiles: mergeCoverage([report(0), report(1, 2)]), thresholds }).passed, true)
+})
+
+test('Cobertura source roots resolve project-relative filenames without escaping the application', () => {
+  const report = (source, file = 'Program.cs') => `<coverage><sources>${source}</sources>
+    <class name="Program" filename="${file}"><lines><line number="1" hits="1" /></lines></class></coverage>`
+  const root = '<source>/app/Api/</source>'
+  assert.ok(parseCobertura(report(root), '/app').has('Api/Program.cs'))
+  assert.ok(parseCobertura(report('<source>Api/</source>'), '/app').has('Api/Program.cs'))
+  assert.ok(parseCobertura(report(root + root), '/app').has('Api/Program.cs'))
+  assert.equal(parseCobertura(report('<source>/outside/</source>'), '/app').size, 0)
+  assert.equal(parseCobertura(report(root, '../../outside.cs'), '/app').size, 0)
+  assert.throws(() => parseCobertura(report(root + '<source>/app/Worker/</source>'), '/app'), /unambiguous/)
+  assert.ok(parseCobertura(report(root + '<source>/app/Worker/</source>', '/app/Api/Program.cs'), '/app').has('Api/Program.cs'))
+})
 
 test('declaration-only files are excluded until executable logic appears', () => {
   assert.equal(
@@ -129,6 +160,7 @@ test('branches from different classes on the same source line are not collapsed'
     <coverage>
       <packages><package><classes>
         <class name="NGB.Core.Container" filename="NGB.Core/Container.cs">
+          <methods><method name="Run" signature="()"><lines><line number="5" hits="1" /></lines></method></methods>
           <lines><line number="5" hits="1" branch="True" condition-coverage="100% (2/2)" /></lines>
         </class>
         <class name="NGB.Core.Container/Nested" filename="NGB.Core/Container.cs">
@@ -148,4 +180,17 @@ test('branches from different classes on the same source line are not collapsed'
   assert.equal(result.overall.lines.percentage, 100)
   assert.equal(result.overall.branches.percentage, 50)
   assert.deepEqual(result.failingFiles[0].failures, ['branches 50.00%'])
+})
+
+test('an empty class cannot masquerade as complete executable-source coverage', () => {
+  const report = parseCobertura('<coverage><class name="Example" filename="Example.cs"></class></coverage>', '/repo')
+  const result = evaluateCoverage({
+    requiredFiles: ['Example.cs'],
+    excludedFiles: [],
+    reportFiles: report,
+    thresholds: { lines: 100, branches: 100, methods: 100 },
+  })
+
+  assert.equal(result.passed, false)
+  assert.deepEqual(result.perFile[0].failures, ['no executable lines in report', 'no executable methods in report'])
 })

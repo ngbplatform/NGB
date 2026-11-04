@@ -1,0 +1,428 @@
+{
+  "schemaVersion": 1,
+  "package": "NGB.Platform.Definitions",
+  "version": "3.4.0",
+  "packageSha256": "0a3026cb44fd46d8a2f4dd116bc16098738e43d770a265e3d8706a0e2bcac036",
+  "assembly": {
+    "name": "NGB.Definitions",
+    "version": "3.0.0.0",
+    "sha256": "25db845e80f984d548e2bde396e1bfa9399f22618cd643f636243cca2015b624"
+  },
+  "contractSha256": "44e39a8781bf03186d3e3ddf372860859fa25953bd6ccb5bc2828a6408241d7a",
+  "types": [
+    {
+      "name": "NGB.Definitions.Catalogs.CatalogTypeDefinition",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "d2547a699565ef52cdcef8c7f6149717906bc702f29573540f7be01a080a02b1",
+      "methods": [
+        ".ctor",
+        "get_Metadata",
+        "get_TypeCode",
+        "get_TypedStorageType",
+        "get_ValidatorTypes"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Definitions.Catalogs.Validation.CatalogUpsertValidationContext",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "027e19b40876847eef8f35020d5b33b97788aaa5a181151ef495e2e5674f9c0a",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_CatalogId",
+        "get_Fields",
+        "get_IsCreate",
+        "get_TypeCode",
+        "op_Equality",
+        "op_Inequality",
+        "set_CatalogId",
+        "set_Fields",
+        "set_IsCreate",
+        "set_TypeCode"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Definitions.Catalogs.Validation.ICatalogUpsertValidator",
+      "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
+      "contractSha256": "588728ab57b9377258169838706670e80d7f7fdd76da6299aea8118a1645e3ba",
+      "methods": [
+        "ValidateUpsertAsync",
+        "get_TypeCode"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Definitions.CatalogTypeDefinitionBuilder",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "ba5a75223013cf901c825f5bff2f5f1bd1cae7163fa1b25bf3ba4ec3b2e0c05a",
+      "methods": [
+        "AddValidator",
+        "Metadata",
+        "TypedStorage"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Definitions.DefinitionsBuilder",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "8b5b066db1aed89154625f18eb429e552a75fe98061869ddf56e76de50476c10",
+      "methods": [
+        ".ctor",
+        "AddCatalog",
+        "AddDocument",
+        "AddDocumentDerivation",
+        "AddDocumentRelationshipType",
+        "Build",
+        "ExtendCatalog",
+        "ExtendDocument",
+        "ExtendDocumentDerivation",
+        "ExtendDocumentRelationshipType"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Definitions.DefinitionsRegistry",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "584974791514e6d037ecd6a80b870dce974ec20a05de1d6f0e9ff8dda12ae106",
+      "methods": [
+        ".ctor",
+        "GetCatalog",
+        "GetDocument",
+        "GetDocumentDerivation",
+        "GetDocumentRelationshipType",
+        "TryGetCatalog",
+        "TryGetDocument",
+        "TryGetDocumentDerivation",
+        "TryGetDocumentRelationshipType",
+        "get_Catalogs",
+        "get_DocumentDerivations",
+        "get_DocumentRelationshipTypes",
+        "get_Documents"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Definitions.Documents.Actions.DocumentActionDefinition",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "2aaa9338baa1016a86fea09fa85f93aa214374e056ba98dd045f6a1d4a37ee3f",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_AuthorizationEvaluatorType",
+        "get_AvailabilityEvaluatorType",
+        "get_DerivationCode",
+        "get_DocumentTypeCode",
+        "get_HandlerType",
+        "get_Metadata",
+        "op_Equality",
+        "op_Inequality",
+        "set_AuthorizationEvaluatorType",
+        "set_AvailabilityEvaluatorType",
+        "set_DerivationCode",
+        "set_DocumentTypeCode",
+        "set_HandlerType",
+        "set_Metadata"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Definitions.Documents.Actions.DocumentActionDefinitionsBuilder",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "58b2b4625aa232e18c77efb9a058296042391a03370a6a20735a705ba8ec3017",
+      "methods": [
+        ".ctor",
+        "Add",
+        "Build"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Definitions.Documents.Actions.IDocumentActionDefinitionsContributor",
+      "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
+      "contractSha256": "983db560c14e1bf204b9e9cc9f4f540d2cce2d698e1cbd39f37fd19d9bbeff37",
+      "methods": [
+        "Contribute"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Definitions.Documents.Approval.IDocumentApprovalPolicy",
+      "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
+      "contractSha256": "4d95fce48b67ebe7d506825bf08c6ca7b4b4b8be59c07e91cd13f3f0fa0f149a",
+      "methods": [
+        "EnsureCanPostAsync",
+        "get_TypeCode"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Definitions.Documents.Derivations.DocumentDerivationDefinition",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "85ad2e1e4edc12259700b74fed37ada8b26251e81cc3f77308e0aecfafdb913d",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_Code",
+        "get_FromTypeCode",
+        "get_HandlerType",
+        "get_Name",
+        "get_RelationshipCodes",
+        "get_ToTypeCode",
+        "op_Equality",
+        "op_Inequality",
+        "set_Code",
+        "set_FromTypeCode",
+        "set_HandlerType",
+        "set_Name",
+        "set_RelationshipCodes",
+        "set_ToTypeCode"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Definitions.Documents.Derivations.DocumentDerivationDefinitionBuilder",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "b6e15316ee1a1be39681b25f49ae6444a841ef5b5d1f6c5a561f4c6c0f09da1a",
+      "methods": [
+        "From",
+        "Handler",
+        "Name",
+        "Relationship",
+        "Relationships",
+        "To"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Definitions.Documents.DocumentTypeDefinition",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "6875ff74cb75627e402dba1f6a1e38b10edb3d9f15e3752afe6d73bb18a6d508",
+      "methods": [
+        ".ctor",
+        "get_ApprovalPolicyType",
+        "get_DraftValidatorTypes",
+        "get_Metadata",
+        "get_NumberingPolicyType",
+        "get_OperationalRegisterPostingHandlerType",
+        "get_PostValidatorTypes",
+        "get_PostingHandlerType",
+        "get_ReferenceRegisterPostingHandlerType",
+        "get_TypeCode",
+        "get_TypedStorageType"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Definitions.Documents.Numbering.IDocumentNumberingPolicy",
+      "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
+      "contractSha256": "da7068cfbfb4a1f08af7bccea1a8b1fdd70949d909e1c1156f831930c0a48c38",
+      "methods": [
+        "get_EnsureNumberOnCreateDraft",
+        "get_EnsureNumberOnPost",
+        "get_TypeCode"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Definitions.Documents.Posting.IDocumentOperationalRegisterPostingHandler",
+      "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
+      "contractSha256": "d406de83e124d9abcda4c14d9b9cc0b367d16b000649e4bd9edb6920dc2ae0cf",
+      "methods": [
+        "BuildMovementsAsync",
+        "get_TypeCode"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Definitions.Documents.Posting.IDocumentPostingHandler",
+      "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
+      "contractSha256": "f6deebe1c824f2a4406382674efcea0df21592a95d5c0257bb47c2fc77330289",
+      "methods": [
+        "BuildEntriesAsync",
+        "get_TypeCode"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Definitions.Documents.Posting.IDocumentReferenceRegisterPostingHandler",
+      "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
+      "contractSha256": "f4f0d88569a8771abeddd85a86e9d2e12f40634ab2796e01449846c5578959fb",
+      "methods": [
+        "BuildRecordsAsync",
+        "get_TypeCode"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Definitions.Documents.Relationships.DocumentRelationshipCardinality",
+      "attributes": "Public, Sealed",
+      "contractSha256": "ce29e9061dbf2f17d533e2701be5f7a6702d335a6da453ea21d2b94276eb311f",
+      "methods": [],
+      "fields": [
+        "ManyToMany",
+        "ManyToOne",
+        "OneToMany",
+        "OneToOne",
+        "value__"
+      ]
+    },
+    {
+      "name": "NGB.Definitions.Documents.Relationships.DocumentRelationshipTypeDefinition",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "df522a318465af0e21b697a1e2f53758fbc95ad2f218845c0471c2c11f8d0be3",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_AllowedFromTypeCodes",
+        "get_AllowedToTypeCodes",
+        "get_Cardinality",
+        "get_Code",
+        "get_IsBidirectional",
+        "get_MaxIncomingPerTo",
+        "get_MaxOutgoingPerFrom",
+        "get_Name",
+        "op_Equality",
+        "op_Inequality",
+        "set_AllowedFromTypeCodes",
+        "set_AllowedToTypeCodes",
+        "set_Cardinality",
+        "set_Code",
+        "set_IsBidirectional",
+        "set_Name"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Definitions.Documents.Relationships.DocumentRelationshipTypeDefinitionBuilder",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "b5cfb4c2370d4ea2d808fe716ae416d545edf5f5572481e3abf8efd9a37efe6e",
+      "methods": [
+        "AllowFromDocumentTypes",
+        "AllowToDocumentTypes",
+        "Bidirectional",
+        "Cardinality",
+        "ManyToMany",
+        "ManyToOne",
+        "Name",
+        "OneToMany",
+        "OneToOne"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Definitions.Documents.Validation.IDocumentDraftValidator",
+      "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
+      "contractSha256": "db6b80061d4adcec0473180c458354369a76886a7938312a226a3c3cdbdaeb27",
+      "methods": [
+        "ValidateCreateDraftAsync",
+        "get_TypeCode"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Definitions.Documents.Validation.IDocumentPostValidator",
+      "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
+      "contractSha256": "4dd0b66d0346a6019b922b8a2b07347ddf906f9d42eb7f5a64408f393b92ba82",
+      "methods": [
+        "ValidateBeforePostAsync",
+        "get_TypeCode"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Definitions.DocumentTypeDefinitionBuilder",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "d7eba2fb62989b1e6812831fff2449dea620ebcd5e47a348f854d79b2b08e9cc",
+      "methods": [
+        "AddDraftValidator",
+        "AddPostValidator",
+        "ApprovalPolicy",
+        "Metadata",
+        "NumberingPolicy",
+        "OperationalRegisterPostingHandler",
+        "PostingHandler",
+        "ReferenceRegisterPostingHandler",
+        "TypedStorage"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Definitions.IDefinitionsContributor",
+      "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
+      "contractSha256": "665ca9bfa78605b19aed5120f8c3b173a4d716b4668fdf303d9b85d1924e57cc",
+      "methods": [
+        "Contribute"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Definitions.WorkCenter.IWorkCenterPreferenceDefinitionSource",
+      "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
+      "contractSha256": "e042f64bea8d0abf54704cd469ef357a242398c98cd44b27d988b90b0aec6aa6",
+      "methods": [
+        "GetDefinitions"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Definitions.WorkCenter.WorkCenterPreferenceDefinition",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "fc304ab6e5d5f1d39667f94ffde1ea0ffb18a45df6b5a19ae1fce0284dbc09e9",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_ApplicableRoleCodes",
+        "get_Category",
+        "get_Code",
+        "get_DefaultEnabled",
+        "get_DefaultSeverity",
+        "get_Description",
+        "get_DisplayName",
+        "get_IsMandatory",
+        "get_Kind",
+        "get_LabelKey",
+        "get_Retention",
+        "get_SupportedChannels",
+        "get_UserCanDisable",
+        "op_Equality",
+        "op_Inequality",
+        "set_ApplicableRoleCodes",
+        "set_Category",
+        "set_Code",
+        "set_DefaultEnabled",
+        "set_DefaultSeverity",
+        "set_Description",
+        "set_DisplayName",
+        "set_IsMandatory",
+        "set_Kind",
+        "set_LabelKey",
+        "set_Retention",
+        "set_SupportedChannels",
+        "set_UserCanDisable"
+      ],
+      "fields": []
+    }
+  ]
+}

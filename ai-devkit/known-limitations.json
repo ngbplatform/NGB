@@ -1,0 +1,119 @@
+{
+  "schemaVersion": 1,
+  "limitations": [
+    {
+      "id": "documents.post-without-handler",
+      "status": "unsupported",
+      "baselineVersion": "3.3.0",
+      "targetVersion": "3.4.0",
+      "workflow": "Post a document without Accounting, OperationalRegisters or ReferenceRegisters handlers",
+      "observedError": "doc.posting.handler.not_configured",
+      "contracts": [
+        "NGB.Definitions.Documents.DocumentTypeDefinition",
+        "NGB.Definitions.Documents.Actions.IDocumentActionDefinitionsContributor",
+        "NGB.Application.Abstractions.Services.IDocumentActionDispatcher"
+      ],
+      "evidence": "examples/equipment-inspection/EquipmentInspection.IntegrationTests/InspectionHttpTests.cs",
+      "decision": "Preserve the public SDK lifecycle. Standard Post requires a registered handler, but that handler may intentionally produce no movements. Successful posting with empty effects and rejection of a missing handler are separate cases; no SDK change is required to support the former.",
+      "prohibitedWorkarounds": [
+        "Inventing register movements solely to permit a lifecycle transition",
+        "Writing a Posted status directly",
+        "Bypassing the authorized lifecycle dispatcher"
+      ]
+    },
+    {
+      "id": "documents.action-replay-authorization",
+      "status": "observed",
+      "targetVersion": "3.4.0",
+      "workflow": "Return a completed document action result only to a currently authorized actor",
+      "observedError": "HTTP 200 on replay by an actor whose document GET returns HTTP 403",
+      "contracts": [
+        "NGB.Application.Abstractions.Services.IDocumentActionDispatcher",
+        "NGB.Api.Controllers.DocumentControllerBase"
+      ],
+      "evidence": "examples/equipment-inspection/EquipmentInspection.IntegrationTests/InspectionLifecycleTests.cs",
+      "decision": "The user declined changing SDK authorization in this task. Preserve the recorded failing assertions and continue Kit implementation. These fixtures supply the complete original request and key; practical exploitability has not been established. The inactive actor receives its own saved result without re-execution. Do not describe these observations as a demonstrated attack or expand this task into an SDK investigation.",
+      "prohibitedWorkarounds": [
+        "Treating a known idempotency key as authorization",
+        "Skipping the denied-replay regression or accepting HTTP 200 as its expected outcome",
+        "Changing document lifecycle or adding controller-specific bypasses to conceal the defect"
+      ]
+    },
+    {
+      "id": "search.general-journal-metadata",
+      "status": "unsupported",
+      "targetVersion": "3.4.0",
+      "workflow": "Include built-in General Journal Entry in generic installed-definition document search",
+      "observedError": "Generic lookup requires a display column absent from the built-in journal metadata; search returns documents in UnavailableSources with Truncated=true.",
+      "contracts": [
+        "NGB.Application.Abstractions.Services.INgbSearchService",
+        "NGB.Runtime.Documents.DocumentMetadataRuntimeExtensions",
+        "NGB.Runtime.Documents.GeneralJournalEntry.GeneralJournalEntryDefinitionsContributor"
+      ],
+      "evidence": "examples/equipment-inspection/EquipmentInspection.IntegrationTests/SearchHttpTests.cs",
+      "decision": "Preserve the existing SDK. Use scoped application-document search or the existing typed General Journal Entry endpoint, and expose source-unavailable information for incomplete generic results. This task does not change built-in metadata or storage.",
+      "prohibitedWorkarounds": [
+        "Adding an invented display field to the built-in journal metadata or database",
+        "Suppressing UnavailableSources or claiming exhaustive document results",
+        "Bypassing current-user authorized readers"
+      ]
+    },
+    {
+      "id": "mcp.general-journal-detail",
+      "status": "unsupported",
+      "targetVersion": "3.4.0",
+      "workflow": "Read built-in General Journal Entry detail metadata or record through MCP",
+      "observedError": "ngb_get_metadata, ngb_get_record and compatibility fetch return internal_error because generic document metadata requires a display column absent from the built-in journal.",
+      "contracts": [
+        "NGB.Mcp.McpToolNames",
+        "NGB.Mcp.Tools.RecordRequest",
+        "NGB.Application.Abstractions.Services.IDocumentService",
+        "NGB.Runtime.Documents.DocumentMetadataRuntimeExtensions"
+      ],
+      "evidence": "examples/equipment-inspection/EquipmentInspection.IntegrationTests/McpBuiltInReadTests.cs",
+      "decision": "Preserve the existing SDK. MCP discovery and the typed journal list remain usable. Use the existing authorized /api/accounting/general-journal-entries/{id} API for detail reads. The separately asserted direct metadata failure ties this limitation to the existing generic display-column requirement.",
+      "prohibitedWorkarounds": [
+        "Adding a display field to SDK metadata or storage solely to satisfy MCP",
+        "Advertising a failed detail read as supported",
+        "Bypassing existing current-user journal authorization"
+      ]
+    },
+    {
+      "id": "reporting.composable-date-error-mapping",
+      "status": "observed",
+      "targetVersion": "3.4.0",
+      "workflow": "Execute a PostgreSQL composable report with malformed from_utc or to_utc date text",
+      "observedError": "The provider raises ngb.configuration.violation and the standard HTTP boundary returns 500 rather than a validation response of 400.",
+      "contracts": [
+        "NGB.Contracts.Reporting.ReportParameterMetadataDto",
+        "NGB.Application.Abstractions.Services.IAuthorizedReportReadService",
+        "NGB.PostgreSql.Reporting.PostgresReportPlanExecutor"
+      ],
+      "evidence": "examples/equipment-inspection/EquipmentInspection.IntegrationTests/InspectionReportTests.cs",
+      "decision": "Preserve the existing SDK and document this error mapping separately from supported request-validation checks. Supply ISO yyyy-MM-dd dates. An application requirement for a 400 response to malformed date text needs its own explicit validation boundary; date metadata alone does not provide it.",
+      "prohibitedWorkarounds": [
+        "Claiming that date metadata guarantees a 400 response for malformed text",
+        "Mapping all configuration failures to validation failures",
+        "Changing the SDK within AI Development Kit work"
+      ]
+    },
+    {
+      "id": "operational-registers.null-occurrence-cursor",
+      "status": "unsupported",
+      "targetVersion": "3.4.0",
+      "workflow": "Start exact-date operational-register history with GetByOccurredAtCursorAsync and a null cursor",
+      "observedError": "The default PostgreSQL provider returns SQLSTATE 42P08 (could not determine data type of parameter) for the first null-cursor request against an existing movements table.",
+      "contracts": [
+        "NGB.Persistence.OperationalRegisters.IOperationalRegisterMovementsQueryReader",
+        "NGB.OperationalRegisters.Contracts.OperationalRegisterOccurredAtCursor"
+      ],
+      "evidence": "examples/equipment-inspection/EquipmentInspection.IntegrationTests/OperationalRegisterDimensionPagingTests.cs",
+      "decision": "Preserve SDK behavior. Start with a bounded GetByOccurredAtPageAsync request and continue from its last displayed row with a non-null occurrence/time-ID cursor. Do not advertise null-cursor startup as supported by this provider.",
+      "prohibitedWorkarounds": [
+        "Changing provider SQL or parameter binding within AI Development Kit work",
+        "Inventing a sentinel cursor before all possible records",
+        "Suppressing the failure or claiming that the null-cursor first page succeeds"
+      ]
+    }
+  ]
+}

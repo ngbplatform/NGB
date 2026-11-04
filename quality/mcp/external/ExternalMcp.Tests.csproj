@@ -15,9 +15,9 @@
 
     <ItemGroup>
         <FrameworkReference Include="Microsoft.AspNetCore.App" />
-        <PackageReference Include="NGB.Platform.Api" Version="[3.3.0]" />
-        <PackageReference Include="NGB.Platform.Mcp.AspNetCore" Version="[3.3.0]" />
-        <PackageReference Include="NGB.Platform.PostgreSql" Version="[3.3.0]" />
+        <PackageReference Include="NGB.Platform.Api" Version="[3.4.0]" />
+        <PackageReference Include="NGB.Platform.Mcp.AspNetCore" Version="[3.4.0]" />
+        <PackageReference Include="NGB.Platform.PostgreSql" Version="[3.4.0]" />
         <PackageReference Include="ModelContextProtocol" Version="2.2.0" />
         <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
         <PackageReference Include="xunit" Version="2.9.3" />

@@ -1,0 +1,1059 @@
+{
+  "schemaVersion": 1,
+  "package": "NGB.Platform.Mcp",
+  "version": "3.4.0",
+  "packageSha256": "c56261f140a6fe502e186c47562ac6f13d6559f0c206f84203057f08b3e33b43",
+  "assembly": {
+    "name": "NGB.Mcp",
+    "version": "3.0.0.0",
+    "sha256": "ec436d61d26f95d36825fd3a957ef6e934b8c65a20f446bb677a941f57f82ae4"
+  },
+  "contractSha256": "3174253ba8a03554b88c4e19a57b27f368d9497f43b5cd6e3a6834793b09e4fa",
+  "types": [
+    {
+      "name": "NGB.Mcp.ConfiguredMcpNgbLinkResolver",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "2f85a21f08c6aa68142adbd041a664c88ce3c60720880a4d570a87fe412f4678",
+      "methods": [
+        ".ctor",
+        "Resolve"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Mcp.DependencyInjection",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "ae71847d939e158c8ee114d7fa6d770745f2b730a462a01a6bd94dc27f004014",
+      "methods": [
+        "AddNgbMcpContributor",
+        "AddNgbMcpReadTools"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Mcp.IMcpNgbLinkResolver",
+      "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
+      "contractSha256": "4b7b8f56af3356ddcfe151bce80fd7b39bf75602e179f831fddcb6f0b2ebaac7",
+      "methods": [
+        "Resolve"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Mcp.IMcpReadSourceProvider`2",
+      "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
+      "contractSha256": "9b2976fe5875c3f1366d0be34c0a344b9d596819bbb3a04fd44a737886b4761a",
+      "methods": [
+        "GetSourcesAsync"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Mcp.IMcpReadToolContributor",
+      "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
+      "contractSha256": "6874d5f8d853ad300e544769c65a985099f159392a5dcd3a4539ba127762f136",
+      "methods": [
+        "Contribute"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Mcp.IMcpReadToolHandler`2",
+      "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
+      "contractSha256": "208743ca199cc2a065c9a8ca1a134eb5c1e81d069b442ec6b3962846152b32f9",
+      "methods": [
+        "ExecuteAsync",
+        "IsAvailableAsync"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Mcp.IMcpReadToolRegistryBuilder",
+      "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
+      "contractSha256": "87def1f8290f9a1f9b069fb6ea61a98dd9cd546f937354aa323737ffcea80c1a",
+      "methods": [
+        "Add"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Mcp.McpReadDispatcher",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "396c47a30c5a3684a64e133d1f4169197954a2306f42deb7a5fe52539d322522",
+      "methods": [
+        ".ctor",
+        "ExecuteAsync",
+        "ListAsync"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Mcp.McpReadError",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "9ecb685c9a77dd35fd08ab40f29c6acac83a10aca1a8fdb45a2681eb7988ac9c",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_Code",
+        "get_Message",
+        "op_Equality",
+        "op_Inequality",
+        "set_Code",
+        "set_Message"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Mcp.McpReadException",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "fb0f5da441fae3c7ceaafa4fdab7ee4765dac202075f6168384b5533b55b7974",
+      "methods": [
+        ".ctor",
+        "get_Code"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Mcp.McpReadOptions",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "5b1b9dd6c119cb5b2bfcd3eafd25c16a63beb0055c9708ff9ad68067ebe5fe52",
+      "methods": [
+        ".ctor",
+        "get_MaxInputBytes",
+        "get_MaxJsonDepth",
+        "get_MaxRecordBytes",
+        "get_MaxRecordRows",
+        "get_MaxResponseBytes",
+        "get_MaxTools",
+        "set_MaxInputBytes",
+        "set_MaxJsonDepth",
+        "set_MaxRecordBytes",
+        "set_MaxRecordRows",
+        "set_MaxResponseBytes",
+        "set_MaxTools"
+      ],
+      "fields": [
+        "MaximumReportPageSize",
+        "MaximumSupportedJsonDepth"
+      ]
+    },
+    {
+      "name": "NGB.Mcp.McpReadResponse`1",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "e2234d1d041b432859f5389b327e39b8db41a255619d090fb20f3fb5c19eb604",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_Data",
+        "get_GeneratedAtUtc",
+        "get_SchemaVersion",
+        "get_Sources",
+        "op_Equality",
+        "op_Inequality",
+        "set_Data",
+        "set_GeneratedAtUtc",
+        "set_SchemaVersion",
+        "set_Sources"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Mcp.McpReadSource",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "e6b33a9d4cc391941ddcb2f7b045aff377e8be74850801f15b938b0c6c30dd72",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_Id",
+        "get_Kind",
+        "get_Title",
+        "get_TypeCode",
+        "get_Url",
+        "op_Equality",
+        "op_Inequality",
+        "set_Id",
+        "set_Kind",
+        "set_Title",
+        "set_TypeCode",
+        "set_Url"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Mcp.McpReadToolDescription",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "0f2420406268f9ce23bace39d48f05dd75acd4565b93dac40fc38228f84aec52",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_CompatibilityOnly",
+        "get_Description",
+        "get_InputSchema",
+        "get_Name",
+        "get_OutputSchema",
+        "op_Equality",
+        "op_Inequality",
+        "set_CompatibilityOnly",
+        "set_Description",
+        "set_InputSchema",
+        "set_Name",
+        "set_OutputSchema"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Mcp.McpReadToolRegistry",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "7bae56cfcd860702be0f1939a2688537c95a52d69fc11f095275e67bc4c5d6dd",
+      "methods": [
+        ".ctor",
+        "Add",
+        "ValidateHandlers",
+        "ValidatePermissionsAsync"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Mcp.McpToolNames",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "b4c7dc0a8c2e66a37a4df63012cbc42eff5f8acd58ee19b64f44c9ace9c4f73d",
+      "methods": [],
+      "fields": [
+        "CompatibilityFetch",
+        "CompatibilitySearch",
+        "ExecuteReport",
+        "GetAuditHistory",
+        "GetCapabilities",
+        "GetContentSummary",
+        "GetDocumentEffects",
+        "GetDocumentFlow",
+        "GetMetadata",
+        "GetRecord",
+        "GetReportDefinition",
+        "GetWorkItems",
+        "ListAttachments",
+        "ListMetadata",
+        "ListNotes",
+        "ListRecords",
+        "ListReports",
+        "Search"
+      ]
+    },
+    {
+      "name": "NGB.Mcp.Tools.AuditReadRequest",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "0242189a945c8be6023710a2504137ee1d97916781f85d71ecf5cd48e6cf9667",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_AfterAuditEventId",
+        "get_AfterOccurredAtUtc",
+        "get_Id",
+        "get_Kind",
+        "get_Limit",
+        "op_Equality",
+        "op_Inequality",
+        "set_AfterAuditEventId",
+        "set_AfterOccurredAtUtc",
+        "set_Id",
+        "set_Kind",
+        "set_Limit"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Mcp.Tools.CapabilitiesResult",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "6d793f3708cdeb95f527c41e1b4354711a6b4b925d906c8ebd0a746321abac80",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_Categories",
+        "get_ReadOnly",
+        "get_Tools",
+        "get_Version",
+        "op_Equality",
+        "op_Inequality",
+        "set_Categories",
+        "set_ReadOnly",
+        "set_Tools",
+        "set_Version"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Mcp.Tools.CompatibilitySearchItem",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "da0c3452438dd825be49b2b52da3c06510b3877bcb07342519c0c0c6c266485b",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_Id",
+        "get_Title",
+        "get_Url",
+        "op_Equality",
+        "op_Inequality",
+        "set_Id",
+        "set_Title",
+        "set_Url"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Mcp.Tools.CompatibilitySearchRequest",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "e938a51321d76c85002253a0d332f669575c8d1df6a3e9f638fca5030e280442",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_Query",
+        "op_Equality",
+        "op_Inequality",
+        "set_Query"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Mcp.Tools.CompatibilitySearchResult",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "1fda3082bc653a1a7b36247a0a54c2acce3d104437101886255ff513322e516d",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_Results",
+        "op_Equality",
+        "op_Inequality",
+        "set_Results"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Mcp.Tools.ContentListRequest",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "0697e3f2ee521c223dfa022575c0becae69a389d98c8b6b1606473d869b1077a",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_Cursor",
+        "get_Limit",
+        "get_Target",
+        "op_Equality",
+        "op_Inequality",
+        "set_Cursor",
+        "set_Limit",
+        "set_Target"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Mcp.Tools.ContentSummaryRequest",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "eb7ab983fb234b90e1cbcef58cf1215c1c5f602d8692751fe6f1f0a525af0319",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_Target",
+        "op_Equality",
+        "op_Inequality",
+        "set_Target"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Mcp.Tools.EffectsRequest",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "642f80cba09c58d4da0d1e0f4a37d842e810852b265b483ffe3b95b601cdad19",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_Id",
+        "get_Limit",
+        "get_TypeCode",
+        "op_Equality",
+        "op_Inequality",
+        "set_Id",
+        "set_Limit",
+        "set_TypeCode"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Mcp.Tools.EffectsResult",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "0f4913541103256da17a78b326d132ea9e2b1cea298755a90cb749fc2466b4db",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_Completeness",
+        "get_Effects",
+        "get_IdentifierScope",
+        "get_PerSectionLimit",
+        "get_Source",
+        "op_Equality",
+        "op_Inequality",
+        "set_Completeness",
+        "set_Effects",
+        "set_IdentifierScope",
+        "set_PerSectionLimit",
+        "set_Source"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Mcp.Tools.EmptyReadRequest",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "4b00f24b6d0a8113f3a631b7f4736dc0b7e4a5e1dbddb5c2bb38cafb63f0b079",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "op_Equality",
+        "op_Inequality"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Mcp.Tools.FetchRequest",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "44cfced5de84fed17510c80d1e8985ec118ff6d9b54a092dd7fd2e2f0944e434",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_Id",
+        "op_Equality",
+        "op_Inequality",
+        "set_Id"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Mcp.Tools.FetchResult",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "0ac925e5aeb96f452ffec8b0d553d6ee6ff5664f2c2a489a05702d8c1b9cdaac",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_Id",
+        "get_Text",
+        "get_Title",
+        "get_Url",
+        "op_Equality",
+        "op_Inequality",
+        "set_Id",
+        "set_Text",
+        "set_Title",
+        "set_Url"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Mcp.Tools.FlowRequest",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "8746b54566486a896457cb617afbb5fd316fbc8cdce81f7eb106a28d89ccf255",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_Depth",
+        "get_Id",
+        "get_MaxNodes",
+        "get_TypeCode",
+        "op_Equality",
+        "op_Inequality",
+        "set_Depth",
+        "set_Id",
+        "set_MaxNodes",
+        "set_TypeCode"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Mcp.Tools.FlowResult",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "c75c58a05e6e5753d7aa7df4eb4648ed60e7b8a904096155af03e1198a5c495d",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_Graph",
+        "get_Links",
+        "get_Source",
+        "op_Equality",
+        "op_Inequality",
+        "set_Graph",
+        "set_Links",
+        "set_Source"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Mcp.Tools.McpRecordSource",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "ff4a55be2f5804176044bb6361e2ec529a3766cee89475c1cb79a7a18b535c1b",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_Id",
+        "get_Kind",
+        "get_OpenInNgb",
+        "get_TypeCode",
+        "op_Equality",
+        "op_Inequality",
+        "set_Id",
+        "set_Kind",
+        "set_OpenInNgb",
+        "set_TypeCode"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Mcp.Tools.McpSourceKind",
+      "attributes": "Public, Sealed",
+      "contractSha256": "c0b300ff366bb2abcfd330ae8185f7a44197fd9c4aad951607eba80f65569786",
+      "methods": [],
+      "fields": [
+        "Catalog",
+        "Document",
+        "GeneralJournalEntry",
+        "Report",
+        "value__"
+      ]
+    },
+    {
+      "name": "NGB.Mcp.Tools.McpSourceKindExtensions",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "6fe38ea9540e521e8802211f49da4f12309eb1840b2dce402989f515602da553",
+      "methods": [
+        "ToCode",
+        "TryFromCode"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Mcp.Tools.MetadataListRequest",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "5796df9d062dfd1f45f619f14f998eaa8e24e04c51dabb0cc4541842c5045f98",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_Kind",
+        "get_Limit",
+        "get_Offset",
+        "op_Equality",
+        "op_Inequality",
+        "set_Kind",
+        "set_Limit",
+        "set_Offset"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Mcp.Tools.MetadataPage",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "4ab5a6add8a3ce58e667f55c5f6ebce639810c292c075dc7fd175481cd040943",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_HasMore",
+        "get_Items",
+        "get_Limit",
+        "get_Offset",
+        "op_Equality",
+        "op_Inequality",
+        "set_HasMore",
+        "set_Items",
+        "set_Limit",
+        "set_Offset"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Mcp.Tools.MetadataRequest",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "4c0006f54f0bd9b23c29c84b008847b6508922603d5a82b7bd60c3d19c55d30b",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_Kind",
+        "get_TypeCode",
+        "op_Equality",
+        "op_Inequality",
+        "set_Kind",
+        "set_TypeCode"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Mcp.Tools.MetadataResult",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "aca929d74afa6a977c1ff243db39ce01d0fc66dd99e41d27626a6843104a5d8a",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_Catalog",
+        "get_Document",
+        "get_Report",
+        "op_Equality",
+        "op_Inequality",
+        "set_Catalog",
+        "set_Document",
+        "set_Report"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Mcp.Tools.MetadataSummary",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "136b439a77abb9ff81bd5262c220a7469e739652e291eb65a4e7c2305949c524",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_Kind",
+        "get_Name",
+        "get_TypeCode",
+        "op_Equality",
+        "op_Inequality",
+        "set_Kind",
+        "set_Name",
+        "set_TypeCode"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Mcp.Tools.RecordLookupField",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "04771e38763ffce61760e5673fb610784b7d6f2539064e60f83dd7334e23c673",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_Key",
+        "get_Label",
+        "get_Lookup",
+        "op_Equality",
+        "op_Inequality",
+        "set_Key",
+        "set_Label",
+        "set_Lookup"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Mcp.Tools.RecordRequest",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "81dca813a3e62cbaebac323f24248f7f4f8f11ccaebf8f7ed7dc4f4b73a443ee",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_Id",
+        "get_Kind",
+        "get_TypeCode",
+        "op_Equality",
+        "op_Inequality",
+        "set_Id",
+        "set_Kind",
+        "set_TypeCode"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Mcp.Tools.RecordResult",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "dfb6060527023e95320436c59bfc8c5ee44d8143bf5a77fc9cb2fcd53aefd25f",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_Catalog",
+        "get_Document",
+        "get_GeneralJournalEntry",
+        "get_LookupFields",
+        "get_Source",
+        "get_TypeName",
+        "op_Equality",
+        "op_Inequality",
+        "set_Catalog",
+        "set_Document",
+        "set_GeneralJournalEntry",
+        "set_LookupFields",
+        "set_Source",
+        "set_TypeName"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Mcp.Tools.RecordsRequest",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "96b836d393fa1bc81a28fa2e59791053f8574a19c5eec2830981b3c8e6528123",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_Cursor",
+        "get_Filters",
+        "get_IncludeTotal",
+        "get_Kind",
+        "get_Limit",
+        "get_Search",
+        "get_TypeCode",
+        "op_Equality",
+        "op_Inequality",
+        "set_Cursor",
+        "set_Filters",
+        "set_IncludeTotal",
+        "set_Kind",
+        "set_Limit",
+        "set_Search",
+        "set_TypeCode"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Mcp.Tools.RecordsResult",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "2908e664fdf737aab0a9d0516d84a93a63b06ab5b1bf8a63984dad1b48b40467",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_Catalogs",
+        "get_Documents",
+        "get_GeneralJournalEntries",
+        "op_Equality",
+        "op_Inequality",
+        "set_Catalogs",
+        "set_Documents",
+        "set_GeneralJournalEntries"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Mcp.Tools.ReportDefinitionRequest",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "cc0b536ef13206f336479c908bd5da526102cf9b7bd7fd2cc4c470899eae7b25",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_ReportCode",
+        "op_Equality",
+        "op_Inequality",
+        "set_ReportCode"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Mcp.Tools.ReportReadRequest",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "0046c0f3f51b9469b8a52a3d1dc383b0b7431b4ecf155cda2ad760a15a374dc5",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_ReportCode",
+        "get_Request",
+        "op_Equality",
+        "op_Inequality",
+        "set_ReportCode",
+        "set_Request"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Mcp.Tools.ReportsRequest",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "7a91f96bd4d7f259174aac482762ff2ee9e40772fa9a562131f051db7917573c",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_Limit",
+        "get_Offset",
+        "op_Equality",
+        "op_Inequality",
+        "set_Limit",
+        "set_Offset"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Mcp.Tools.ReportsResult",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "7751d9b5238343c14dce5e8f624838825c9c9abed9b9b24dcecd1d07b56ffb19",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_HasMore",
+        "get_Items",
+        "get_Limit",
+        "get_Offset",
+        "op_Equality",
+        "op_Inequality",
+        "set_HasMore",
+        "set_Items",
+        "set_Limit",
+        "set_Offset"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Mcp.Tools.ReportSummary",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "59c0ceb063a8798ffe7a31a59499767c4395c8a087fda5c352fcda02e0ed67ac",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_Description",
+        "get_Group",
+        "get_Name",
+        "get_ReportCode",
+        "op_Equality",
+        "op_Inequality",
+        "set_Description",
+        "set_Group",
+        "set_Name",
+        "set_ReportCode"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Mcp.Tools.SearchItem",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "52158689142ba9d06f03468f56cfa80e9558eb885aa2e59df184cfb45fdeab41",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_Id",
+        "get_Kind",
+        "get_RecordId",
+        "get_Title",
+        "get_TypeCode",
+        "get_Url",
+        "op_Equality",
+        "op_Inequality",
+        "set_Id",
+        "set_Kind",
+        "set_RecordId",
+        "set_Title",
+        "set_TypeCode",
+        "set_Url"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Mcp.Tools.SearchRequest",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "1ae00b8a09bdb16ee0c657c0750acf64727a2220c484e089674d95b41691c7d5",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_Kind",
+        "get_Limit",
+        "get_Query",
+        "get_TypeCode",
+        "op_Equality",
+        "op_Inequality",
+        "set_Kind",
+        "set_Limit",
+        "set_Query",
+        "set_TypeCode"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Mcp.Tools.SearchResult",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "9d3378a181501f19e0096634495260a1a3def0bbcc6c270f54bd495f5d71f3e2",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_Items",
+        "get_Truncated",
+        "get_UnavailableSources",
+        "op_Equality",
+        "op_Inequality",
+        "set_Items",
+        "set_Truncated",
+        "set_UnavailableSources"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Mcp.Tools.WorkItemsRequest",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "21dada42dbad6cb979f89f92e855607507c464cdf2a897933ba09486a8d93b70",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_Query",
+        "get_SummaryOnly",
+        "op_Equality",
+        "op_Inequality",
+        "set_Query",
+        "set_SummaryOnly"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Mcp.Tools.WorkItemsResult",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "04f0588827a1dc0ee1d22069bea83604700ce6088ddb9bb09ed5c58d4e743801",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_Page",
+        "get_Summary",
+        "op_Equality",
+        "op_Inequality",
+        "set_Page",
+        "set_Summary"
+      ],
+      "fields": []
+    }
+  ]
+}

@@ -8,6 +8,8 @@ import { fileURLToPath } from 'node:url'
 import { unzipSync } from 'fflate'
 import { assertConsumerIsolation, hashDirectory } from './contracts.mjs'
 import { dependencyCache } from './dependency-cache.mjs'
+import { includesAiKit } from './release-contracts.mjs'
+import { validateInstalled } from '../../packaging/templates/content/infrastructure/ngb/kit-plan.mjs'
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const artifacts = resolve(process.argv[2] ?? join(repository, 'artifacts'))
@@ -28,18 +30,33 @@ run('dotnet', ['new', 'ngb', '-n', 'ExternalReview', '-o', application, '--debug
 await assertConsumerIsolation(application, repository)
 const files = await hashDirectory(application)
 for (const filename of Object.keys(files)) {
+  if (includesAiKit(matrix.target) && (filename.startsWith('ai/vendor/')
+    || ['ai/kit.json', 'infrastructure/ngb/kit-payload.json', 'infrastructure/ngb/baseline-3-3-0.json'].includes(filename))) continue
   const text = await readFile(join(application, filename), 'utf8')
   assert.ok(!text.includes('NgbApplication'), `Unsubstituted template name: ${filename}`)
   assert.ok(!filename.includes('NgbApplication'))
 }
-const projects = Object.keys(files).filter(name => name.endsWith('.csproj'))
-assert.deepEqual(projects.sort(), ['Api', 'BackgroundJobs', 'Migrator'].map(name => `ExternalReview.${name}/ExternalReview.${name}.csproj`).sort())
+const projects = Object.keys(files).filter(name => name.endsWith('.csproj') && !name.startsWith('ai/vendor/'))
+const expectedProjects = ['Api', 'BackgroundJobs', 'Migrator', ...(includesAiKit(matrix.target) ? ['Tests', 'IntegrationTests'] : [])]
+  .map(name => `ExternalReview.${name}/ExternalReview.${name}.csproj`)
+if (includesAiKit(matrix.target)) expectedProjects.push('infrastructure/validation/Ngb.Validation.csproj')
+assert.deepEqual(projects.sort(), expectedProjects.sort())
 for (const filename of projects) {
   const project = await readFile(join(application, filename), 'utf8')
-  assert.ok(!project.includes('ProjectReference'))
+  if (!filename.includes('.IntegrationTests/')) assert.ok(!project.includes('ProjectReference'))
   for (const reference of project.matchAll(/PackageReference Include="(NGB\.Platform\.[^"]+)" Version="([^"]+)"/g)) {
     assert.equal(reference[2], '[$(NgbPlatformVersion)]')
   }
+}
+if (includesAiKit(matrix.target)) {
+  const payload = JSON.parse(await readFile(join(application, 'infrastructure/ngb/kit-payload.json')))
+  validateInstalled(JSON.parse(await readFile(join(application, 'ai/kit.json'))), payload)
+  for (const file of payload.files.filter(file => file.role === 'file')) {
+    assert.equal(await readFile(join(application, file.path), 'utf8'), file.content, `Official Kit content was substituted: ${file.path}`)
+  }
+  const config = JSON.parse(await readFile(join(application, 'ngb.config.json')))
+  assert.deepEqual(config.projects.map(project => project.path).sort(), expectedProjects)
+  for (const project of config.projects) await readFile(join(application, dirname(project.path), 'packages.lock.json'))
 }
 run('node', ['infrastructure/configure.mjs', 'administrator@example.test'])
 const compose = JSON.parse(execFileSync('docker', ['compose', 'config', '--format', 'json'], { cwd: application, encoding: 'utf8' }))

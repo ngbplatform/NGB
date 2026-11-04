@@ -7,6 +7,31 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+Target release: **3.4.0**. This is a release candidate; publication and complete
+release certification are pending.
+
+### Added
+
+- AI Development Kit for independent applications, with versioned Codex and Claude
+  Code guidance, public SDK references and neutral examples.
+- `@ngbplatform/cli` delivery of the shared application CLI, plus starter backend,
+  integration, frontend and browser tests.
+- `doctor`, `validate`, `test`, `certify`, `ai status` and `ai sync` commands with
+  explicit execution boundaries and machine-readable evidence.
+
+### Changed
+
+- Coordinated SDK, UI, template, CLI, Kit and private workspace versions at 3.4.0.
+- Release verification binds Kit checks, real-agent evaluations and full platform
+  backend/frontend coverage to the exact release candidate.
+
+### Migration
+
+- Follow the [3.3.0 → 3.4.0 upgrade guide](docs/architecture/external-app-upgrades.md#migrate-330-to-340)
+  for target CLI acquisition, preview/apply and preservation of custom instructions.
+- See the [candidate release notes](docs/guides/ai-development-kit-release-3-4.md)
+  for supported execution, validation and known release prerequisites.
+
 ## [3.3.0] - 2026-10-24
 
 ### Added

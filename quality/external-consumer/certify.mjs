@@ -13,6 +13,9 @@ import { validateMatrix } from './release-contracts.mjs'
 import { startAfterSuccessfulMigration } from './sequencing.mjs'
 import { assertConsumerIsolation, verifyFrozenFixture } from './contracts.mjs'
 import { withManagedIgnores } from '../../packaging/templates/content/infrastructure/ngb/contracts.mjs'
+import { acquireCli } from '../../packaging/templates/content/infrastructure/ngb/acquisition.mjs'
+import { applicationFiles, loadCandidate } from '../../packaging/templates/content/infrastructure/ngb/application.mjs'
+import { managedBlock } from '../../packaging/templates/content/infrastructure/ngb/kit-contracts.mjs'
 import { dependencyCache } from './dependency-cache.mjs'
 import { saveInfrastructureDiagnostics, writeInfrastructureConfiguration } from './infrastructure.mjs'
 import {
@@ -35,7 +38,9 @@ const upgrade = profile.endsWith('-upgrade')
 const extension = profile !== 'clean-starter'
 const notes = profile === 'notes-upgrade' || profile === 'attachments-upgrade'
 const attachments = profile === 'attachments-upgrade'
+const kitEnabled = matrix.gates.some(gate => gate.id === 'ai-kit-upgrade')
 const root = await mkdtemp(join(tmpdir(), `ngb-${profile}-`))
+const composeProject = `ngb-cert-${profile}-${randomBytes(8).toString('hex')}`
 const application = join(root, 'application')
 const feed = join(root, 'feed')
 const infrastructure = join(root, 'infrastructure')
@@ -52,6 +57,7 @@ let browser
 let page
 let infrastructureStarted = false
 let mcpEnabled = false
+let upgradePlan
 
 function run(command, args, cwd = application, env = {}) {
   return execFileSync(command, args, { cwd, env: { ...process.env, ...env }, stdio: 'inherit' })
@@ -87,7 +93,7 @@ async function ready(url) {
   throw new Error(`Readiness deadline exceeded: ${url}`)
 }
 const composeArguments = [
-  'compose', '--project-name', `ngb-cert-${profile}`,
+  'compose', '--project-name', composeProject,
   '--env-file', join(infrastructure, '.env'), '--file', join(infrastructure, 'compose.yaml'),
 ]
 const compose = args => run('docker', [...composeArguments, ...args], infrastructure)
@@ -161,7 +167,7 @@ async function verifyLayers() {
 }
 
 function persistentInfrastructure() {
-  const ids = execFileSync('docker', ['compose', '--project-name', `ngb-cert-${profile}`, '--file', join(infrastructure, 'compose.yaml'), 'ps', '--quiet'], { cwd: infrastructure, encoding: 'utf8' }).trim().split('\n')
+  const ids = execFileSync('docker', [...composeArguments, 'ps', '--quiet'], { cwd: infrastructure, encoding: 'utf8' }).trim().split('\n')
   const containers = JSON.parse(execFileSync('docker', ['inspect', ...ids], { encoding: 'utf8' }))
   return containers.map(container => ({
     id: container.Id, service: container.Config.Labels['com.docker.compose.service'],
@@ -238,11 +244,12 @@ async function addExtension() {
 
 async function verifySourceCopy(upgraded = false) {
   const patch = {}
+  const managed = new Set(upgradePlan?.plan.entries.map(entry => entry.path) ?? [])
   for (const [path, expected] of Object.entries(sourceManifest.files)) {
     const actual = createHash('sha256').update(await readFile(join(application, path))).digest('hex')
     if (actual === expected) continue
     const allowed = path === 'Directory.Build.props' || path === 'NuGet.Config' || path === '.gitignore' || path.endsWith('packages.lock.json')
-      || path === 'web/package.json' || path === 'web/package-lock.json'
+      || path === 'web/package.json' || path === 'web/package-lock.json' || managed.has(path)
     assert.ok(upgraded && allowed, `Unexpected source fixture change: ${path}`)
     if (path === '.gitignore') {
       assert.equal(await readFile(join(application, path), 'utf8'), withManagedIgnores(await readFile(join(source, path), 'utf8')))
@@ -253,6 +260,53 @@ async function verifySourceCopy(upgraded = false) {
     evidence.patch = patch
     evidence.patchSha256 = createHash('sha256').update(JSON.stringify(patch)).digest('hex')
   }
+}
+
+async function upgradeApplication() {
+  if (!kitEnabled) {
+    run('node', [join(repository, 'ngb.mjs'), 'upgrade', '--app', application,
+      '--to', targetVersion, '--packages', artifacts, '--apply'])
+    return
+  }
+  const candidate = await loadCandidate(artifacts)
+  const cli = await acquireCli(targetVersion, { candidate, applicationRoot: application, cacheRoot: join(root, 'cli-cache') })
+  const original = await applicationFiles(application)
+  const args = [cli.entry, 'upgrade', '--app', application, '--to', targetVersion,
+    '--packages', artifacts, '--format', 'json']
+  const invoke = async (name, command) => {
+    const output = execFileSync(process.execPath, command, {
+      cwd: application, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, timeout: 3600000,
+    })
+    await writeFile(join(root, `${name}.json`), output, { mode: 0o600 })
+    const result = JSON.parse(output)
+    assert.equal(result.status, 'passed', `Target CLI ${name} failed.`)
+    return result
+  }
+  upgradePlan = await invoke('upgrade-preview', args)
+  assert.equal(upgradePlan.applied, false)
+  assert.deepEqual(await applicationFiles(application), original, 'Upgrade preview changed the application.')
+  const applied = await invoke('upgrade-apply', [...args, '--apply'])
+  assert.equal(applied.applied, true)
+  const updated = await applicationFiles(application)
+  const planned = new Set([...upgradePlan.dependencies, ...upgradePlan.plan.entries.map(entry => entry.path),
+    '.gitignore', 'web/package-lock.json'])
+  const preserved = []
+  for (const [path, bytes] of Object.entries(original)) {
+    if (planned.has(path) || path.endsWith('/packages.lock.json')) continue
+    assert.deepEqual(updated[path], bytes, `Upgrade changed an application-owned file: ${path}`)
+    preserved.push(path)
+  }
+  for (const path of ['AGENTS.md', 'CLAUDE.md']) {
+    const current = updated[path].toString('utf8')
+    assert.ok(managedBlock(current), `Missing official managed block: ${path}`)
+    assert.ok(current.includes(original[path].toString('utf8').trim()), `Application instructions were replaced: ${path}`)
+  }
+  for (const agent of ['agents', 'claude']) {
+    assert.match(updated[`.${agent}/skills/app-upgrade-proof/SKILL.md`].toString('utf8'), /canonical application skill/)
+  }
+  await invoke('kit-status', [join(application, 'infrastructure/ngb.mjs'), 'ai', 'status', '--format', 'json'])
+  evidence.upgrade = { cliIntegrity: cli.integrity, manifestSha256: candidate.manifestSha256, preservedFiles: preserved }
+  evidence.assertions.coordinatedCliKitUpgrade = 'passed'
 }
 
 async function browserLogin(username, password) {
@@ -352,7 +406,7 @@ async function verifyMcpUpgrade(state, content) {
   const directory = join(application, `${project}.Api`)
   const projectFile = join(directory, `${project}.Api.csproj`)
   const projectText = await readFile(projectFile, 'utf8')
-  assert.ok(!projectText.includes('NGB.Platform.Mcp.AspNetCore'), 'The frozen 3.2 consumer must not contain MCP.')
+  assert.ok(!projectText.includes('NGB.Platform.Mcp.AspNetCore'), 'The frozen consumer must not contain MCP before opting in.')
   await writeFile(projectFile, projectText.replace('</Project>',
     '    <ItemGroup>\n        <PackageReference Include="NGB.Platform.Mcp.AspNetCore" Version="$(NgbPlatformVersion)" />\n    </ItemGroup>\n\n</Project>'))
   const program = join(directory, 'Program.cs')
@@ -468,7 +522,14 @@ try {
     }
     await cp(join(artifacts, 'npm', `ngbplatform-ui-${targetVersion}.tgz`), join(feed, `ngbplatform-ui-${targetVersion}.tgz`))
   }
-  if (upgrade) await cp(source, application, { recursive: true })
+  if (upgrade) {
+    await cp(source, application, { recursive: true })
+    if (kitEnabled) {
+      const skill = join(application, 'ai/custom/skills/app-upgrade-proof')
+      await mkdir(skill, { recursive: true })
+      await writeFile(join(skill, 'SKILL.md'), '---\nname: app-upgrade-proof\ndescription: Review application-owned upgrade decisions and acceptance outcomes.\n---\n\nPreserve the checkpoint audit history and this application guidance.\n')
+    }
+  }
   else {
     if (registryOnly) {
       await cp(join(repository, 'NuGet.Registry.Config'), join(root, 'NuGet.Config'))
@@ -518,8 +579,6 @@ volumes:
   }
   await writeFile(join(infrastructure, 'compose.yaml'), composeFile)
   infrastructureStarted = true
-  // A process killed before finally may leave this disposable profile's volumes.
-  compose(['down', '--volumes', '--remove-orphans'])
   compose(['up', '-d'])
   await ready(`http://localhost:5180/realms/${realmName}/.well-known/openid-configuration`)
   if (attachments) {
@@ -586,8 +645,7 @@ volumes:
     runtimeProbe('SnapshotPersistentApplicationState', join(root, 'source-state.json'))
     const pending = join(root, 'pending-jobs.json')
     dotnetHost('Probe', ['enqueue', pending])
-    run('node', [join(repository, 'ngb.mjs'), 'upgrade', '--app', application,
-      '--to', targetVersion, '--packages', artifacts, '--apply'])
+    await upgradeApplication()
     await candidateConfiguration()
     await build(targetVersion)
     await verifySourceCopy(true)
@@ -628,7 +686,7 @@ volumes:
     await assertPersistentSnapshot('before-repeat.json', 'after-repeat.json', false)
     evidence.assertions.repeatedMigrationPreservesState = 'passed'
     evidence.assertions.preservationAndContinuation = 'passed'
-    if (targetVersion === '3.3.0') await verifyMcpUpgrade(state, content)
+    if (matrix.profiles[profile].assertions.includes('mcpOptInAfterUpgrade')) await verifyMcpUpgrade(state, content)
   }
   if (!upgrade) {
     if (extension) {
@@ -667,6 +725,9 @@ volumes:
     else assert.ok(events.some(event => event.Properties?.JobId === 'platform.schema.validate'))
   }
   evidence.assertions.healthAndLogs = 'passed'
+  for (const assertion of matrix.profiles[profile].assertions) {
+    assert.ok(evidence.assertions[assertion], `Required profile assertion did not run: ${assertion}`)
+  }
   evidence.status = 'passed'
   evidence.state = { userId: state.user.userId, authSubject: state.user.authSubject, roleId: state.role.roleId, catalogId: state.checkpoint?.id, attachmentSha256: content?.sha256 }
 } catch (error) {

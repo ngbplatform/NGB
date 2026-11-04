@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "applicationSchemaRevision": 4,
+  "platformVersion": "3.4.0",
+  "sourceCandidateSha256": "3db4c91ffdc48b07fc891693b0766087ccea9144a63daf140db846d4c0e56dd1",
+  "files": {
+    "V2026_10_25_0100__equipment_inspection.sql": "1375d3e597df664563cf89bef747b1edc62745e56f55926ebffc014e7da56079",
+    "V2026_10_28_0100__equipment_usage.sql": "405ec459ca55321838b3c5deb87287e96b829aefcb7253496917a322fc8334f4",
+    "V2026_10_28_0200__equipment_condition.sql": "4332afd9e566c06da194246256d2f978ef4989e089580a502fcde0c489609a6d",
+    "V2026_10_28_0300__equipment_service.sql": "f860fd18c666a87ad5ff70d31d5580e2bb8a7edb77ce43b6c18b6ccbb08f7fe2"
+  }
+}

@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <ItemGroup>
+        <PackageReference Include="NGB.Platform.Core" Version="[$(NgbPlatformVersion)]" />
+        <PackageReference Include="NGB.Platform.Definitions" Version="[$(NgbPlatformVersion)]" />
+        <PackageReference Include="NGB.Platform.Metadata" Version="[$(NgbPlatformVersion)]" />
+    </ItemGroup>
+</Project>

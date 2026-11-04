@@ -6,6 +6,16 @@ vertical scenario packages. Platform releases are documented in the
 
 ## [Unreleased]
 
+Target release: **3.4.0**.
+
+### Changed
+
+- Aligned the private workspace, shared framework, scenario package versions and
+  lockfile metadata with NGB Platform 3.4.0. Dependency versions, workloads and
+  historical measurements are preserved.
+
+## [3.3.0]
+
 Target release: **3.3.0**.
 
 ### Changed

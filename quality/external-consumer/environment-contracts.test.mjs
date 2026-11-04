@@ -15,5 +15,11 @@ test('host tools, CI and Linux quality image use one version contract', async ()
   for (const file of ['../../quality/package-lock.json', '../../ui/package-lock.json']) {
     const lock = JSON.parse(await readFile(new URL(file, import.meta.url), 'utf8'))
     assert.equal(lock.packages['node_modules/@playwright/test'].version, toolchain.playwright)
+    const browsers = Object.entries(lock.packages)
+      .filter(([path]) => /(?:^|\/)node_modules\/playwright(?:-core)?$/.test(path))
+    assert.ok(browsers.length > 0, `Missing browser runtime in ${file}`)
+    for (const [path, dependency] of browsers) {
+      assert.equal(dependency.version, toolchain.playwright, `${file}: ${path} differs from the browser image.`)
+    }
   }
 })

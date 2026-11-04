@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "package": "NGB.Platform.Migrator.Core",
+  "version": "3.4.0",
+  "packageSha256": "43cd839fc4bcb0dca62122a93ce382a83d045918573f8e385ff191f8ae05baf4",
+  "assembly": {
+    "name": "NGB.Migrator.Core",
+    "version": "3.0.0.0",
+    "sha256": "e4c090ad7eca61813a76cf3f0041acb2021f7052d9597ce7e046c90a70fbc83e"
+  },
+  "contractSha256": "9e3e68a06fc50b539d76ada27c4db686a0eef512d9512d9ad6d9a43146921efe",
+  "types": [
+    {
+      "name": "NGB.Migrator.Core.PlatformMigratorCli",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "9e3e68a06fc50b539d76ada27c4db686a0eef512d9512d9ad6d9a43146921efe",
+      "methods": [
+        "RunAsync"
+      ],
+      "fields": []
+    }
+  ]
+}

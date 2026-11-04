@@ -1,0 +1,230 @@
+{
+  "schemaVersion": 1,
+  "version": "3.4.0",
+  "purpose": "Artifact-derived public symbol and export inventory. Public visibility alone does not establish a supported extension workflow.",
+  "generator": "quality/ai-devkit/prepare-contracts.mjs",
+  "sdk": "10.0.401",
+  "packages": [
+    {
+      "package": "NGB.Platform.Accounting",
+      "reference": "references/contracts/NGB.Platform.Accounting.json",
+      "types": 108,
+      "contractSha256": "b85c031c5a7527359b93a0e356b8a0605e6f179c54676da26c444e2acefe0018"
+    },
+    {
+      "package": "NGB.Platform.AiAssistant",
+      "reference": "references/contracts/NGB.Platform.AiAssistant.json",
+      "types": 15,
+      "contractSha256": "1d83acb0a8083fa93372d44912d21ecdaf60014201dc49c3497a409d5ca4f744"
+    },
+    {
+      "package": "NGB.Platform.AiAssistant.Anthropic",
+      "reference": "references/contracts/NGB.Platform.AiAssistant.Anthropic.json",
+      "types": 2,
+      "contractSha256": "3dafc7b8117bc4fb23e12f0a234d03ed8ac10714bd7debb822658b76c7e8db11"
+    },
+    {
+      "package": "NGB.Platform.AiAssistant.AspNetCore",
+      "reference": "references/contracts/NGB.Platform.AiAssistant.AspNetCore.json",
+      "types": 2,
+      "contractSha256": "9dc3b3255574b55754c53edbce581197d34248b06a8f4ed42610aa30b6bb072d"
+    },
+    {
+      "package": "NGB.Platform.AiAssistant.Bedrock",
+      "reference": "references/contracts/NGB.Platform.AiAssistant.Bedrock.json",
+      "types": 2,
+      "contractSha256": "56d944d9068cbe84ff8c9a40cb06a96d42561ef297f124627d3ca1bbae14a92c"
+    },
+    {
+      "package": "NGB.Platform.AiAssistant.Ollama",
+      "reference": "references/contracts/NGB.Platform.AiAssistant.Ollama.json",
+      "types": 2,
+      "contractSha256": "750b704314434bd368f9a31aa45efade72f6bb661195aaf5773fe2a111b97f7a"
+    },
+    {
+      "package": "NGB.Platform.AiAssistant.OpenAI",
+      "reference": "references/contracts/NGB.Platform.AiAssistant.OpenAI.json",
+      "types": 2,
+      "contractSha256": "ae0c212c4ff6b71580a3bc7b4742281436d4c36a0bd9759fc3c26e0807d9331e"
+    },
+    {
+      "package": "NGB.Platform.Api",
+      "reference": "references/contracts/NGB.Platform.Api.json",
+      "types": 34,
+      "contractSha256": "18ddb0b616559426acdd99465fcd2ea1d8646051cf0ec58190d7292126b09c73"
+    },
+    {
+      "package": "NGB.Platform.Application.Abstractions",
+      "reference": "references/contracts/NGB.Platform.Application.Abstractions.json",
+      "types": 85,
+      "contractSha256": "0f6df4bb5349a0d4e439f6675c496759606e16ed5ad42986296661e12b731f36"
+    },
+    {
+      "package": "NGB.Platform.Attachments",
+      "reference": "references/contracts/NGB.Platform.Attachments.json",
+      "types": 11,
+      "contractSha256": "e75d995ee7a626bceb215845a8756d699032eb5581b7514b2516367a78ae382f"
+    },
+    {
+      "package": "NGB.Platform.Attachments.MinIO",
+      "reference": "references/contracts/NGB.Platform.Attachments.MinIO.json",
+      "types": 2,
+      "contractSha256": "41a9cdf5ef9880d09c6fccd1848af5f2d16b9df3f442e16d342100bdf62ae624"
+    },
+    {
+      "package": "NGB.Platform.BackgroundJobs",
+      "reference": "references/contracts/NGB.Platform.BackgroundJobs.json",
+      "types": 37,
+      "contractSha256": "925e7f6097a0c069e556b1779eaccc11e9ff0294cd8172b736b91af6bcd9d99e"
+    },
+    {
+      "package": "NGB.Platform.BackgroundJobs.PostgreSql",
+      "reference": "references/contracts/NGB.Platform.BackgroundJobs.PostgreSql.json",
+      "types": 3,
+      "contractSha256": "10c12a4f26ca7e577c3c680f2307afeddc3ca980ebe4eb6164f75162cd5d3506"
+    },
+    {
+      "package": "NGB.Platform.Contracts",
+      "reference": "references/contracts/NGB.Platform.Contracts.json",
+      "types": 209,
+      "contractSha256": "fb8bcf9a434756b7377507c294343a96d5a555b296041573350c7977eab7b5fa"
+    },
+    {
+      "package": "NGB.Platform.Core",
+      "reference": "references/contracts/NGB.Platform.Core.json",
+      "types": 99,
+      "contractSha256": "e5bf2adea639b7d9a613f0cd99761b11039704f0ec8260810394014bb9c3d3ba"
+    },
+    {
+      "package": "NGB.Platform.Definitions",
+      "reference": "references/contracts/NGB.Platform.Definitions.json",
+      "types": 26,
+      "contractSha256": "44e39a8781bf03186d3e3ddf372860859fa25953bd6ccb5bc2828a6408241d7a"
+    },
+    {
+      "package": "NGB.Platform.Hosting.AspNetCore",
+      "reference": "references/contracts/NGB.Platform.Hosting.AspNetCore.json",
+      "types": 18,
+      "contractSha256": "880caf5a05bbea952ceec33e6f5220acb698662ee1e6201810f03b3809bf05c1"
+    },
+    {
+      "package": "NGB.Platform.Mcp",
+      "reference": "references/contracts/NGB.Platform.Mcp.json",
+      "types": 53,
+      "contractSha256": "3174253ba8a03554b88c4e19a57b27f368d9497f43b5cd6e3a6834793b09e4fa"
+    },
+    {
+      "package": "NGB.Platform.Mcp.AspNetCore",
+      "reference": "references/contracts/NGB.Platform.Mcp.AspNetCore.json",
+      "types": 3,
+      "contractSha256": "aec7b7dff8c8fb28d9f80ff5681ce9c27140c8a0da66544594c6c92efcfae563"
+    },
+    {
+      "package": "NGB.Platform.Metadata",
+      "reference": "references/contracts/NGB.Platform.Metadata.json",
+      "types": 41,
+      "contractSha256": "185337e7970e470ff330ac4fc8d17e6ca96ddc965201aa5e7c5e5f44e5dc2d56"
+    },
+    {
+      "package": "NGB.Platform.Migrator.Core",
+      "reference": "references/contracts/NGB.Platform.Migrator.Core.json",
+      "types": 1,
+      "contractSha256": "9e3e68a06fc50b539d76ada27c4db686a0eef512d9512d9ad6d9a43146921efe"
+    },
+    {
+      "package": "NGB.Platform.Notes",
+      "reference": "references/contracts/NGB.Platform.Notes.json",
+      "types": 4,
+      "contractSha256": "44507d8f15b8ed6d57f832515e26df8bdadd6c0fd695d869f531cb5e25248ce2"
+    },
+    {
+      "package": "NGB.Platform.OperationalRegisters",
+      "reference": "references/contracts/NGB.Platform.OperationalRegisters.json",
+      "types": 43,
+      "contractSha256": "64c1b1ee32acfaa32662a4422570f36f2c5e4b6adbfd29e6c20e06b711e642d0"
+    },
+    {
+      "package": "NGB.Platform.Persistence",
+      "reference": "references/contracts/NGB.Platform.Persistence.json",
+      "types": 240,
+      "contractSha256": "fe7ab315b59b98746d2e32245f5d4b7ae3fa5afaf01c2f60c4c1ac8d4e5d535b"
+    },
+    {
+      "package": "NGB.Platform.PostgreSql",
+      "reference": "references/contracts/NGB.Platform.PostgreSql.json",
+      "types": 241,
+      "contractSha256": "b6658dd7dc4010c5c1c435f4af140c9683da5cfa045e88e1826ffc11ab6d946e"
+    },
+    {
+      "package": "NGB.Platform.PostgreSql.AspNetCore",
+      "reference": "references/contracts/NGB.Platform.PostgreSql.AspNetCore.json",
+      "types": 2,
+      "contractSha256": "0d40d1a284242d921fb9b345b8b86566d626aa9b33ceda91ec5996ce210f298e"
+    },
+    {
+      "package": "NGB.Platform.ReferenceRegisters",
+      "reference": "references/contracts/NGB.Platform.ReferenceRegisters.json",
+      "types": 31,
+      "contractSha256": "4e62f2f0a0926218af1cc8c58694dda7448ee7066fe0802322e833f6cbf432d9"
+    },
+    {
+      "package": "NGB.Platform.Runtime",
+      "reference": "references/contracts/NGB.Platform.Runtime.json",
+      "types": 355,
+      "contractSha256": "4ffc64c0988a5c14b496d5820fa41a968e9be0ffb47b79297acfa68a6edc5dfe"
+    },
+    {
+      "package": "NGB.Platform.Runtime.Hosting",
+      "reference": "references/contracts/NGB.Platform.Runtime.Hosting.json",
+      "types": 1,
+      "contractSha256": "31155b49d013a3e8663f4cde1ddefb66894f89d551b0e80556a492c77a9aa050"
+    },
+    {
+      "package": "NGB.Platform.Tools",
+      "reference": "references/contracts/NGB.Platform.Tools.json",
+      "types": 30,
+      "contractSha256": "a2fccf3b0064081c66800d6636dbf43ec855292f7d921277a90968f63067758b"
+    },
+    {
+      "package": "NGB.Platform.Watchdog",
+      "reference": "references/contracts/NGB.Platform.Watchdog.json",
+      "types": 4,
+      "contractSha256": "23dcd9c065ae83ec530910d2a0dca1e77172da411b71d956d07b851efebf00cd"
+    }
+  ],
+  "ui": "references/contracts/ui.json",
+  "files": {
+    "references/contracts/NGB.Platform.Accounting.json": "589e6c8b0dee30f17426aa363b60454797815938e49d71a89083e357bf71ba53",
+    "references/contracts/NGB.Platform.AiAssistant.json": "457319471ebf40457f6cd04ceabe56bc7b52cce490d9686ffe6196acbb4e69c9",
+    "references/contracts/NGB.Platform.AiAssistant.Anthropic.json": "afa5d416167c11ed405ab25ea1018b3376131c594d5ca623e016e54b85078f10",
+    "references/contracts/NGB.Platform.AiAssistant.AspNetCore.json": "ea6551b8d6f92d6d00957499d255c51bc6d2bebf1a52472141fc0729ceaac4d8",
+    "references/contracts/NGB.Platform.AiAssistant.Bedrock.json": "2fc4b4dd8eb53991d003f1f9e1f553ba101476a03ff2db8fd4814e50a8944734",
+    "references/contracts/NGB.Platform.AiAssistant.Ollama.json": "6ceb0e655bb28a0132b355b3ca54b86cc4c393254d38d61f2a05424e5130b048",
+    "references/contracts/NGB.Platform.AiAssistant.OpenAI.json": "33fa59c7619e0f665188ddb29633fa0e8dfbd2be72d363be3f191d184c5d8b6f",
+    "references/contracts/NGB.Platform.Api.json": "007a97ba61995a9244bff350f7238c044cb5ac75e4b6c0ae34ed8063f013586b",
+    "references/contracts/NGB.Platform.Application.Abstractions.json": "39ea2333d90479b8cc56d434539309825799261e6a02d417c8884efb11d252cc",
+    "references/contracts/NGB.Platform.Attachments.json": "4fa6af912e00957bf8066d40e19672cf710e134001c932ef4c754e3e20c82ac8",
+    "references/contracts/NGB.Platform.Attachments.MinIO.json": "812a5846f61abe2a2167acbdc5fd01d479f2190aff50a0360e4083d248c38a88",
+    "references/contracts/NGB.Platform.BackgroundJobs.json": "204dd8f4985343b0c695a9de54a08f73a7732cb9ca9d391e9dc11b08ffc379c4",
+    "references/contracts/NGB.Platform.BackgroundJobs.PostgreSql.json": "52571c70a44838e9338a5929b2bd31cdf40006f9a4d7c0e6099f73412b59df31",
+    "references/contracts/NGB.Platform.Contracts.json": "d4abc1b976aba2b2b346688ba2f6065a46d28fb891a263cb87a0a8ab1e3b8b50",
+    "references/contracts/NGB.Platform.Core.json": "119b3de5ebf030f64cd351b2157e6f866295734a0a0f58622c144691fcf377e5",
+    "references/contracts/NGB.Platform.Definitions.json": "e5da12892dffeee75ea723b6bef23bd849a63b9b3a43fb4bf0a6cb296be97947",
+    "references/contracts/NGB.Platform.Hosting.AspNetCore.json": "a8e93d99a54a6870111c1d0cc7a7f332ac4ea9591d20410373cd32b0f15cd2b6",
+    "references/contracts/NGB.Platform.Mcp.json": "aac637b03a92a6221dec5c2c6b713441e4c5dc080e63b89d862c9100cf700187",
+    "references/contracts/NGB.Platform.Mcp.AspNetCore.json": "b74e2fa8a34ceb15722cfed8cb954686da9bb12487bb1703efba36193acf0878",
+    "references/contracts/NGB.Platform.Metadata.json": "1236ccddb1d16fd62f052cf432ae9dad733a561795dd1a4e3b939d535d45ff59",
+    "references/contracts/NGB.Platform.Migrator.Core.json": "f38afd474e7f86dcf38eb573723fc72e1d9db4a7b49e61c4473b799f7840ad49",
+    "references/contracts/NGB.Platform.Notes.json": "2aa5c7a4f055b93142f7c7682dcbe2b4cfe6be3cf2757358b163b1b33efaba0c",
+    "references/contracts/NGB.Platform.OperationalRegisters.json": "4eb5a6a2b2a2efd9227e1c38329a9f523fe095898d59b8e9074682b85aa645f7",
+    "references/contracts/NGB.Platform.Persistence.json": "ee9d7832bbd3c8f1e4802c8ecb27d7c65bcbe9a9ec9601f7bc185313868684f9",
+    "references/contracts/NGB.Platform.PostgreSql.json": "dce7848203cb0e11da130e8e5c4a2d53fea448788f8b1f7b21b189018e808501",
+    "references/contracts/NGB.Platform.PostgreSql.AspNetCore.json": "7d35855889197549df4f68393d9c19e54797f07355cf434625772c987fde8196",
+    "references/contracts/NGB.Platform.ReferenceRegisters.json": "685127ab142ff7bcc4e7342b890cef4ab81ee927b8dd3ed5910c4ecaa7937e77",
+    "references/contracts/NGB.Platform.Runtime.json": "1f041abfc705cdb08b57ad235b22ac6d5e8255a5aa80b0751c2f26e0a5f7870d",
+    "references/contracts/NGB.Platform.Runtime.Hosting.json": "c68acf4817288d181a71f01db25105e6993b7fee4e3e4208b10becad16cdbc72",
+    "references/contracts/NGB.Platform.Tools.json": "61ac486fc3118d9f4950f67cae4c6a31a5b084a6b3eeaff39185844af64f9680",
+    "references/contracts/NGB.Platform.Watchdog.json": "8d27bfc842d5e933734d3ad4baa3c2637799677e026bfb4c952c245ae4df70c3",
+    "references/contracts/ui.json": "7f3a643a05626992f31ecb0316995136b58bb587307ef70371aeb7c98ea12d35"
+  }
+}

@@ -5,7 +5,7 @@ description: Enable NGB MCP, connect with an existing user access token, and use
 
 # NGB MCP Server
 
-NGB Platform 3.3.0 exposes existing authorized reads through the official MCP C#
+Since 3.3.0, NGB Platform has exposed existing authorized reads through the official MCP C#
 SDK 2.2.0. It runs inside the application API host. It does not require an LLM,
 another application account, a vector database, or another service container.
 

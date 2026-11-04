@@ -1,5 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <RunSettings>
+  <RunConfiguration>
+    <TreatNoTestsAsError>true</TreatNoTestsAsError>
+  </RunConfiguration>
+  <xUnit>
+    <FailSkips>true</FailSkips>
+  </xUnit>
   <DataCollectionRunSettings>
     <DataCollectors>
       <DataCollector friendlyName="XPlat Code Coverage">

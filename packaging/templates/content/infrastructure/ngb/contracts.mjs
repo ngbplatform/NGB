@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { parseArgs } from 'node:util'
 
-export const toolVersion = '3.3.0'
+export const toolVersion = '3.4.0'
 export const migrationGuide = 'https://docs.ngbplatform.com/architecture/external-app-upgrades'
 
 export function withManagedIgnores(original) {
@@ -13,7 +13,7 @@ export function withManagedIgnores(original) {
 }
 
 export function exactVersion(value) {
-  assert.match(value, /^\d+\.\d+\.\d+$/, `Use an exact stable version, for example ${toolVersion}.`)
+  assert.match(value, /^(?:0|[1-9]\d{0,8})\.(?:0|[1-9]\d{0,8})\.(?:0|[1-9]\d{0,8})$/, `Use an exact stable version, for example ${toolVersion}.`)
   return value
 }
 
@@ -31,6 +31,10 @@ export function argumentsFor(args) {
       to: { type: 'string' },
       start: { type: 'boolean' },
       apply: { type: 'boolean' },
+      format: { type: 'string' },
+      profile: { type: 'string' },
+      resolutions: { type: 'string' },
+      resources: { type: 'boolean' },
       'backup-confirmed': { type: 'boolean' },
       help: { type: 'boolean' },
     },
@@ -38,9 +42,15 @@ export function argumentsFor(args) {
   const command = values.help ? 'help' : (positionals[0] ?? 'help')
   const allowed = {
     create: ['local', 'packages', 'output', 'email', 'version', 'start'],
-    upgrade: ['local', 'packages', 'app', 'to', 'apply'],
+    upgrade: ['local', 'packages', 'app', 'to', 'apply', 'resolutions', 'format'],
     start: ['app'],
     deploy: ['app', 'backup-confirmed'],
+    doctor: ['app', 'format'],
+    validate: ['app', 'format', 'profile'],
+    test: ['app', 'format', 'profile'],
+    certify: ['app', 'format', 'profile'],
+    recover: ['app', 'apply', 'format', 'resources'],
+    ai: ['app', 'to', 'apply', 'resolutions', 'format'],
     help: Object.keys(values),
   }
   assert.ok(Object.hasOwn(allowed, command), `Unknown command: ${command}. Run ngb.mjs --help.`)
@@ -48,12 +58,24 @@ export function argumentsFor(args) {
     assert.ok(allowed[command].includes(option), `--${option} is not supported by ${command}.`)
   }
   if (command !== 'help') {
-    assert.equal(positionals.length, command === 'create' ? 2 : 1, `Unexpected arguments for ${command}.`)
+    assert.equal(positionals.length, ['create', 'ai'].includes(command) ? 2 : 1, `Unexpected arguments for ${command}.`)
   }
   if (command === 'create') {
     assert.match(positionals[1], /^[A-Za-z][A-Za-z0-9]{1,63}$/, 'Use an application name with 2–64 letters/digits, starting with a letter.')
   }
   if (command === 'upgrade') exactVersion(values.to ?? '')
+  if (command === 'ai') {
+    assert.ok(['status', 'sync'].includes(positionals[1]), 'Use ai status or ai sync.')
+    if (positionals[1] === 'status') {
+      assert.ok(!values.to && !values.apply && !values.resolutions, 'ai status is inspection-only.')
+    }
+    if (values.to) exactVersion(values.to)
+  }
+  if (values.format) assert.ok(['text', 'json'].includes(values.format), 'Use --format text or json.')
+  const profiles = { validate: ['build'], test: ['unit', 'integration', 'e2e', 'all'], certify: ['external-application'] }
+  if (values.profile) assert.ok(profiles[command]?.includes(values.profile), `Unsupported ${command} profile.`)
+  if (command === 'certify') assert.equal(values.profile, 'external-application', 'Use certify --profile external-application.')
+  if (values.resolutions) assert.ok(values.apply, '--resolutions requires --apply.')
   if (values.version) exactVersion(values.version)
   return { command, name: positionals[1], ...values }
 }
@@ -72,6 +94,7 @@ export function planUpgrade(files, target) {
   assert.equal(versions.length, 1, 'Use one unconditional NgbPlatformVersion property.')
   const source = exactVersion(versions[0][1])
   const supported = source === '3.1.0' && target === '3.2.0' || source === '3.2.0' && target === '3.3.0'
+    || source === '3.3.0' && target === '3.4.0'
   assert.ok(supported, `No automated migration is registered for ${source} → ${target}. See ${migrationGuide}.`)
   assert.ok(!/<PropertyGroup\b[^>]*\bCondition=[^>]*>(?:(?!<\/PropertyGroup>)[\s\S])*<NgbPlatformVersion>/.test(props),
     'Conditional platform versions need manual migration.')

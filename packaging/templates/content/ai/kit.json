@@ -1,0 +1,1565 @@
+{
+  "schemaVersion": 1,
+  "version": "3.4.0",
+  "versions": {
+    "sdk": "3.4.0",
+    "ui": "3.4.0",
+    "template": "3.4.0",
+    "cli": "3.4.0",
+    "kit": "3.4.0"
+  },
+  "source": {
+    "package": "NGB.Platform.Templates",
+    "version": "3.4.0"
+  },
+  "payloadSha256": "583ea5ead12070af6010e833c3fe2c3911f972da512cc1f042c6e690ce1ad5fa",
+  "capabilitySha256": "44e0799ab6883606a5f97a1a01d0e3e45bc5611e04c97abf5140f9ce63da6ba4",
+  "files": [
+    {
+      "path": ".agents/skills/ngb-accounting/SKILL.md",
+      "role": "file",
+      "sha256": "06a67e44941edb1e3105c97fc36644b74b1e884d6168570bd9aba95317e11363"
+    },
+    {
+      "path": ".agents/skills/ngb-application/SKILL.md",
+      "role": "file",
+      "sha256": "ad313b795fc331a1cf1b2f0cbd541bce9e02bfeda69c2c6ec30db66a07f9a5fe"
+    },
+    {
+      "path": ".agents/skills/ngb-background-jobs/SKILL.md",
+      "role": "file",
+      "sha256": "ad53feaed00d0d9399907640ee384690c9952182c843690ce63f35e4cef80f6d"
+    },
+    {
+      "path": ".agents/skills/ngb-catalogs/SKILL.md",
+      "role": "file",
+      "sha256": "94120789d9acd3975ae824f6c9a3a9db8bdd5056c1f892434b325bc4c47237c4"
+    },
+    {
+      "path": ".agents/skills/ngb-content/SKILL.md",
+      "role": "file",
+      "sha256": "fd31201e28d1b01494abd9a7ec25b313ef456d3870810b2f9e9104fd91a378a2"
+    },
+    {
+      "path": ".agents/skills/ngb-documents/SKILL.md",
+      "role": "file",
+      "sha256": "f64514cb3ef2978a1401f9ca23718b59d07d380d94de0a1cb085be1a1783eea2"
+    },
+    {
+      "path": ".agents/skills/ngb-frontend/SKILL.md",
+      "role": "file",
+      "sha256": "82c42347ae40d7fcaf3fbbcf6bf322d928b669eb877b629b027e27a1a9f33c52"
+    },
+    {
+      "path": ".agents/skills/ngb-kit-upgrade/SKILL.md",
+      "role": "file",
+      "sha256": "806c27239a1948e00354afc3edf0295a9424ce636a1f8076dcf1aec3b88d2e35"
+    },
+    {
+      "path": ".agents/skills/ngb-mcp-assistant/SKILL.md",
+      "role": "file",
+      "sha256": "c0af92f4c49128f871d10c6593e6c7cd3e18f29a8539381b74ef94576341e2ce"
+    },
+    {
+      "path": ".agents/skills/ngb-persistence/SKILL.md",
+      "role": "file",
+      "sha256": "fcf63d74efa4777ad7171a14a61f2d8419be8f80d3d05e8eefe58feab5178162"
+    },
+    {
+      "path": ".agents/skills/ngb-registers/SKILL.md",
+      "role": "file",
+      "sha256": "34a79cefa2873c7e515cb8ab60286ccfe71f9a20bae25743981803c0f79c07e6"
+    },
+    {
+      "path": ".agents/skills/ngb-release/SKILL.md",
+      "role": "file",
+      "sha256": "214bdd47825ce0d2270627e540790123b099a1daab744e468112197009b84eb8"
+    },
+    {
+      "path": ".agents/skills/ngb-reporting/SKILL.md",
+      "role": "file",
+      "sha256": "b6977da10e7a842fed76ada3471a4a9011a2bcddf0930b7c4423527abc4f61d8"
+    },
+    {
+      "path": ".agents/skills/ngb-security/SKILL.md",
+      "role": "file",
+      "sha256": "c1812fe8820881c4361810f4801587a41eb50fe4001f43f6848739d44cb16743"
+    },
+    {
+      "path": ".agents/skills/ngb-testing/SKILL.md",
+      "role": "file",
+      "sha256": "df152f6df4a8af75be6cf1499483f4863adccfc8517cbaa91d87ef2e159b4c83"
+    },
+    {
+      "path": ".agents/skills/ngb-work-center/SKILL.md",
+      "role": "file",
+      "sha256": "8e4d1e04b2c23617f50fedf652368e58e13615b383b66e31fb0edb2c754458ae"
+    },
+    {
+      "path": ".claude/skills/ngb-accounting/SKILL.md",
+      "role": "file",
+      "sha256": "06a67e44941edb1e3105c97fc36644b74b1e884d6168570bd9aba95317e11363"
+    },
+    {
+      "path": ".claude/skills/ngb-application/SKILL.md",
+      "role": "file",
+      "sha256": "ad313b795fc331a1cf1b2f0cbd541bce9e02bfeda69c2c6ec30db66a07f9a5fe"
+    },
+    {
+      "path": ".claude/skills/ngb-background-jobs/SKILL.md",
+      "role": "file",
+      "sha256": "ad53feaed00d0d9399907640ee384690c9952182c843690ce63f35e4cef80f6d"
+    },
+    {
+      "path": ".claude/skills/ngb-catalogs/SKILL.md",
+      "role": "file",
+      "sha256": "94120789d9acd3975ae824f6c9a3a9db8bdd5056c1f892434b325bc4c47237c4"
+    },
+    {
+      "path": ".claude/skills/ngb-content/SKILL.md",
+      "role": "file",
+      "sha256": "fd31201e28d1b01494abd9a7ec25b313ef456d3870810b2f9e9104fd91a378a2"
+    },
+    {
+      "path": ".claude/skills/ngb-documents/SKILL.md",
+      "role": "file",
+      "sha256": "f64514cb3ef2978a1401f9ca23718b59d07d380d94de0a1cb085be1a1783eea2"
+    },
+    {
+      "path": ".claude/skills/ngb-frontend/SKILL.md",
+      "role": "file",
+      "sha256": "82c42347ae40d7fcaf3fbbcf6bf322d928b669eb877b629b027e27a1a9f33c52"
+    },
+    {
+      "path": ".claude/skills/ngb-kit-upgrade/SKILL.md",
+      "role": "file",
+      "sha256": "806c27239a1948e00354afc3edf0295a9424ce636a1f8076dcf1aec3b88d2e35"
+    },
+    {
+      "path": ".claude/skills/ngb-mcp-assistant/SKILL.md",
+      "role": "file",
+      "sha256": "c0af92f4c49128f871d10c6593e6c7cd3e18f29a8539381b74ef94576341e2ce"
+    },
+    {
+      "path": ".claude/skills/ngb-persistence/SKILL.md",
+      "role": "file",
+      "sha256": "fcf63d74efa4777ad7171a14a61f2d8419be8f80d3d05e8eefe58feab5178162"
+    },
+    {
+      "path": ".claude/skills/ngb-registers/SKILL.md",
+      "role": "file",
+      "sha256": "34a79cefa2873c7e515cb8ab60286ccfe71f9a20bae25743981803c0f79c07e6"
+    },
+    {
+      "path": ".claude/skills/ngb-release/SKILL.md",
+      "role": "file",
+      "sha256": "214bdd47825ce0d2270627e540790123b099a1daab744e468112197009b84eb8"
+    },
+    {
+      "path": ".claude/skills/ngb-reporting/SKILL.md",
+      "role": "file",
+      "sha256": "b6977da10e7a842fed76ada3471a4a9011a2bcddf0930b7c4423527abc4f61d8"
+    },
+    {
+      "path": ".claude/skills/ngb-security/SKILL.md",
+      "role": "file",
+      "sha256": "c1812fe8820881c4361810f4801587a41eb50fe4001f43f6848739d44cb16743"
+    },
+    {
+      "path": ".claude/skills/ngb-testing/SKILL.md",
+      "role": "file",
+      "sha256": "df152f6df4a8af75be6cf1499483f4863adccfc8517cbaa91d87ef2e159b4c83"
+    },
+    {
+      "path": ".claude/skills/ngb-work-center/SKILL.md",
+      "role": "file",
+      "sha256": "8e4d1e04b2c23617f50fedf652368e58e13615b383b66e31fb0edb2c754458ae"
+    },
+    {
+      "path": "AGENTS.md",
+      "role": "block",
+      "sha256": "e31aea8c211db1b14759287db12bbf220332edf0e5591661eec1876e6da66788"
+    },
+    {
+      "path": "ai/vendor/capability-registry.json",
+      "role": "file",
+      "sha256": "44e0799ab6883606a5f97a1a01d0e3e45bc5611e04c97abf5140f9ce63da6ba4"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/Directory.Build.props",
+      "role": "file",
+      "sha256": "b0853a38ea5b4598e2cbae5792c06944f56b4b0cc3bd5373c51709cb2925bdd0"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Api/ApplicationRoles.cs",
+      "role": "file",
+      "sha256": "a78ff7030169d69e26659f98e83dbe4f973e043676a70a67cc9812573fdbeff6"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Api/Controllers.cs",
+      "role": "file",
+      "sha256": "28aa0355de260f9557d059a721e27d60f98ebaf59b7826d28e20a30dbed6f75a"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Api/EquipmentAssistant.cs",
+      "role": "file",
+      "sha256": "56d31e6eb9f22149e446d260da01da7a38fa70e4a8bf3b4e0372630aca1be64e"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Api/EquipmentInspection.Api.csproj",
+      "role": "file",
+      "sha256": "52bb0b723990b90c016e157da84d8ee3ab2ff9a6f3384988c070439bc604e38e"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Api/EquipmentReadTool.cs",
+      "role": "file",
+      "sha256": "c98f19b329e1c5713c4d0218442bb50d9cd13ac8043ed803e1fb92e6cb42cf7a"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Api/EquipmentReadToolContributor.cs",
+      "role": "file",
+      "sha256": "07879e3f87e8970e3e20f1b24ef54f97f532f910f1c3844ef2c1a45335f2c4c6"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Api/EquipmentSearchController.cs",
+      "role": "file",
+      "sha256": "fbe3c7ecb7a1f56cba48fedd4f528b2f3ca86306cf0474a9d9e0557ca6b4f606"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Api/Program.cs",
+      "role": "file",
+      "sha256": "1d512534f08b4b0a5ba784c998c8124509410f88e22adeea054707afeb0afa50"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.BackgroundJobs/appsettings.json",
+      "role": "file",
+      "sha256": "6140a86c1e3f69f8032d3f35f5aac776357dc35d8c8d3766f9a064d2cf78cf65"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.BackgroundJobs/EquipmentInspection.BackgroundJobs.csproj",
+      "role": "file",
+      "sha256": "64d36b12a48418942505ce57f963e8392d055090af9b6b499698489054ae3d80"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.BackgroundJobs/Program.cs",
+      "role": "file",
+      "sha256": "d4c09e09dbd218af0a835ffa616b01db2da6d1aa90ed2a74fd780e0f63a3bdc1"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Definitions/ChecklistDefinitions.cs",
+      "role": "file",
+      "sha256": "325ffba083ebb3c5c994a877d89e020a177e3b34aa547ba24365277cca74dfef"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Definitions/EquipmentConditionDefinitions.cs",
+      "role": "file",
+      "sha256": "04a25b923b5e7040aabc66cf7880f092d6e6024ef7500f058af9ce4288cb71e5"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Definitions/EquipmentDefinitions.cs",
+      "role": "file",
+      "sha256": "9a31e8c5e165ed09e53969eea3b6254959c7fe8107fe4d3f6a27cd1aa031a42b"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Definitions/EquipmentInspection.Definitions.csproj",
+      "role": "file",
+      "sha256": "82fc86293a941645d565ae653775361c7e290cbc0e6e3c86422f53f2a71b4490"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Definitions/EquipmentServiceDefinitions.cs",
+      "role": "file",
+      "sha256": "90d7108e4487ab0dedaa54140a063bc04cd0b8496dcd3fac0a55360b1daeb5a3"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Definitions/EquipmentUsageDefinitions.cs",
+      "role": "file",
+      "sha256": "4cb3f85668626696498f3a27560a766d1cf9e84a4f460a2f748ca8957d0d9f3a"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Definitions/IChecklistReader.cs",
+      "role": "file",
+      "sha256": "68375a51a8e42f75c02650d0e268b29640b62cc38a36c0bd2ef92ecf86a05c5c"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Definitions/IEquipmentConditionReader.cs",
+      "role": "file",
+      "sha256": "846b8df40c9dde642438b532687f58fb748a5ab6536126519828ec61a7f562a1"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Definitions/IEquipmentServiceReader.cs",
+      "role": "file",
+      "sha256": "4a7691b42357a41bb598659039704fd761b341b02f175c522a71671d961513e3"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Definitions/IEquipmentUsageReader.cs",
+      "role": "file",
+      "sha256": "f9d5ce01fdb2c643b1614caaae6525e2b17f28ab3b4135ab0846e48f7b337a03"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Definitions/IInspectionReader.cs",
+      "role": "file",
+      "sha256": "873bc0e938edd1a237cac7c1cc5371bf61b7f8bca93d2bfed62bc7b490b1bfa7"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Definitions/InspectionActions.cs",
+      "role": "file",
+      "sha256": "c38ca8ffb24a96108a0f6615d687afbbc52df8f0549632ed92ff485d8c3ef8a2"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Definitions/InspectionReports.cs",
+      "role": "file",
+      "sha256": "4fb863ebc45f5a67499ecc5fa0f9908adc3ea3eae6317a8b1ee838b31b54eb0e"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Definitions/InspectionWorkCenterDefinitions.cs",
+      "role": "file",
+      "sha256": "0e72d6c4853996c882c9c9e9b9e2e327b0bfb5afeb3a5c59f530eb6194b3c5f9"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/AccountingPeriodHttpTests.cs",
+      "role": "file",
+      "sha256": "be3f4a454fa27f696a5e5fe0e66e3bba6d57c3332ff59a83b46ff9cd28d7fb5b"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/AccountingPostingValidatorTests.cs",
+      "role": "file",
+      "sha256": "1f9c0197aee0318307732f259f76bcd91d96ce62980f1ae2d14824d71bab2d5f"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/AccountingRebuildTests.cs",
+      "role": "file",
+      "sha256": "0693ad5688154c84a7b63aa35d7470f6b35912676c5c380aa857ec88a0499533"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/ApiCompositionTests.cs",
+      "role": "file",
+      "sha256": "c37a1695531810141f98fcdf667864062402ca1fd6008351edd5dbc99a4e8211"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/AssistantConfigurationTests.cs",
+      "role": "file",
+      "sha256": "9d5f4abe9e77f74b49efee9c968dbd082218f4c76e3d1992667d408859e2bc03"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/AssistantHttpTests.cs",
+      "role": "file",
+      "sha256": "74a66db8cfb95ff8cf34197d6ffd003550575da8a1576e1c73e8938377c04e55"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/AssistantProviderFixture.cs",
+      "role": "file",
+      "sha256": "a4f8d3fd9508c6ed5e45c66b760575848b05eec725943e1aa9c9e1a2359d96b7"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/AttachmentsHttpTests.cs",
+      "role": "file",
+      "sha256": "f7c262b349f6c5f4f58e5549a7b820d9d01dfac83cdf5275302993d511fb348a"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/BackgroundJobsTests.cs",
+      "role": "file",
+      "sha256": "15ec6e03e00fd9ecdfde3cb85e934bfa5fb2df44b319316efa697efb46283fe4"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/BrowserTestHost.cs",
+      "role": "file",
+      "sha256": "696f5e20bcb037a636cc49ae1e907dcdcce50cd2320dc47f2d0edc6531dfd1da"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/BuiltInMaintenanceJobsTests.cs",
+      "role": "file",
+      "sha256": "669f8850c9ddb24afd6ec4ef52357574f51d3d557cac333c95b5af26a896a7e0"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/CatalogCompositionTests.cs",
+      "role": "file",
+      "sha256": "e2921838fb53eddf709789c43f9a70c60a4a9a138e636b3f7823be26e48f8903"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/CatalogPartsHierarchyTests.cs",
+      "role": "file",
+      "sha256": "33e1c1c9ecd3a6ce1498befcb45fc243b87eb698b4f826df979fd80d4ae28d5f"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/ChartOfAccountsHttpTests.cs",
+      "role": "file",
+      "sha256": "788253117366c54c1cbe94edb5becdbd21916ee02ab83308394afa4381fd485f"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/ChecklistHttpTests.cs",
+      "role": "file",
+      "sha256": "38f7d32ede15136427f2423be66bb798d20d404d98067e1e40baaf5f9ff79218"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/Controllers.cs",
+      "role": "file",
+      "sha256": "81ce3d09eeae2a1db236373792ce45afd49e43e8aa02aa80b4ea26ed977cf7b9"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/CustomOperationalRegisterProjectorTests.cs",
+      "role": "file",
+      "sha256": "d97a8f37a22b80b5ec7b01dfc979c00465a7a192a3cb5ab5c57c6951f650333f"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/DocumentBatchTests.cs",
+      "role": "file",
+      "sha256": "ef5ae5f15ee98ca00caa4c76376eb70ac4d7e1e4a209b6731a7df452f8651dcf"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/DocumentListFilterTests.cs",
+      "role": "file",
+      "sha256": "10308854b88df533f54d705ba3c02ce1410b7b778ceb3ed0c3dd155acab5cf4e"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/DocumentRelationshipBatchTests.cs",
+      "role": "file",
+      "sha256": "3ebe3cddbea4ebec966db0fee8497cbb1e1ac0398ecb18dd42490b06101d952d"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/EquipmentCatalogTests.cs",
+      "role": "file",
+      "sha256": "35abbe2924dde497deb30b0b72765f8d7cd103702df8622a5d65c6afd4c6bbea"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/EquipmentConditionHttpTests.cs",
+      "role": "file",
+      "sha256": "b2cbf2c5bfc54482b45a34f5e5b237088edcdde8f055301e7accbef922606a07"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/EquipmentInspection.IntegrationTests.csproj",
+      "role": "file",
+      "sha256": "dfb9d8d42dcb327d66b05c8e66a84d9527dca6fd567446a6b45dc531307e45a9"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/EquipmentServiceHttpTests.cs",
+      "role": "file",
+      "sha256": "14719f17fe8d7af736c2a6acdbb358c15e7bc20d8e5bfeb21dab667f06796595"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/EquipmentUsageHttpTests.cs",
+      "role": "file",
+      "sha256": "2c61ee374dc9f02c3132aeb086cc846c1992f4410144a82f71cf5e3300fed2e4"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/ErrorBoundaryContractTests.cs",
+      "role": "file",
+      "sha256": "000529c2d5a0de92cc5035c39d5ebab1fe3a8abfb8e22cbe3ea28273ea8faa94"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/FinancialStatementsHttpTests.cs",
+      "role": "file",
+      "sha256": "0ce3ba0ff5aaf54659a075469430cdb8db45c935d312bdc2ff87eeee53290c58"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/GeneralJournalHttpTests.cs",
+      "role": "file",
+      "sha256": "d2793dbfbb40ea645e786f5b07cf103ac31aa89a0ac3f252fe7d0fed92031c1c"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/IndependentReferenceRegisterTests.cs",
+      "role": "file",
+      "sha256": "0979d4c45c35ef5001d6124dffcc4b13a62273260876408fa8a468b5dae1b7ee"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/InspectionAuthorizationTests.cs",
+      "role": "file",
+      "sha256": "de4ed973beda458ea65ca4a2d7648c5d868b826cdfcd3c8c4514e4a7ab96387f"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/InspectionCompositionTests.cs",
+      "role": "file",
+      "sha256": "31fc2cc70f5a5bee6cf9a90e6b99834a5f6350bb7df6f853ac81eed9e54542bb"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/InspectionDeferralHttpTests.cs",
+      "role": "file",
+      "sha256": "4b693f52fb7c0049fd56495c8a7f12028d9a7028bcb82d2719c6d11d20d3e75a"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/InspectionDeletionTests.cs",
+      "role": "file",
+      "sha256": "fe3cab16d746b21415c61b4f256d0620d76838ba2a3c266b7beba06f5c9e5cf8"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/InspectionHost.cs",
+      "role": "file",
+      "sha256": "df92a48948674bf363b97598e43d6e028e119f968338af40a653263e3e79a4da"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/InspectionHttpTests.cs",
+      "role": "file",
+      "sha256": "b428a130b41a3b50eafaf62da0318aa85d1a0c0cd5bf8ed87dc9b338a644b12a"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/InspectionLifecycleTests.cs",
+      "role": "file",
+      "sha256": "cf28ace2a04a0edc02758d285ab6f8c0172cbcec9f361944fc14e3e0e7fceda6"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/InspectionPermissionSource.cs",
+      "role": "file",
+      "sha256": "0f1355c5f82d4d9f549ec47cb54a170ba26e98864a6f63ac1d49d088b453f115"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/InspectionReportTests.cs",
+      "role": "file",
+      "sha256": "e96d7ec356d7e6ce5a63c54393a1264607b88ca714b3a1d5feb3097148d72dd9"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/InspectionRequests.cs",
+      "role": "file",
+      "sha256": "6d29f0826cdb6be7b7c87fb7732ef078e93038cd124d81cb07b38764cbcd1d59"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/LedgerReportsHttpTests.cs",
+      "role": "file",
+      "sha256": "d6e8db71fd6ac5af15cf6a9f1ba8675aa953b1495a675f905e10682485e32744"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/MainMenuHttpTests.cs",
+      "role": "file",
+      "sha256": "a9423b48cf7d7ee4cb4085887557fc226cc8ba3335c2c54036061094f6503b31"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/McpBuiltInReadTests.cs",
+      "role": "file",
+      "sha256": "b953e270010d48e5f5775006c20b023d81daa2eaf5d1b96f76c7a4e6bcc22a7a"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/McpHttpTests.cs",
+      "role": "file",
+      "sha256": "23854d42e55621467c34db26613e7247b730b558a545c8caffe93d8958d2a110"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/MigrationBaseline.cs",
+      "role": "file",
+      "sha256": "a55d6e897a687d450cb024d1233ec83cf7109c9b92efa36a27616c3a07d93a12"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/MigrationHttpTests.cs",
+      "role": "file",
+      "sha256": "91ac11e00352d416d7f0e2703775a54b95f7385a9ebd168374257d866fcf70f8"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/NotesHttpTests.cs",
+      "role": "file",
+      "sha256": "b08076e8d64573926f5e135b95bc1286020edf0ff9d317f177a600a2f26af3b7"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/OperationalRegisterAdministrationTests.cs",
+      "role": "file",
+      "sha256": "322a2367bca0e8d436091e773f4469540bf3900d586930b0fae5318afcb07ce1"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/OperationalRegisterDimensionPagingTests.cs",
+      "role": "file",
+      "sha256": "e7173908f58f852f8b9ae2449060929cb9ecc1987a1d344c2af7fd8010f2f86a"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/OutboxDeliveryTests.cs",
+      "role": "file",
+      "sha256": "3c8b60c8cc35cb272af2edd3ccdc5d3fb201dcc9b96385e2c811a6973a783d38"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/PostgresCompositionTests.cs",
+      "role": "file",
+      "sha256": "46c4082b8043d912a9f021349a46de5bfa40dd7736d8be88a0f40c0621dbc4e1"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/ReferenceRegisterAdministrationTests.cs",
+      "role": "file",
+      "sha256": "48b7493b0c9310c4d9fe53bc4f426f1ce1d90ac780532528af71391e0c9a9fab"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/ReportAdmissionTests.cs",
+      "role": "file",
+      "sha256": "ac4899d5ea4c205177fe68ad71a84091e58e892d38fbef3ccfc0cb1000f7ef08"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/ReportDefinitionEnrichmentTests.cs",
+      "role": "file",
+      "sha256": "3147f7b8b517cefb0ed8a9b639d646ba795fd8fc094ea101afe819e77e658ea4"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/ReportDimensionScopeTests.cs",
+      "role": "file",
+      "sha256": "9e59915f699bb838e3feba7bfab4eea6abd1b8fa23e935a59df8b9498832bc54"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/ReportStreamingExtensionTests.cs",
+      "role": "file",
+      "sha256": "e927faf7709bea7db70a029e664865aba49bb519f31f282ce5835ef994b3834d"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/ReportStreamingTests.cs",
+      "role": "file",
+      "sha256": "5e1341a108f7710d4242b61f932a952fb70801c46bc8610c12dae018ce6a49ab"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/ReportVariantHttpTests.cs",
+      "role": "file",
+      "sha256": "ccd009f3964710c705f5bdfbc557cbf624c758e63ba7fcda109ce203518a3809"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/RoleReuseTests.cs",
+      "role": "file",
+      "sha256": "beb73b9b9a48a3cd951c53c57385f39e0b5f34a60fc5f769498c7ebf0202e261"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/SearchHttpTests.cs",
+      "role": "file",
+      "sha256": "bbb3868a680646ed3f89de7ced7a873c2de43149dfae52661726f06a9ba370e3"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/SearchPipelineContractTests.cs",
+      "role": "file",
+      "sha256": "5d6de13d90ed0b0b3c190382e91ce991d620c050ee55d20ec952891b5cd75b04"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/SecurityAdministrationHttpTests.cs",
+      "role": "file",
+      "sha256": "fe1b0bf4204316f8fd1128b44dcca23553bff3628b6bb2bbc0aad16e2471fed0"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/SpecializedReportHttpTests.cs",
+      "role": "file",
+      "sha256": "91e64da9ee8e57415f927af0b7d5037836eee76522bf7acd352de2dbeea6f372"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/TestAttachmentStorage.cs",
+      "role": "file",
+      "sha256": "a56152c41916da024391388cf4ee94c249d34cb9a48f19290b8371796ccaefec"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/TestIdentity.cs",
+      "role": "file",
+      "sha256": "b8750505dc19efdc123c6ed9831e0a6b4c66c3dcb1c3c016c9c27c9ae7e44b56"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/TypedDocumentGuardTests.cs",
+      "role": "file",
+      "sha256": "0e892c7420753bac4728f7a4c95dcc2bfe2877ca1e91b551c452ce5eb363fec7"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/WatchdogHttpTests.cs",
+      "role": "file",
+      "sha256": "c64b12cdce37903323d9510f4c928ba3a85309160bc9c2bff2666187f4507450"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/WorkCenterHttpTests.cs",
+      "role": "file",
+      "sha256": "94c87af249062a8b112cd902ad2d0b74d628c5ae1df13da9f428f3e6d45874c3"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/WorkCenterMaintenanceTests.cs",
+      "role": "file",
+      "sha256": "08c5c37e4455fbc08b33ecdd7d10ac7ea95256f9f4d19fd5703d07b27104478d"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/WorkCenterOutboxTests.cs",
+      "role": "file",
+      "sha256": "f7817ecba1f9a0be4a4a4ae5660a9556ce4c5c6757c966eee580c2a1468892ea"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/xunit.runner.json",
+      "role": "file",
+      "sha256": "4c6b75069fcaa8bccb4c75005f468e033bfb541b75232521e4246e41de65c51b"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Migrator/EquipmentInspection.Migrator.csproj",
+      "role": "file",
+      "sha256": "0c436ae58eeef9b493a15f9f2cd06262e8ea3dffdd93c1382e46606fbcedc33b"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Migrator/Program.cs",
+      "role": "file",
+      "sha256": "70918f7010dc1ca7455712b8f639eac22b55afc39fb9782062aea9b84b1f6463"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.PostgreSql/ChecklistReader.cs",
+      "role": "file",
+      "sha256": "f8f5813a9d99e4b3acdba5c9646023a85729dc13c5400e3be963f94e34d568a6"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.PostgreSql/ChecklistStorage.cs",
+      "role": "file",
+      "sha256": "b23ccd0f7dfa744004f39c914f123c697e4195607c566fe3e40e0b6504bf24a0"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.PostgreSql/ChecklistStorageDefinitions.cs",
+      "role": "file",
+      "sha256": "a3c4cc80e8a2717b558eadc7fdacfb8ccfd8f702337aa4e22dd021eaaee761e6"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.PostgreSql/db/migrations/V2026_10_25_0100__equipment_inspection.sql",
+      "role": "file",
+      "sha256": "1375d3e597df664563cf89bef747b1edc62745e56f55926ebffc014e7da56079"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.PostgreSql/db/migrations/V2026_10_28_0100__equipment_usage.sql",
+      "role": "file",
+      "sha256": "405ec459ca55321838b3c5deb87287e96b829aefcb7253496917a322fc8334f4"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.PostgreSql/db/migrations/V2026_10_28_0200__equipment_condition.sql",
+      "role": "file",
+      "sha256": "4332afd9e566c06da194246256d2f978ef4989e089580a502fcde0c489609a6d"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.PostgreSql/db/migrations/V2026_10_28_0300__equipment_service.sql",
+      "role": "file",
+      "sha256": "f860fd18c666a87ad5ff70d31d5580e2bb8a7edb77ce43b6c18b6ccbb08f7fe2"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.PostgreSql/db/migrations/V2026_10_30_0100__inspection_checklist.sql",
+      "role": "file",
+      "sha256": "6188e897283671ebb1a199f2dfea120647fd950ac327d7875ade0c12a9a84d3c"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.PostgreSql/db/migrations/V2026_11_01_0100__typed_document_guards.sql",
+      "role": "file",
+      "sha256": "858c6da3c3b889e0a17f7b909b0429a70a2cb553fc6eaea0672f42cd86334843"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.PostgreSql/db/migrations/V2026_11_01_0200__metadata_string_columns.sql",
+      "role": "file",
+      "sha256": "0ed3ff8e8c17df2ba174b3fa6ec2dbc4e3c26fb521540a82a53b6ecfeaea6ea1"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.PostgreSql/db/migrations/V2026_11_01_0300__checklist_document_reference.sql",
+      "role": "file",
+      "sha256": "579ae798bed56cc9dde8c213bd792975e2309915ad5ea1bbefd1de06f24ecb22"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.PostgreSql/EquipmentConditionReader.cs",
+      "role": "file",
+      "sha256": "577ab8e5e63dce93126ebcef8943fd9e24de144192995a2ee5f62fe160eda8e9"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.PostgreSql/EquipmentInspection.PostgreSql.csproj",
+      "role": "file",
+      "sha256": "2335470d96a840bd22ed6aabac28ec08b727213f76d500c3b8656fd0e73965fd"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.PostgreSql/EquipmentMigrationPack.cs",
+      "role": "file",
+      "sha256": "f7afa9c8701b9f76fb87d4f8a2dd31baf0c6cde8b6a32c7d634ec5e409c82a1c"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.PostgreSql/EquipmentPersistence.cs",
+      "role": "file",
+      "sha256": "fc9f8a40d8bce9bdf683b476301643006375a1e8a8b712f4542224bddb0c6318"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.PostgreSql/EquipmentServiceReader.cs",
+      "role": "file",
+      "sha256": "5a3a121b6bb6b6078625b713dd96dc386cfb560274de6d1ad80480e64d761ed9"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.PostgreSql/EquipmentUsageReader.cs",
+      "role": "file",
+      "sha256": "ec6dbed63f33f2dc78269a62e63a0b185dadc07ecd2a0af0d819394e27db233b"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.PostgreSql/InspectionReader.cs",
+      "role": "file",
+      "sha256": "6d3213a831be7669b4915a8c637c30e05ccce297ef575f07f55f4c8d1e6b32f0"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.PostgreSql/InspectionReportDataset.cs",
+      "role": "file",
+      "sha256": "29d7436f2405dd4c98fb44a396c8ba4d8cf484b600864c51dd904f18f9c06349"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Runtime/ChecklistApprovalPolicy.cs",
+      "role": "file",
+      "sha256": "53fb55103b4e12a70cf579f8b316ae73f81968519a659d852b468b7523aced62"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Runtime/ChecklistDraftValidator.cs",
+      "role": "file",
+      "sha256": "fa58f8ffc639904541328ed209526647fe5a1dcf7a4c568ee59618353dc5b682"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Runtime/ChecklistPayloadValidator.cs",
+      "role": "file",
+      "sha256": "c789f6e639526d394aa3f884b66a55151cc546a85205216cd1b2d0e3e96e92bb"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Runtime/ChecklistPostValidator.cs",
+      "role": "file",
+      "sha256": "96ef81b9282c8ea35b6b75450ddbebb7f945ebf03fcb8a4b67daaee2b91f3b9e"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Runtime/ChecklistRuntimeDefinitions.cs",
+      "role": "file",
+      "sha256": "e4ad951a06f0599326d24cf6943b4f2ce9bd3931b845c661060f56966e9163cc"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Runtime/ChecklistWorkflowPostingHandler.cs",
+      "role": "file",
+      "sha256": "b328b9dec95135ce5c304db58d1c2955d08e3f2c0a3f26e714999492a0ce672b"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Runtime/EquipmentCatalogRuntimeDefinitions.cs",
+      "role": "file",
+      "sha256": "3c5c46027618c3555c3dbfd6c7e0d3959afec28cbffec7c2ef82bc9e83f564bb"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Runtime/EquipmentConditionDefaults.cs",
+      "role": "file",
+      "sha256": "21e3c238392bd71b935ce2f922ded1fd48b1ac5314926342ce3e3a1f0b1e9b09"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Runtime/EquipmentConditionPostingHandler.cs",
+      "role": "file",
+      "sha256": "45a45ee4b7d2fdefeb602f4fb4401007079c659bfc1ee51b0ae3948b6e6a8a97"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Runtime/EquipmentConditionPostValidator.cs",
+      "role": "file",
+      "sha256": "d7f5f0c3a3068448008a59c671cca4cbb8053b27428f7ab1f09b62d6ad254a05"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Runtime/EquipmentConditionRuntimeDefinitions.cs",
+      "role": "file",
+      "sha256": "2361a9f758feae07e24aee313e50bc422184037b527db5cb5da7e1c7f9029bec"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Runtime/EquipmentDefaults.cs",
+      "role": "file",
+      "sha256": "0f3c7c3278235c8949c0bb7b47f3b9f16f3695769f15085149a73268bead5050"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Runtime/EquipmentInspection.Runtime.csproj",
+      "role": "file",
+      "sha256": "4b5c9c645542f224fd62ad31c41347b4f27cebb58901590e08367f983042bf0a"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Runtime/EquipmentMainMenuContributor.cs",
+      "role": "file",
+      "sha256": "ca174e49dc07af99359e7bd754550fdf0768827e44ddef6fe3bed758ab814f5a"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Runtime/EquipmentNameValidator.cs",
+      "role": "file",
+      "sha256": "6f34f92dd66602aa0c562aef0365b4aa1a15c38bf547c423cd3150d772ffc31b"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Runtime/EquipmentRuntime.cs",
+      "role": "file",
+      "sha256": "a2b31738f977cc3f487f031b1ffaa149036c0ae766c7876f0ea39bd84caf6a95"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Runtime/EquipmentServiceDefaults.cs",
+      "role": "file",
+      "sha256": "ddc1891b79cb008321079fc53ea2c9ba3ee89b21a871cc5b1b4b40e4b1729028"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Runtime/EquipmentServicePostingHandler.cs",
+      "role": "file",
+      "sha256": "47cdf82f815bb0e1d6aee2e529bb89ac8d5d5e9826ff57112218900d551c3cdd"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Runtime/EquipmentServicePostValidator.cs",
+      "role": "file",
+      "sha256": "0a41c2ca9eb32d8d52c3749557058458e19b08ce1b3915b58c5b8a5820a5f9cc"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Runtime/EquipmentServiceRuntimeDefinitions.cs",
+      "role": "file",
+      "sha256": "ac9cb391e59062c15d1f11682aeab2bff5d26973c5e17d2aaa654d2f507ed473"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Runtime/EquipmentUsagePostingHandler.cs",
+      "role": "file",
+      "sha256": "9ef75749a3e362cea9e03526928182b437a6e0c72bdda9d1e8f416a48f44e6ca"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Runtime/EquipmentUsagePostValidator.cs",
+      "role": "file",
+      "sha256": "ea4a729dd27e6fdd4207b2b53b1e2c3c90b65d351e820d12197b9769d4970788"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Runtime/EquipmentUsageRuntimeDefinitions.cs",
+      "role": "file",
+      "sha256": "3660993f6a7f65ca9c4ba103c3ca568dd3c13e79545f1766b7e3ec77813f6f21"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Runtime/InspectionActionContext.cs",
+      "role": "file",
+      "sha256": "fe08e6e79f7c638f647464b3f529811ed6d884014b8732d15f4e9f2d10486162"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Runtime/InspectionDeferralAuthorization.cs",
+      "role": "file",
+      "sha256": "13a0a91798de8147106c1f66450b752f7d4829ef1042d94146770ee5ab107d5b"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Runtime/InspectionDeferralAvailability.cs",
+      "role": "file",
+      "sha256": "ce9649f2cecdb6b872246fbe1bf1041db4094884f7dd541f851585443dd52db1"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Runtime/InspectionDeferralDefinitions.cs",
+      "role": "file",
+      "sha256": "1d6b258909d6f5c040114c0e06da8639fb61ac500502347d02a6e030508890c0"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Runtime/InspectionDeferralHandler.cs",
+      "role": "file",
+      "sha256": "16ce2d1ec834568739555bd45492430c843abe8514ea6887ec20e7cf8b3dcc9b"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Runtime/InspectionDerivationDefinitions.cs",
+      "role": "file",
+      "sha256": "9ef964a828b77bdca6a7b40516b01981ef57dc00e6131286d2bc212509adb1a7"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Runtime/InspectionNumberingPolicy.cs",
+      "role": "file",
+      "sha256": "93021c8e51f3bb05ff8ac94773cbccdae023e1a0043fe0035d46c4be2e477c0b"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Runtime/InspectionOutcomeReportDefinition.cs",
+      "role": "file",
+      "sha256": "f5c39f7554825ec99d735416637682577f1b4e4490e6adac08181ab0801694ba"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Runtime/InspectionOutcomeReportExecutor.cs",
+      "role": "file",
+      "sha256": "b8b90cd72887107f16900acac7a95bd5a0d28cb7af6ece408c56700effb5e568"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Runtime/InspectionPostValidator.cs",
+      "role": "file",
+      "sha256": "206496fb83943bfc378d5e5366c988981b3127b40596e26dbbf92e7529ce489e"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Runtime/InspectionReportDefinitions.cs",
+      "role": "file",
+      "sha256": "091cadfc7da7a33ba0387d51e16ca87325ef473b447e8bf6f0ccfbf828c52d47"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Runtime/InspectionRuntimeDefinitions.cs",
+      "role": "file",
+      "sha256": "910c3e588255be961ae1c22877c4f9702ca27d74bd40fe5e4573d7a07b79ac3c"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Runtime/InspectionWithdrawalPolicy.cs",
+      "role": "file",
+      "sha256": "2a19a20541706b9c38fb9123faa09e4cd110f8ce21253c7047b8df9ab1019a28"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Runtime/InspectionWorkflowDefinitions.cs",
+      "role": "file",
+      "sha256": "76dd8d2be33a92a8b35fe0715dab7f14959c9474fb4b8d30690926c72c165482"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Runtime/InspectionWorkflowPostingHandler.cs",
+      "role": "file",
+      "sha256": "cba1ee71a665b24d8a540ad547f273f687cd9fc878bf40c4d8429410a3b9ea90"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Setup/EquipmentInspection.Setup.csproj",
+      "role": "file",
+      "sha256": "ee9ee9a7a1977ee2cebef9db4c50d474b247ff86bdab361cd41150c4b9fefc19"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Setup/Program.cs",
+      "role": "file",
+      "sha256": "6fd61816e869244554a7c0c9ea7948dc9bb6cafdcf7d37e8fe2d2581da96085d"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.slnx",
+      "role": "file",
+      "sha256": "dcf4caab1a9ffb13cfa1cc9400a266c54b30f77dbdf02a8fe04bca3d4c72085a"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Tests/ChecklistContractTests.cs",
+      "role": "file",
+      "sha256": "b5dd4a443977e6b45d0fddfc0b7f875dda3d4b0e70efb7449194a21c2051edb8"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Tests/EquipmentCatalogContractTests.cs",
+      "role": "file",
+      "sha256": "2a60f2409ee9f054416756ad06623e141b2084ffa34334b807ced181350536a0"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Tests/EquipmentConditionTests.cs",
+      "role": "file",
+      "sha256": "c2f0a83ce46721d5c29b0aed921a96c84d0bf5f6f17b440ec11f2ab4cac0a9b9"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Tests/EquipmentInspection.Tests.csproj",
+      "role": "file",
+      "sha256": "1ac524720526781d42642b7c8bbc509ba1466926045b250c9400d5b1f0129e57"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Tests/EquipmentServiceTests.cs",
+      "role": "file",
+      "sha256": "d20f7a750dddbb6a92d9d35348de26e7b892b587cdac59ddcf0b75acee3b784f"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Tests/EquipmentUsageTests.cs",
+      "role": "file",
+      "sha256": "2cd69e6a84ea309db432e7e2765e71f3490890ed7ef00c3a6b1a90c50e461aa6"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Tests/InspectionCompositionContractTests.cs",
+      "role": "file",
+      "sha256": "8b0bfdf1b5a3f87a57f0bc0e89a1726aff97dac3e13575f08e5fa956405ca16d"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Tests/InspectionContractTests.cs",
+      "role": "file",
+      "sha256": "613c543aab5467c4f88871e2492bbff62a76670d1d63477ffe16534ff9816e17"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Tests/InspectionDeferralTests.cs",
+      "role": "file",
+      "sha256": "c207d053a89487f5fd3a250d64a856747a1a403822218aaf95b121c9705e2bdc"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Tests/InspectionWithdrawalTests.cs",
+      "role": "file",
+      "sha256": "696b193037a843326bca237a0fe42df4c40c607787566b23d4d90e1470cba860"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Tests/MainMenuContractTests.cs",
+      "role": "file",
+      "sha256": "84e6bb3045f402e481344ff12dbf0d7b61c0f548312bbb7a484bf99b8a829223"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/MigrationFixtures/baseline.json",
+      "role": "file",
+      "sha256": "6773182a64d3886eb42385b97be8432ff02c66aed26a0f25e299ee9e41f11872"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/MigrationFixtures/Baseline/db/migrations/V2026_10_25_0100__equipment_inspection.sql",
+      "role": "file",
+      "sha256": "1375d3e597df664563cf89bef747b1edc62745e56f55926ebffc014e7da56079"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/MigrationFixtures/Baseline/db/migrations/V2026_10_28_0100__equipment_usage.sql",
+      "role": "file",
+      "sha256": "405ec459ca55321838b3c5deb87287e96b829aefcb7253496917a322fc8334f4"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/MigrationFixtures/Baseline/db/migrations/V2026_10_28_0200__equipment_condition.sql",
+      "role": "file",
+      "sha256": "4332afd9e566c06da194246256d2f978ef4989e089580a502fcde0c489609a6d"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/MigrationFixtures/Baseline/db/migrations/V2026_10_28_0300__equipment_service.sql",
+      "role": "file",
+      "sha256": "f860fd18c666a87ad5ff70d31d5580e2bb8a7edb77ce43b6c18b6ccbb08f7fe2"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/MigrationFixtures/Baseline/EquipmentInspection.MigrationBaseline.csproj",
+      "role": "file",
+      "sha256": "308806a1a95775ae183eff6488a5e47410150aebfab7c38e8b2caaf8961c52bf"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/MigrationFixtures/ChecksumDrift/db/migrations/V2026_10_25_0100__equipment_inspection.sql",
+      "role": "file",
+      "sha256": "9da04db39825848cedf42bbb2102f992851fe028ae830e2076e425e8e031bd93"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/MigrationFixtures/ChecksumDrift/EquipmentInspection.MigrationChecksumDrift.csproj",
+      "role": "file",
+      "sha256": "308806a1a95775ae183eff6488a5e47410150aebfab7c38e8b2caaf8961c52bf"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/MigrationFixtures/README.md",
+      "role": "file",
+      "sha256": "c00ee9164f18b8cee6e789aca91599e1af44d4dce8032d2b028016f9661aa9f3"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/NuGet.Config",
+      "role": "file",
+      "sha256": "f446a5ce16f63e64f3f948e560866e87d8d90a01093467d38f043f1137dbbd23"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/README.md",
+      "role": "file",
+      "sha256": "98b397f0ce1c3b6ed6b5c1150a08dca24eea17f0ef0e5354c05117426935bcaf"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/web/index.html",
+      "role": "file",
+      "sha256": "ecfa648494abfaa347a245b50318ac657e094a00e76e3a81ea1499edf202d3d8"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/web/package-lock.json",
+      "role": "file",
+      "sha256": "998e4f605e8d198160de3028abce1fce806be5e6483c0e396958b0ed3502a522"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/web/package.json",
+      "role": "file",
+      "sha256": "d674585aa56f9717f3ecf2eb3202a133ea430286dd8fef386cd5139bbec820c8"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/web/playwright.config.ts",
+      "role": "file",
+      "sha256": "a61edd4b6451685057da1621699fcc1f00031c07b2c7cbd6fadcabebfcb3b9a3"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/web/postcss.config.js",
+      "role": "file",
+      "sha256": "190c877db466995bf1482f4a16abd06e04a89ede3119341e2a86ff96e1737b27"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/web/public/runtime-config.js",
+      "role": "file",
+      "sha256": "5678353bf05d25710956d34a68fd4402de7ae8e9c1179f1ed75d96bd50138c30"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/web/src/App.vue",
+      "role": "file",
+      "sha256": "3c4eaebe85bfe3671bc037bbd6b5119183df5416a09c1b58d15ca9f583301ede"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/web/src/editor.ts",
+      "role": "file",
+      "sha256": "6e692198493527e624cf389226aac8c7b0f2b63ecb4e85f2deccffea5a0668ec"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/web/src/EntityEditor.vue",
+      "role": "file",
+      "sha256": "a8b4d6ee87719ac6175ab74143f16a870259a08a0e5584acb09624afa1b17adb"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/web/src/main.ts",
+      "role": "file",
+      "sha256": "07ef4787e894dc7390dd5e6e813def74016cb76baeb61197fbaa09bd8a306b03"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/web/src/metadata.ts",
+      "role": "file",
+      "sha256": "9cf6fdc47b4aed2ab41b7cc684e1f4aa3fff4241393d18fd22d9932ce567f760"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/web/src/pages/CatalogPage.vue",
+      "role": "file",
+      "sha256": "b727b9b29714442af83d1a5907032c8aa73448946ac84a8f46896bdffad8a198"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/web/src/pages/InspectionPage.vue",
+      "role": "file",
+      "sha256": "6722b5f5076a2fe668131c61f151795f7fb4e33cfca18289212aa75a8f6dbbef"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/web/src/pages/NotFoundPage.vue",
+      "role": "file",
+      "sha256": "3751e49ec5fefc97f638d67f9db0d91179d0f6414d733f932d2403f8fb796d88"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/web/src/router.ts",
+      "role": "file",
+      "sha256": "9d0d93d8bb52b90d55c6a393766af955a3a49b580f4723b7dcba33e6803d78f4"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/web/tailwind.config.js",
+      "role": "file",
+      "sha256": "560aa00dad12695bb74339e507b8fda806bd1dd4ef6eef3b927b6856dcfafa18"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/web/tests/e2e/inspection.spec.ts",
+      "role": "file",
+      "sha256": "2fd4d793ac297caa77548b67524f9b997411dadaf633f9a40a0adebe81209f61"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/web/tests/e2e/setup.mjs",
+      "role": "file",
+      "sha256": "9fe728cf472d9ed60b2f0a4ce07c42b309575a04646608ff4c3301e6f583599f"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/web/tests/unit/bootstrap.spec.ts",
+      "role": "file",
+      "sha256": "819e0b4fad3475ad271b39322e64f6ddefa730b7cad2a217a8216107c7b8d501"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/web/tests/unit/composition.spec.ts",
+      "role": "file",
+      "sha256": "5eb10522243b080fce266d86c0b7729a21bc04e4524c5f41ad8489ac0e78690c"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/web/tsconfig.json",
+      "role": "file",
+      "sha256": "07de7754dea490d894db4651ca4ff3127e422cab398a96343e6a5615a1f47ff8"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/web/vite.config.ts",
+      "role": "file",
+      "sha256": "699463b4f2ba0aa3512fef2043c6ceb717d1e1bb00d28f3b9d9ba6f061ded48c"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/web/vitest.config.ts",
+      "role": "file",
+      "sha256": "b26fa02bd0dbed37965567cd33d42d8ae4b76858776f87120442c0a25376dce7"
+    },
+    {
+      "path": "ai/vendor/instructions.md",
+      "role": "file",
+      "sha256": "feda0b80ec6cc03809cff711b5bffcb3af8d3df79bf967f5911775323258d4b9"
+    },
+    {
+      "path": "ai/vendor/known-limitations.json",
+      "role": "file",
+      "sha256": "2c4ac5ed9c785384907a1413641750d77296378786fe27f465910736fbe1d996"
+    },
+    {
+      "path": "ai/vendor/references/accounting.md",
+      "role": "file",
+      "sha256": "eab3ad8ebb83c92dc8e46f4aaf0b56e70052d99041a2fe6c09bd8dbc6859581d"
+    },
+    {
+      "path": "ai/vendor/references/application.md",
+      "role": "file",
+      "sha256": "458bec496a5b01665534cd239d2c6ba9211468b91abcb4fffd685450085fde48"
+    },
+    {
+      "path": "ai/vendor/references/background-jobs.md",
+      "role": "file",
+      "sha256": "400e93114fee9da68f050433f10c19ce6a90fe795b1bf5a39af4f7c47b2c0f7b"
+    },
+    {
+      "path": "ai/vendor/references/catalogs.md",
+      "role": "file",
+      "sha256": "1668734f9f9423bb43937cfb0dd7dfb3478623f7a491a743be02c02f4dfa98ca"
+    },
+    {
+      "path": "ai/vendor/references/content.md",
+      "role": "file",
+      "sha256": "74f98ae2781989117302fee0557fec16d10150637648a9d8d1c7fe3fc1c5d361"
+    },
+    {
+      "path": "ai/vendor/references/contracts/index.json",
+      "role": "file",
+      "sha256": "349b7b76cc84690456c30d970b330c17f95330875f9999c0a2b76bbeded4fad3"
+    },
+    {
+      "path": "ai/vendor/references/contracts/NGB.Platform.Accounting.json",
+      "role": "file",
+      "sha256": "589e6c8b0dee30f17426aa363b60454797815938e49d71a89083e357bf71ba53"
+    },
+    {
+      "path": "ai/vendor/references/contracts/NGB.Platform.AiAssistant.Anthropic.json",
+      "role": "file",
+      "sha256": "afa5d416167c11ed405ab25ea1018b3376131c594d5ca623e016e54b85078f10"
+    },
+    {
+      "path": "ai/vendor/references/contracts/NGB.Platform.AiAssistant.AspNetCore.json",
+      "role": "file",
+      "sha256": "ea6551b8d6f92d6d00957499d255c51bc6d2bebf1a52472141fc0729ceaac4d8"
+    },
+    {
+      "path": "ai/vendor/references/contracts/NGB.Platform.AiAssistant.Bedrock.json",
+      "role": "file",
+      "sha256": "2fc4b4dd8eb53991d003f1f9e1f553ba101476a03ff2db8fd4814e50a8944734"
+    },
+    {
+      "path": "ai/vendor/references/contracts/NGB.Platform.AiAssistant.json",
+      "role": "file",
+      "sha256": "457319471ebf40457f6cd04ceabe56bc7b52cce490d9686ffe6196acbb4e69c9"
+    },
+    {
+      "path": "ai/vendor/references/contracts/NGB.Platform.AiAssistant.Ollama.json",
+      "role": "file",
+      "sha256": "6ceb0e655bb28a0132b355b3ca54b86cc4c393254d38d61f2a05424e5130b048"
+    },
+    {
+      "path": "ai/vendor/references/contracts/NGB.Platform.AiAssistant.OpenAI.json",
+      "role": "file",
+      "sha256": "33fa59c7619e0f665188ddb29633fa0e8dfbd2be72d363be3f191d184c5d8b6f"
+    },
+    {
+      "path": "ai/vendor/references/contracts/NGB.Platform.Api.json",
+      "role": "file",
+      "sha256": "007a97ba61995a9244bff350f7238c044cb5ac75e4b6c0ae34ed8063f013586b"
+    },
+    {
+      "path": "ai/vendor/references/contracts/NGB.Platform.Application.Abstractions.json",
+      "role": "file",
+      "sha256": "39ea2333d90479b8cc56d434539309825799261e6a02d417c8884efb11d252cc"
+    },
+    {
+      "path": "ai/vendor/references/contracts/NGB.Platform.Attachments.json",
+      "role": "file",
+      "sha256": "4fa6af912e00957bf8066d40e19672cf710e134001c932ef4c754e3e20c82ac8"
+    },
+    {
+      "path": "ai/vendor/references/contracts/NGB.Platform.Attachments.MinIO.json",
+      "role": "file",
+      "sha256": "812a5846f61abe2a2167acbdc5fd01d479f2190aff50a0360e4083d248c38a88"
+    },
+    {
+      "path": "ai/vendor/references/contracts/NGB.Platform.BackgroundJobs.json",
+      "role": "file",
+      "sha256": "204dd8f4985343b0c695a9de54a08f73a7732cb9ca9d391e9dc11b08ffc379c4"
+    },
+    {
+      "path": "ai/vendor/references/contracts/NGB.Platform.BackgroundJobs.PostgreSql.json",
+      "role": "file",
+      "sha256": "52571c70a44838e9338a5929b2bd31cdf40006f9a4d7c0e6099f73412b59df31"
+    },
+    {
+      "path": "ai/vendor/references/contracts/NGB.Platform.Contracts.json",
+      "role": "file",
+      "sha256": "d4abc1b976aba2b2b346688ba2f6065a46d28fb891a263cb87a0a8ab1e3b8b50"
+    },
+    {
+      "path": "ai/vendor/references/contracts/NGB.Platform.Core.json",
+      "role": "file",
+      "sha256": "119b3de5ebf030f64cd351b2157e6f866295734a0a0f58622c144691fcf377e5"
+    },
+    {
+      "path": "ai/vendor/references/contracts/NGB.Platform.Definitions.json",
+      "role": "file",
+      "sha256": "e5da12892dffeee75ea723b6bef23bd849a63b9b3a43fb4bf0a6cb296be97947"
+    },
+    {
+      "path": "ai/vendor/references/contracts/NGB.Platform.Hosting.AspNetCore.json",
+      "role": "file",
+      "sha256": "a8e93d99a54a6870111c1d0cc7a7f332ac4ea9591d20410373cd32b0f15cd2b6"
+    },
+    {
+      "path": "ai/vendor/references/contracts/NGB.Platform.Mcp.AspNetCore.json",
+      "role": "file",
+      "sha256": "b74e2fa8a34ceb15722cfed8cb954686da9bb12487bb1703efba36193acf0878"
+    },
+    {
+      "path": "ai/vendor/references/contracts/NGB.Platform.Mcp.json",
+      "role": "file",
+      "sha256": "aac637b03a92a6221dec5c2c6b713441e4c5dc080e63b89d862c9100cf700187"
+    },
+    {
+      "path": "ai/vendor/references/contracts/NGB.Platform.Metadata.json",
+      "role": "file",
+      "sha256": "1236ccddb1d16fd62f052cf432ae9dad733a561795dd1a4e3b939d535d45ff59"
+    },
+    {
+      "path": "ai/vendor/references/contracts/NGB.Platform.Migrator.Core.json",
+      "role": "file",
+      "sha256": "f38afd474e7f86dcf38eb573723fc72e1d9db4a7b49e61c4473b799f7840ad49"
+    },
+    {
+      "path": "ai/vendor/references/contracts/NGB.Platform.Notes.json",
+      "role": "file",
+      "sha256": "2aa5c7a4f055b93142f7c7682dcbe2b4cfe6be3cf2757358b163b1b33efaba0c"
+    },
+    {
+      "path": "ai/vendor/references/contracts/NGB.Platform.OperationalRegisters.json",
+      "role": "file",
+      "sha256": "4eb5a6a2b2a2efd9227e1c38329a9f523fe095898d59b8e9074682b85aa645f7"
+    },
+    {
+      "path": "ai/vendor/references/contracts/NGB.Platform.Persistence.json",
+      "role": "file",
+      "sha256": "ee9d7832bbd3c8f1e4802c8ecb27d7c65bcbe9a9ec9601f7bc185313868684f9"
+    },
+    {
+      "path": "ai/vendor/references/contracts/NGB.Platform.PostgreSql.AspNetCore.json",
+      "role": "file",
+      "sha256": "7d35855889197549df4f68393d9c19e54797f07355cf434625772c987fde8196"
+    },
+    {
+      "path": "ai/vendor/references/contracts/NGB.Platform.PostgreSql.json",
+      "role": "file",
+      "sha256": "dce7848203cb0e11da130e8e5c4a2d53fea448788f8b1f7b21b189018e808501"
+    },
+    {
+      "path": "ai/vendor/references/contracts/NGB.Platform.ReferenceRegisters.json",
+      "role": "file",
+      "sha256": "685127ab142ff7bcc4e7342b890cef4ab81ee927b8dd3ed5910c4ecaa7937e77"
+    },
+    {
+      "path": "ai/vendor/references/contracts/NGB.Platform.Runtime.Hosting.json",
+      "role": "file",
+      "sha256": "c68acf4817288d181a71f01db25105e6993b7fee4e3e4208b10becad16cdbc72"
+    },
+    {
+      "path": "ai/vendor/references/contracts/NGB.Platform.Runtime.json",
+      "role": "file",
+      "sha256": "1f041abfc705cdb08b57ad235b22ac6d5e8255a5aa80b0751c2f26e0a5f7870d"
+    },
+    {
+      "path": "ai/vendor/references/contracts/NGB.Platform.Tools.json",
+      "role": "file",
+      "sha256": "61ac486fc3118d9f4950f67cae4c6a31a5b084a6b3eeaff39185844af64f9680"
+    },
+    {
+      "path": "ai/vendor/references/contracts/NGB.Platform.Watchdog.json",
+      "role": "file",
+      "sha256": "8d27bfc842d5e933734d3ad4baa3c2637799677e026bfb4c952c245ae4df70c3"
+    },
+    {
+      "path": "ai/vendor/references/contracts/ui.json",
+      "role": "file",
+      "sha256": "7f3a643a05626992f31ecb0316995136b58bb587307ef70371aeb7c98ea12d35"
+    },
+    {
+      "path": "ai/vendor/references/custom-document-actions.md",
+      "role": "file",
+      "sha256": "ea7fe1a7674036691aa5e30fd2bd385106e4bea8b8ac8aba5ac6d52052ee91de"
+    },
+    {
+      "path": "ai/vendor/references/documents.md",
+      "role": "file",
+      "sha256": "cdd2d1c1aead9636dc6230b74fb3b5461526abd1f02a171d1412c72ddb98fb89"
+    },
+    {
+      "path": "ai/vendor/references/errors.md",
+      "role": "file",
+      "sha256": "3c180fb278edaa9a99f167829aa4ee2d0589fe1325ec471c1a6f93f8e9ce4602"
+    },
+    {
+      "path": "ai/vendor/references/frontend.md",
+      "role": "file",
+      "sha256": "0942ef4cb1989f55ecac7b1c12ea9c247fb200dc77c1651bdb14134632d3ad6e"
+    },
+    {
+      "path": "ai/vendor/references/independent-reference-registers.md",
+      "role": "file",
+      "sha256": "12cbc3569bd2db272fc7f7258108ef5f9ed47d0a8b0fb46490e09dd5ee6e27ee"
+    },
+    {
+      "path": "ai/vendor/references/mcp-assistant.md",
+      "role": "file",
+      "sha256": "ef35264a41547e684a058cd08c85864f3e07267801f0f4ee908b52f8baf671ad"
+    },
+    {
+      "path": "ai/vendor/references/persistence.md",
+      "role": "file",
+      "sha256": "fd1dea2c67f883625dc1c93a87ddd76cbdced3e39a465364c3abe771f7a0f610"
+    },
+    {
+      "path": "ai/vendor/references/recovery.md",
+      "role": "file",
+      "sha256": "62b73395cf5864f8aa878bf3557fdc546b42663918b8aac216631ed82df7e62c"
+    },
+    {
+      "path": "ai/vendor/references/registers.md",
+      "role": "file",
+      "sha256": "58c7ea2ca94d069bbced940d30a898f0f1b9d647b25a29149785faab53132b44"
+    },
+    {
+      "path": "ai/vendor/references/release.md",
+      "role": "file",
+      "sha256": "f07af65b0accdc25740414cd07b9116ad0a47a6b85df326c0baf415ac42b5a18"
+    },
+    {
+      "path": "ai/vendor/references/reporting.md",
+      "role": "file",
+      "sha256": "763642f113c57880adaa8d2cd094c7b0f23bde2182645945a89f328ff3f6e1cd"
+    },
+    {
+      "path": "ai/vendor/references/security.md",
+      "role": "file",
+      "sha256": "580443d0e81a296f61c43bac95b7618cd74f9e2228dbb615badab9b959d9202c"
+    },
+    {
+      "path": "ai/vendor/references/testing.md",
+      "role": "file",
+      "sha256": "9b848401b9b1b73cc7edaa03b43ae0d16f8b657b847e7b59d80eea9cc4728f8a"
+    },
+    {
+      "path": "ai/vendor/references/upgrades.md",
+      "role": "file",
+      "sha256": "086421baed6e21b976ef15c786b62d003a943bc487bde9aa827a2f0e97199a27"
+    },
+    {
+      "path": "ai/vendor/references/work-center.md",
+      "role": "file",
+      "sha256": "dfc4f4c89750108432b5087b8b6558839e9507064e8cb0c2fbe07b8b15e89839"
+    },
+    {
+      "path": "ai/vendor/skills/ngb-accounting/SKILL.md",
+      "role": "file",
+      "sha256": "a5f841619ed046dd4d1501d330e50a38720a00b5e00b6c32c56ae3062781f94f"
+    },
+    {
+      "path": "ai/vendor/skills/ngb-application/SKILL.md",
+      "role": "file",
+      "sha256": "613363d9b5a6888600517f4280f735487ee53f1d99b810786a830a6aae3018a5"
+    },
+    {
+      "path": "ai/vendor/skills/ngb-background-jobs/SKILL.md",
+      "role": "file",
+      "sha256": "09d20e1a5d026247b394172732bd4dafa870ff16e40150096cd2f1bb6ae40414"
+    },
+    {
+      "path": "ai/vendor/skills/ngb-catalogs/SKILL.md",
+      "role": "file",
+      "sha256": "d564659685869e366101882ebc3a67157e33d60dfae4683a71749451fd3bf3d7"
+    },
+    {
+      "path": "ai/vendor/skills/ngb-content/SKILL.md",
+      "role": "file",
+      "sha256": "f262b3c2e854764c8bb2727f43c65a10d709a63e36bd8ca818e7de3be7588db2"
+    },
+    {
+      "path": "ai/vendor/skills/ngb-documents/SKILL.md",
+      "role": "file",
+      "sha256": "9918316383945629315c8333b674acbe557fac13ff8208d9e9d1afbd1dd6aeba"
+    },
+    {
+      "path": "ai/vendor/skills/ngb-frontend/SKILL.md",
+      "role": "file",
+      "sha256": "08d3ce4818aa8f5940a745b0b89b49d7e70b60e67cf72921f9f32b30d3c33945"
+    },
+    {
+      "path": "ai/vendor/skills/ngb-kit-upgrade/SKILL.md",
+      "role": "file",
+      "sha256": "d5496ef1644fd72c8e1ea04a7f8ef99ff068fa9edadb88c78015bedd88e0774b"
+    },
+    {
+      "path": "ai/vendor/skills/ngb-mcp-assistant/SKILL.md",
+      "role": "file",
+      "sha256": "908904c8c43d6f93baaa87f373af624b2502b047733a573db5798aa92d87995e"
+    },
+    {
+      "path": "ai/vendor/skills/ngb-persistence/SKILL.md",
+      "role": "file",
+      "sha256": "ecbbe979f0b16a031c14a760881e67fc5092d1ec07adc66ff3124de2ea2036ce"
+    },
+    {
+      "path": "ai/vendor/skills/ngb-registers/SKILL.md",
+      "role": "file",
+      "sha256": "61621555d111966b145724058128e86e13f88196951cd9c075a8c27d242dbc25"
+    },
+    {
+      "path": "ai/vendor/skills/ngb-release/SKILL.md",
+      "role": "file",
+      "sha256": "41e09bfb19417a8172d9c43ba56d4e15cbff88db147a6233967afa951280be62"
+    },
+    {
+      "path": "ai/vendor/skills/ngb-reporting/SKILL.md",
+      "role": "file",
+      "sha256": "4086e613d0113131a8659a2feb1cb8fbc306ed54e17874cf319e7b046ad82607"
+    },
+    {
+      "path": "ai/vendor/skills/ngb-security/SKILL.md",
+      "role": "file",
+      "sha256": "a7c2c4546f546655328810df1296c37b177fa3231bc81208ce4a5ca48e510545"
+    },
+    {
+      "path": "ai/vendor/skills/ngb-testing/SKILL.md",
+      "role": "file",
+      "sha256": "d38e0eff0af620959f1a7e0ad5b9871ebc9bd7a9eb1e6081e9ff3ae39d66a24b"
+    },
+    {
+      "path": "ai/vendor/skills/ngb-work-center/SKILL.md",
+      "role": "file",
+      "sha256": "ac38dfe10da6608be86d3d8f38dfff627d1c0c68a95a0488375410eeee7a4e72"
+    },
+    {
+      "path": "CLAUDE.md",
+      "role": "block",
+      "sha256": "c2889cff06129b381fe837a3837de6fbcafdec6df3e60c404d9ca5756cec79d8"
+    }
+  ],
+  "custom": []
+}

@@ -1,6 +1,7 @@
 # Publishing NGB Platform Packages
 
-NGB publishes `NGB.Platform.*` on nuget.org and `@ngbplatform/ui` on npmjs.com.
+NGB publishes `NGB.Platform.*` on nuget.org and `@ngbplatform/ui` plus
+`@ngbplatform/cli` on npmjs.com.
 The template is included in the NuGet family. PM, Trade and Agency Billing build
 from platform source; CRM release images restore platform packages from registries.
 
@@ -54,7 +55,7 @@ See [NuGet trusted publishing](https://learn.microsoft.com/en-us/nuget/nuget-org
 
 ### npm trusted publishing
 
-Open [@ngbplatform/ui](https://www.npmjs.com/package/@ngbplatform/ui) → **Settings** →
+For both `@ngbplatform/ui` and `@ngbplatform/cli`, configure **Settings** →
 **Trusted Publisher** → **GitHub Actions**. Use **Add trusted publisher** if another
 connection already exists:
 
@@ -91,7 +92,7 @@ Its merge/deployment rules and Argo CD configuration must already be set up ther
 ## Release step by step
 
 Before opening the PR, choose an unpublished target version and align the platform,
-UI, template and CRM dependencies, the certification matrix, package baselines and
+UI, template, CLI, Kit and CRM dependencies, the certification matrix, package baselines and
 registered CLI transition. Record changes and migration instructions. A repeated
 publication of an existing version is only a retry of the identical certified set.
 Prepare local candidate packages using [Prepare local artifacts](#prepare-local-artifacts),
@@ -133,10 +134,10 @@ the matching changelog after package verification succeeds. Do not tag a newer
 In `platform-packages`, the NuGet job waits for successful npm validation and
 downloads that job's archive by artifact ID into `artifacts/npm` before packing.
 Template lockfile generation consumes the same archive; it does not repack the UI.
-`external-app-certification` packs npm before NuGet within its single job.
+`external-app-certification` packs the UI before NuGet, then packs the CLI and seals the candidate.
 Its Compose check builds the generated starter. The 20 existing vertical images
 are built by `container-images` after publication; their Docker builds are not part
-of the candidate quality aggregate. A local candidate has 20 required gates; the
+of the candidate quality aggregate. A local candidate has 30 required gates; the
 remaining two matrix gates require published packages and promotion evidence.
 
 Container cache export is optional: both image matrices use `ignore-error=true`
@@ -197,6 +198,8 @@ npm --prefix quality ci
 node ui/scripts/pack-platform-ui.mjs --local-candidate
 bash packaging/nuget/pack-platform.sh
 bash packaging/nuget/verify-platform-packages.sh
+node ai-devkit/prepare.mjs
+node packaging/cli/pack.mjs
 node quality/external-consumer/release.mjs seal
 ```
 
@@ -284,13 +287,10 @@ those must succeed in the release workflows.
 ## When to run full quality locally
 
 `run-full-quality.sh` runs backend/frontend coverage, the framework browser matrix,
-tooling tests and performance-tooling/metric regression checks. It does not publish
-packages, run every live k6 load profile or independently perform the complete
-five-profile external upgrade certification. Run it locally before release;
-`release.mjs certify` no longer runs the complete backend/frontend coverage suites.
-Certification retains its five profiles, compatibility, tooling, framework browser
-matrix and performance-tooling contracts. Its evidence does not attest to local
-platform/vertical regression or coverage results.
+tooling tests and performance-tooling/metric regression checks. For 3.4.0,
+`release.mjs certify` runs full quality against the sealed candidate and records
+its backend and frontend coverage reports. It also runs the five external-consumer
+profiles, compatibility checks and five AI Development Kit profiles.
 
 Application developers run their own application's tests. Platform contributors can
 run the aggregate before opening a PR to catch failures sooner. Use prepared local
@@ -319,17 +319,17 @@ The wrapper requires a sealed candidate; it does not package one. It verifies it
 inputs and copies source and artifacts into a private workspace without host caches.
 That workspace is retained for retries. Tooling is run once per unchanged aggregate,
 with separate checkpoints for backend, frontend, browser and performance gates.
-Release certification invokes this wrapper with `--certification`, which selects
-only tooling, browser and performance-tooling stages in a separate workspace and
-writes `certification-quality.json` instead of `full-quality.json`.
+Release certification for 3.4.0 requires `full-quality.json`. The historical
+`--certification` mode runs tooling, browser and performance-tooling stages in
+a separate workspace and writes `certification-quality.json`.
 For the complete local certification sequence, see the
 [certification maintainer runbook](../quality/external-consumer/README.md).
 
 ## Artifact contract
 
 `packaging/nuget/projects.txt` and `baselines.json` define the package inventory.
-The current target produces 24 `.nupkg` files, 23 runtime `.snupkg` files and one
-versioned npm archive. `NGB.Platform.Templates` contains no runtime assembly or symbols.
+Version 3.4.0 produces 32 NuGet packages (31 runtime packages and one template),
+31 symbol packages and two npm archives (`@ngbplatform/ui` and `@ngbplatform/cli`).
 
 Certification seals package hashes, npm integrity, NuGet payload identities,
 generated lockfiles, source identity, the frozen fixture identity and the exact
@@ -350,11 +350,12 @@ and `packaging/nuget/baselines.json`. Historical fixtures and third-party depend
 versions keep their own versions.
 
 Every runtime package is validated against its first stable release in the major
-line and the selected previous supported release. For the registered 3.2.0 → 3.3.0
+line and the selected previous supported release. For the registered 3.3.0 → 3.4.0
 transition, most major baselines are 3.0.0; Attachments, Notes and Attachments.MinIO
-start at 3.1.0. The two MCP packages are first published in 3.3.0 and have no previous
-runtime baseline. Templates were first published in 3.2.0 and contain no runtime
-assembly. These package-specific exceptions are explicit in `baselines.json`.
+start at 3.1.0. MCP and AI Assistant packages were first published in 3.3.0 and use
+3.3.0 as both their first-major and previous-release baseline. Templates were first
+published in 3.2.0 and contain no runtime assembly. These package-specific exceptions
+are explicit in `baselines.json`.
 
 SDK package validation and ApiCompat stay enabled. Strict baseline equality is
 disabled to permit compatible additions; attribute and parameter-name checks stay

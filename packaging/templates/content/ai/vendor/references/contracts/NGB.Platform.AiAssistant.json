@@ -1,0 +1,309 @@
+{
+  "schemaVersion": 1,
+  "package": "NGB.Platform.AiAssistant",
+  "version": "3.4.0",
+  "packageSha256": "53555b266d7dcee73b82da3710beab8ec6454061b6e19aa80e501bda2098db82",
+  "assembly": {
+    "name": "NGB.AiAssistant",
+    "version": "3.0.0.0",
+    "sha256": "aee44905fd39a1baaebb701e99a1d3c3438159f8cc73442d2b386a9fc27d40fe"
+  },
+  "contractSha256": "1d83acb0a8083fa93372d44912d21ecdaf60014201dc49c3497a409d5ca4f744",
+  "types": [
+    {
+      "name": "NGB.AiAssistant.AiAssistantEvent",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "161c242bc940f46a0a432398bda4e08029fcee4e0b9b460df00b57a517d08f7b",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_Code",
+        "get_Source",
+        "get_Text",
+        "get_Type",
+        "get_Value",
+        "op_Equality",
+        "op_Inequality",
+        "set_Code",
+        "set_Source",
+        "set_Text",
+        "set_Type",
+        "set_Value"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.AiAssistant.AiAssistantException",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "00ceb50a499ff41c8d4df0e9eaaf6bef91c8d6e7b25e839dffa4bf6e22a86052",
+      "methods": [
+        ".ctor",
+        "get_Code"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.AiAssistant.AiAssistantMessage",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "9cedda07a528169e517a00a6d24cbd2edc091b6e7864a469354cca5562072829",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_Context",
+        "get_Role",
+        "get_Sources",
+        "get_Text",
+        "op_Equality",
+        "op_Inequality",
+        "set_Context",
+        "set_Role",
+        "set_Sources",
+        "set_Text"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.AiAssistant.AiAssistantModelInfo",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "8fdd3acdd03b2eadf76abb01cce0696d9650f82699aa5cfd20078f6bc5f713c0",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_Model",
+        "get_Provider",
+        "op_Equality",
+        "op_Inequality",
+        "set_Model",
+        "set_Provider"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.AiAssistant.AiAssistantOptions",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "afd5f500b3ba4c3e95030dcd7b04f4dd2311ab01d076b93d9c28d3b20b7d6eab",
+      "methods": [
+        ".ctor",
+        "IsValid",
+        "get_ConcurrentRequests",
+        "get_InitialOutputTokens",
+        "get_MaxContextBytes",
+        "get_MaxInputBytes",
+        "get_MaxMessageCharacters",
+        "get_MaxMessages",
+        "get_MaxOutputCharacters",
+        "get_MaxOutputTokens",
+        "get_MaxToolCalls",
+        "get_MaxToolResultBytes",
+        "get_MaxTools",
+        "get_RequestTimeoutSeconds",
+        "get_RequestsPerMinute",
+        "set_ConcurrentRequests",
+        "set_InitialOutputTokens",
+        "set_MaxContextBytes",
+        "set_MaxInputBytes",
+        "set_MaxMessageCharacters",
+        "set_MaxMessages",
+        "set_MaxOutputCharacters",
+        "set_MaxOutputTokens",
+        "set_MaxToolCalls",
+        "set_MaxToolResultBytes",
+        "set_MaxTools",
+        "set_RequestTimeoutSeconds",
+        "set_RequestsPerMinute"
+      ],
+      "fields": [
+        "MaximumSupportedConcurrency",
+        "MaximumSupportedContextBytes",
+        "MaximumSupportedInputBytes",
+        "MaximumSupportedMessages",
+        "MaximumSupportedOutputTokens",
+        "MaximumSupportedRequestsPerMinute",
+        "MaximumSupportedTimeoutSeconds",
+        "MaximumSupportedToolCalls",
+        "MaximumSupportedTools",
+        "SectionName"
+      ]
+    },
+    {
+      "name": "NGB.AiAssistant.AiAssistantPageContext",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "448814aa1262d4f26e47f555e6eed2571c4cd39f89c25f522527a6447e387bfa",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_Filters",
+        "get_Id",
+        "get_Kind",
+        "get_Parameters",
+        "get_TypeCode",
+        "op_Equality",
+        "op_Inequality",
+        "set_Filters",
+        "set_Id",
+        "set_Kind",
+        "set_Parameters",
+        "set_TypeCode"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.AiAssistant.AiAssistantRequest",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "2b0ba335d2782676f93d2f281b863e961dc462dc91d53c59f6ad44d8dea8ad98",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_Context",
+        "get_Messages",
+        "get_TimeZone",
+        "op_Equality",
+        "op_Inequality",
+        "set_Context",
+        "set_Messages",
+        "set_TimeZone"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.AiAssistant.AiAssistantRunner",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "0f8f86ad8e6cb5cccb80542a62ea6d558a454e0a470a7ce3b02e84ac41fd30b9",
+      "methods": [
+        ".ctor",
+        "RunAsync",
+        "Validate"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.AiAssistant.AiAssistantSource",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "f48994fcad2687996c0a8cdcd7c4d2808df37a98f5d8be1ea9f04569c34578c0",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_Id",
+        "get_Kind",
+        "get_Reference",
+        "get_Title",
+        "get_TypeCode",
+        "get_View",
+        "op_Equality",
+        "op_Inequality",
+        "set_Id",
+        "set_Kind",
+        "set_Title",
+        "set_TypeCode",
+        "set_View"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.AiAssistant.AiAssistantToolResult",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "c4088c67bf69f3f3d35ff6f911abed44729ba5d0753e5a96eb7e418adedca919",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_Data",
+        "get_ErrorCode",
+        "get_IsError",
+        "get_Sources",
+        "op_Equality",
+        "op_Inequality",
+        "set_Data",
+        "set_ErrorCode",
+        "set_IsError",
+        "set_Sources"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.AiAssistant.AiAssistantValue",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "0df4218b85d9773c84396d07f57f7d02e9490c3235bc56bebf764119afd23e46",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_Kind",
+        "get_Reference",
+        "get_Value",
+        "op_Equality",
+        "op_Inequality",
+        "set_Kind",
+        "set_Reference",
+        "set_Value"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.AiAssistant.IAiAssistantPagedTool",
+      "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
+      "contractSha256": "6d9cf7a2c2f1a5366d6c2094d52151bf24f552b2787563b0a7872ab497bc8b24",
+      "methods": [
+        "TryReducePage"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.AiAssistant.IAiAssistantSourceResolver",
+      "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
+      "contractSha256": "d241dca9357b9a5a6cceb3df72fee24135f920e277b875f18728f62c910e68b4",
+      "methods": [
+        "ResolveAsync"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.AiAssistant.IAiAssistantToolSession",
+      "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
+      "contractSha256": "41c9ec8b720aaf490f2884ca131d880c7937c0bdb39c96f645df521b13e9f081",
+      "methods": [
+        "get_Tools"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.AiAssistant.IAiAssistantToolSessionFactory",
+      "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
+      "contractSha256": "3bb4458669aa9311b6f26c76fd5593fe7870e37b71acdc04f59a98124c134d53",
+      "methods": [
+        "OpenAsync"
+      ],
+      "fields": []
+    }
+  ]
+}

@@ -1,19 +1,28 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { cp, mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, readFile, realpath, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createPlatformUiPackageManifest } from '../../ui/scripts/platform-ui-package-manifest.mjs'
+import { applicationFiles } from './content/infrastructure/ngb/application.mjs'
+import { prepareTemplate } from '../../ai-devkit/prepare.mjs'
+import { validateConfiguration } from './content/infrastructure/ngb/project-data.mjs'
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const feed = resolve(process.argv[2] ?? join(repository, 'artifacts/nuget-release'))
 const version = process.argv[3]
 assert.match(version, /^\d+\.\d+\.\d+$/)
-const root = await mkdtemp(join(tmpdir(), 'ngb-template-locks-'))
+await prepareTemplate()
+const root = await realpath(await mkdtemp(join(tmpdir(), 'ngb-template-locks-')))
 const content = join(repository, 'packaging/templates/content')
-await cp(content, root, { recursive: true })
+const templateFiles = await applicationFiles(content)
+const configuration = validateConfiguration(JSON.parse(templateFiles['ngb.config.json']))
+for (const [path, bytes] of Object.entries(templateFiles)) {
+  await mkdir(dirname(join(root, path)), { recursive: true })
+  await writeFile(join(root, path), bytes)
+}
 const xml = feed.replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;')
 await writeFile(join(root, 'NuGet.Config'), `<?xml version="1.0"?><configuration>
   <packageSources><clear /><add key="candidate" value="${xml}" /><add key="registry" value="https://api.nuget.org/v3/index.json" /></packageSources>
@@ -23,12 +32,12 @@ await writeFile(join(root, 'NuGet.Config'), `<?xml version="1.0"?><configuration
 execFileSync('dotnet', ['restore', 'NgbApplication.slnx', '--force-evaluate', '--no-http-cache', '--configfile', 'NuGet.Config', '--packages', join(root, 'nuget-cache')], {
   cwd: root, stdio: 'inherit',
 })
-for (const host of ['Api', 'Migrator', 'BackgroundJobs']) {
-  const path = `NgbApplication.${host}/packages.lock.json`
+for (const { path: project } of configuration.projects) {
+  const path = `${dirname(project)}/packages.lock.json`
   const lock = JSON.parse(await readFile(join(root, path), 'utf8'))
   for (const framework of Object.values(lock.dependencies)) {
     for (const [id, dependency] of Object.entries(framework)) {
-      if (id.startsWith('NGB.Platform.')) assert.equal(dependency.resolved, version)
+      if (id.toLowerCase().startsWith('ngb.platform.')) assert.equal(dependency.resolved, version)
     }
   }
   await cp(join(root, path), join(content, path))

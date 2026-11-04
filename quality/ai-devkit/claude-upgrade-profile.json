@@ -1,0 +1,98 @@
+{
+  "schemaVersion": 1,
+  "id": "claude-terminal-upgrade-macos-arm64-v2",
+  "clientVersion": "2.1.308",
+  "modelSelection": "client-default",
+  "maximumSecondsPerAttempt": 1800,
+  "maximumEstimatedCostUsdPerAttempt": 10,
+  "maximumTurnsPerAttempt": 100,
+  "tools": [
+    "Read",
+    "Glob",
+    "Grep",
+    "Skill",
+    "Edit",
+    "Write",
+    "Bash"
+  ],
+  "permissionMode": "dontAsk",
+  "settingSources": [
+    "project"
+  ],
+  "settings": {
+    "disableAllHooks": true,
+    "disableSkillShellExecution": true,
+    "disableBundledSkills": true,
+    "disableClaudeAiConnectors": true,
+    "syncClaudeAiSkills": false,
+    "syncClaudeAiPlugins": false,
+    "autoMemoryEnabled": false,
+    "enableWorkflows": false,
+    "permissions": {
+      "blockReadsOutsideWorkingDirectories": true,
+      "deny": [
+        "PowerShell",
+        "NotebookEdit",
+        "WebFetch",
+        "WebSearch",
+        "Agent",
+        "mcp__*"
+      ]
+    },
+    "sandbox": {
+      "enabled": true,
+      "failIfUnavailable": true,
+      "autoAllowBashIfSandboxed": true,
+      "allowUnsandboxedCommands": false,
+      "excludedCommands": [],
+      "filesystem": {
+        "disabled": false
+      },
+      "network": {
+        "allowedDomains": [
+          "api.nuget.org",
+          "registry.npmjs.org"
+        ],
+        "deniedDomains": [],
+        "allowLocalBinding": false,
+        "allowUnixSockets": [],
+        "allowAllUnixSockets": false,
+        "allowMachLookup": [
+          "com.apple.trustd.agent"
+        ]
+      }
+    }
+  },
+  "environment": {
+    "DISABLE_AUTOUPDATER": "1",
+    "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "CLAUDE_CODE_AUTO_CONNECT_IDE": "false"
+  },
+  "sandboxPreflight": {
+    "package": "@anthropic-ai/sandbox-runtime",
+    "version": "0.0.81",
+    "integrity": "sha512-bjHDu87gjIR7+Oxy9jPiK3v8CvSELCzfpXa3fjqfSKdvlZET2iF51xcXILWPayTpowB3xtZeQVf2JR916nVW/w==",
+    "scope": "Standalone runtime verifies the actual fixed installer filesystem/network rules, including both managed skill directories and denied client settings. Ordinary Bash still uses the installed native sandbox; no binary equivalence is claimed. A deterministic installer control and a real native-client attempt remain separate evidence."
+  },
+  "authentication": "Existing claude.ai subscription only; no API keys, provider credentials or personal MCP configuration are inherited.",
+  "isolation": "The application and private scratch are writable; candidate, target CLI and installer configuration are read-only. Ordinary Bash commands retain the strict native sandbox. Only the exact no-argument installer command uses a separate OS sandbox so the authorized upgrade can write application skills. Its clean environment strips inherited interpreter flags, provider credentials and proxies before Node starts. Both sandboxes deny the SDK checkout, unrelated home/temp files, Docker, direct egress and all hosts except the public NuGet/npm registries. Git and client configuration stay write-denied. File-tool directory restrictions, disabled hooks/connectors and no delegation remain in force.",
+  "buildPolicy": "The target CLI performs the upgrade and lock regeneration in its private temporary staging area. Third-party dependencies may restore from the two declared public registry hosts; NGB package identities must match the supplied immutable candidate. Preflight proves transport and filesystem boundaries before any inference; the independent oracle performs clean locked builds afterward.",
+  "attemptPolicy": "One attempt per task and working directory; no automatic retry, conversation resume, human hints or acceptance-feedback repair. Record actual model, usage, client-side cost estimate, transcript and produced source. A process completion alone is not acceptance.",
+  "networkDomains": [
+    "api.nuget.org",
+    "registry.npmjs.org"
+  ],
+  "runtimeDirectories": [
+    "/private/tmp/.dotnet/shm",
+    "/private/tmp/.dotnet/lockfiles"
+  ],
+  "installer": {
+    "command": "fixed-no-argument-launcher",
+    "source": "quality/ai-devkit/upgrade-launcher.mjs",
+    "sourceSha256": "9679fd257bb0e790803ad6ebb1ac620d58092630a7ce0444d940409aa4647343",
+    "resolutionFile": "upgrade-resolutions.json",
+    "operation": "The supplied target CLI runs upgrade --apply for the fixed application, target version and candidate; only the preview-bound resolution JSON is agent-authored. No arbitrary command, path or inherited environment is accepted.",
+    "boundary": "Only the exact immutable launcher is excluded from the native Bash sandbox. It immediately starts the pinned standalone sandbox runtime with fixed filesystem/network rules and a clean environment. Application skills are writable there; Git, client settings, candidate, target CLI, unrelated files and unlisted network destinations remain denied."
+  }
+}

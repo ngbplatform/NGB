@@ -1,0 +1,335 @@
+{
+  "schemaVersion": 1,
+  "package": "NGB.Platform.Tools",
+  "version": "3.4.0",
+  "packageSha256": "26393798726cb6762154acaa9d103edd8b697c2f910552e6f26504b43f903a81",
+  "assembly": {
+    "name": "NGB.Tools",
+    "version": "3.0.0.0",
+    "sha256": "2dbdf3a6dc8789781f3a69f044a86e07368981d773f0ef9c4c15c5f04e73470d"
+  },
+  "contractSha256": "a2fccf3b0064081c66800d6636dbf43ec855292f7d921277a90968f63067758b",
+  "types": [
+    {
+      "name": "NGB.Tools.Exceptions.INgbError",
+      "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
+      "contractSha256": "670b954041642e5f4ef714b12ba86a261becd5c553767d544b4e376923f13ccf",
+      "methods": [
+        "get_Context",
+        "get_ErrorCode",
+        "get_Kind"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Tools.Exceptions.NgbArgumentInvalidException",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "2a80da161c612b1e749bcb569f965e139972a67cfaf41c91e0ddb5c7e0176023",
+      "methods": [
+        ".ctor",
+        "get_ParamName",
+        "get_Reason"
+      ],
+      "fields": [
+        "Code"
+      ]
+    },
+    {
+      "name": "NGB.Tools.Exceptions.NgbArgumentLabelFormatter",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "d3c67f683915e851188e29668150768d6fc76c7b2362c590bffb740544559b2d",
+      "methods": [
+        "Format"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Tools.Exceptions.NgbArgumentOutOfRangeException",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "3179befe4377c769b807a864f11c48efa058975cc737f82db631afffa9ac368d",
+      "methods": [
+        ".ctor",
+        "get_ActualValue",
+        "get_ParamName",
+        "get_Reason"
+      ],
+      "fields": [
+        "Code"
+      ]
+    },
+    {
+      "name": "NGB.Tools.Exceptions.NgbArgumentRequiredException",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "bb6e240074922649539f1aa10a242131a46cb76f656a0e9c21116647bebf9dbd",
+      "methods": [
+        ".ctor",
+        "get_ParamName"
+      ],
+      "fields": [
+        "Code"
+      ]
+    },
+    {
+      "name": "NGB.Tools.Exceptions.NgbConfigurationException",
+      "attributes": "Public, Abstract, BeforeFieldInit",
+      "contractSha256": "a53b80565936bde2ea4d3fc15115e0cb3d5f1e8085fead552a47aaaf35e52fdc",
+      "methods": [
+        ".ctor"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Tools.Exceptions.NgbConfigurationViolationException",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "5d5d6044d7383fd603e56f087c3ed591e3ec4f8b0439bec1c3942227cdf9a672",
+      "methods": [
+        ".ctor"
+      ],
+      "fields": [
+        "Code"
+      ]
+    },
+    {
+      "name": "NGB.Tools.Exceptions.NgbConflictException",
+      "attributes": "Public, Abstract, BeforeFieldInit",
+      "contractSha256": "84e0b415df6f5da495bfda74a76061f80e888d8211899ff7f855bb67ead237a7",
+      "methods": [
+        ".ctor"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Tools.Exceptions.NgbErrorKind",
+      "attributes": "Public, Sealed",
+      "contractSha256": "898f3b97435005e2f99c7a7bf3a6219cbb7e5d038e44575168628fc973b3b597",
+      "methods": [],
+      "fields": [
+        "Configuration",
+        "Conflict",
+        "Forbidden",
+        "Infrastructure",
+        "NotFound",
+        "Unknown",
+        "Validation",
+        "value__"
+      ]
+    },
+    {
+      "name": "NGB.Tools.Exceptions.NgbException",
+      "attributes": "Public, Abstract, BeforeFieldInit",
+      "contractSha256": "16b2153329ba1099e8fd3d15b1cbeece55d1b80c9ddbed3b2b23da499a97e2e2",
+      "methods": [
+        ".ctor",
+        "ToString",
+        "get_Context",
+        "get_ErrorCode",
+        "get_Kind"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Tools.Exceptions.NgbExceptionPolicy",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "1742dfa73a73e35d4abde9a04ad846e2bc9d2cf769cd2cd60141e07f02e2f79e",
+      "methods": [
+        "Apply"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Tools.Exceptions.NgbForbiddenException",
+      "attributes": "Public, Abstract, BeforeFieldInit",
+      "contractSha256": "c2043209e898a12d822921a125dcaf92756a7ec3bd4e0acd2338cde59f32526b",
+      "methods": [
+        ".ctor"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Tools.Exceptions.NgbInfrastructureException",
+      "attributes": "Public, Abstract, BeforeFieldInit",
+      "contractSha256": "351215d7caa8910b61ea0ddffbca5559d7b2873f715b6b5abecaa769b8c319a7",
+      "methods": [
+        ".ctor"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Tools.Exceptions.NgbInvariantViolationException",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "aab18aa47b706876fa0d718e9b9a081a030090e5167d577d71df1a2d46a60db0",
+      "methods": [
+        ".ctor"
+      ],
+      "fields": [
+        "Code"
+      ]
+    },
+    {
+      "name": "NGB.Tools.Exceptions.NgbNotFoundException",
+      "attributes": "Public, Abstract, BeforeFieldInit",
+      "contractSha256": "6a8b68c3c8775b93a5a6087ff6e4a369ff2bf5dbaf8b0d95362096aa26e5763e",
+      "methods": [
+        ".ctor"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Tools.Exceptions.NgbTimeoutException",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "68aecee48524ce97a7890ba1cfd8827af8b39e841182ccd5b7ba9f02396651d0",
+      "methods": [
+        ".ctor",
+        "get_ExceptionType",
+        "get_Operation"
+      ],
+      "fields": [
+        "Code"
+      ]
+    },
+    {
+      "name": "NGB.Tools.Exceptions.NgbUnexpectedException",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "e2f3166a693f853c1d9ba4a880416a793ac3db17b38e6a89217f79b50962617a",
+      "methods": [
+        ".ctor",
+        "get_ExceptionType",
+        "get_Operation"
+      ],
+      "fields": [
+        "Code"
+      ]
+    },
+    {
+      "name": "NGB.Tools.Exceptions.NgbValidationException",
+      "attributes": "Public, Abstract, BeforeFieldInit",
+      "contractSha256": "8b2715777ff3dba94befc6896468a2d3ce3896f81e29bbc7bd3c9cce5fece2ce",
+      "methods": [
+        ".ctor"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Tools.Extensions.DateOnlyExtensions",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "86f9fd593c3ddf388c46186de25a3762656d5e50f57a73141454bda9ef563c9d",
+      "methods": [
+        "EnsureMonthStart"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Tools.Extensions.DateTimeExtensions",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "b198fbc69bfea4a2562594371e788315ee6caa99db60e73106d1691abdca4666",
+      "methods": [
+        "EnsureUtc"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Tools.Extensions.DeterministicGuid",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "fdc0736bbe99bdd8e216c16a608579a80ba1033d63dc7627ff4258efb159f0a6",
+      "methods": [
+        "Create"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Tools.Extensions.EnumExtensions",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "3cb1debf1025152d90de09bda66b4a71560fa97bc3a90257ec393ac886c49900",
+      "methods": [
+        "GetAttribute",
+        "ToCode",
+        "ToDisplay"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Tools.Extensions.GuidExtensions",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "962717ecc7fae543791afb7dc3edb8d5ce22356f41d62d8ce864942a0a2affce",
+      "methods": [
+        "EnsureNonEmpty",
+        "EnsureRequired"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Tools.Extensions.JsonElementExtensions",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "1f9b7cbb0c9f206436e992bf395c73f9fe84f7eae392a90f18f0d1995c67574e",
+      "methods": [
+        "ParseGuidOrRef"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Tools.Extensions.TimeProviderExtensions",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "e6ed1f616c358e21e55b7bfcd924898e557d7f7b7c9c1c04f8982aa291d9d925",
+      "methods": [
+        "GetUtcNowDateTime",
+        "GetUtcToday"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Tools.Http.HttpEndpointUri",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "1df46be1f94f01e5e9ac75c2d9aedccccaad12f264c869430a9bc18dd13dec28",
+      "methods": [
+        "IsAbsoluteHttp",
+        "IsLocalhost",
+        "IsSecureAbsolute"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Tools.JsonTools",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "f7deb7e6f39066f9b853cf10e15470ea7fe8b9291e673fe740ba0858d7fdb94a",
+      "methods": [
+        "J",
+        "Jobj"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Tools.Normalization.CodeNormalizer",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "329a54787bdffd45710c2b5df953d67b2a08009c63120b8c6698fa8300db9fd7",
+      "methods": [
+        "NormalizeCodeNorm"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Tools.Normalization.IdentifierNormalization",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "7af6019e3c184a155749af3e194146d07f049780df63a1f6d3aa2fd5c0f25d7f",
+      "methods": [
+        "LimitWithHashSuffix",
+        "NormalizeStrictColumnCode",
+        "NormalizeStrictTableCode",
+        "NormalizeStrictToken"
+      ],
+      "fields": [
+        "HashSuffixLen"
+      ]
+    },
+    {
+      "name": "NGB.Tools.Paging.OpaqueCursorCodec",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "fe86916256c13b0a0f9e91d1821f484220805275f90248f670bbecd693fb6da8",
+      "methods": [
+        "BuildKind",
+        "Decode",
+        "Encode"
+      ],
+      "fields": []
+    }
+  ]
+}

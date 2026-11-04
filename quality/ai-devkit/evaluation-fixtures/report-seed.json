@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "task": "report-extension",
+  "base": "sealed candidate ai/vendor/examples/equipment-inspection; overlay before capturing the trusted inventory",
+  "verifiedCandidateSha256": "9e0a20481f359ab2dfe168fedb73d1e2a5a7be174220dfc8dfd5feee406b86ef",
+  "files": {
+    "EquipmentInspection.Definitions/EquipmentCategoryDefinitions.cs": "4210c7cc0290ce3a3ebc10982241502469a392497ce9b095d8f358038d5e0cea",
+    "EquipmentInspection.Definitions/EquipmentDefinitions.cs": "076610e7bc696e6e9b5e731e677781f659ad68223072fc857d6945a0e115cb94",
+    "EquipmentInspection.Runtime/EquipmentCategoryRuntimeDefinitions.cs": "15295f3d30169fbbf334ed6b5e80b989d01412187af72e34d7b59626ae94a592",
+    "EquipmentInspection.Runtime/EquipmentCategoryValidator.cs": "667198d5bc7214b5682a5b7b9aa8b881f12179ebab46fbe8b50ffc9621f553de",
+    "EquipmentInspection.Runtime/EquipmentRuntime.cs": "9f44f03c268faedc8356d1d22017da4ad78d88d0c871092c517003fd5c7c24bd",
+    "EquipmentInspection.PostgreSql/EquipmentPersistence.cs": "7d493147fdef700e292e8acbc12ce22d5e846084d15b958ef5340baa7beaa868",
+    "EquipmentInspection.PostgreSql/db/migrations/V2026_10_30_0300__equipment_category.sql": "036c7168dab520b2def45becd06f6f1f095d58a14a5488fb7f40ebee908ef845",
+    "EquipmentInspection.PostgreSql/db/migrations/V2026_10_30_0400__equipment_category_link.sql": "ca2cdee0902ac483819202136b4dd93b00475b0ce9337e30fb689379ec9b18c9"
+  }
+}

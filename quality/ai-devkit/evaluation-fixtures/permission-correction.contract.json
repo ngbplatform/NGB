@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "task": "permission-correction",
+  "observableContract": {
+    "seed": "A package-only equipment application with two deliberate application mistakes: wrong administrator role registration and a frontend override of returned catalog edit capabilities. SDK packages are unchanged.",
+    "administrator": "The active application administrator role is equipment.administrator, regardless of editable display name. It receives equipment edit and newly registered capabilities without manual permission grants.",
+    "trustedIdentity": "The trusted Keycloak role ngb-admin continues to work without a pre-existing platform user record. An inactive linked account stays blocked even with that Keycloak role.",
+    "reader": "The trusted fixture grants an ordinary reader only catalog/example.equipment/view. Read works; create, update and deletion marking return HTTP 403. The real browser editor displays the record with Save disabled.",
+    "features": "Administrator permissions do not turn on disabled deployment features. Preserve the existing public feature guard.",
+    "preservation": "Use existing public SDK authorization and metadata capabilities. Preserve the registered role code, migrations, dependency/build files, installed guidance and application entry points. Do not add manual administrator grants or change SDK behavior."
+  },
+  "acceptance": [
+    "active-admin-new-capability",
+    "trusted-keycloak-admin",
+    "reader-api-denied",
+    "reader-ui-denied",
+    "inactive-blocked",
+    "feature-flags-independent"
+  ],
+  "prompt": "Correct this application's equipment-edit authorization and UI capability handling using existing public NGB contracts. An active application administrator with registered role code equipment.administrator must receive edit and newly registered capabilities without manual grants, even when the role display name is renamed. Trusted Keycloak ngb-admin without a pre-existing platform user record must continue to work. A reader granted only catalog/example.equipment/view must be able to read but receive HTTP 403 for create/update/deletion marking; the real equipment editor must display the record with Save disabled. Keep inactive users and display-name-only administrators blocked. Keep deployment feature flags independent of permissions. Preserve ApplicationRoles.Administrator, existing migrations, project/dependency/build configuration, installed guidance and entry points; do not change SDK behavior or seed manual administrator grants. Include appropriate tests and keep the complete backend and frontend buildable."
+}

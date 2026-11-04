@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "version": "3.4.0",
+  "profile": "terminal-macos-arm64-v1",
+  "platform": "darwin",
+  "architecture": "arm64",
+  "clients": ["codex", "claude"],
+  "workingDirectories": ["root", "subdirectory"],
+  "attempts": 1,
+  "maximumSecondsPerAttempt": 1800,
+  "humanAssistance": "none",
+  "fixturePolicy": "Fresh package-only application per attempt. Only synthetic data. No platform checkout, deployment credentials, personal MCP configuration or previous agent conversation.",
+  "tasks": [
+    {
+      "id": "skill-discovery",
+      "prompt": "Inspect this application's local development guidance and identify the installed SDK/Kit version, the canonical official and custom instruction paths, the appropriate document-development skill, and the supported treatment of documents with no effect handler. Do not modify files.",
+      "acceptance": ["correct-versions", "official-and-custom-discovery", "document-skill-discovery", "zero-effect-limitation", "no-source-changes"]
+    },
+    {
+      "id": "new-catalog",
+      "prompt": "Add an EquipmentCategory catalog with a required unique Code and required Name, and expose it using the public NGB catalog workflow. Include persistence and authorization without depending on a platform checkout.",
+      "acceptance": ["public-sdk-only", "layering", "real-create-read-update", "duplicate-code-refused", "unauthorized-refused", "migration-idempotent"]
+    },
+    {
+      "id": "existing-document-change",
+      "prompt": "Extend the inspection workflow with a required completion note at Post time while preserving incomplete Draft saves and existing optimistic concurrency behavior. Preserve the documented refusal of Post when no effect handler is configured.",
+      "acceptance": ["draft-preserved", "post-validation", "stale-write-refused", "zero-effect-refused", "no-sdk-business-changes"]
+    },
+    {
+      "id": "permission-correction",
+      "prompt": "Correct the application's equipment-edit authorization: an active application administrator must receive newly registered capabilities, a reader must be denied mutation in both API and UI, and an inactive account must remain blocked. Keep feature flags independent and identify roles by registered codes.",
+      "acceptance": ["active-admin-new-capability", "trusted-keycloak-admin", "reader-api-denied", "reader-ui-denied", "inactive-blocked", "feature-flags-independent"]
+    },
+    {
+      "id": "report-extension",
+      "prompt": "Add a paged inspection summary by equipment category using the public reporting contracts. Verify known totals from synthetic fixture data, filtering and unauthorized access. Use provider-side aggregation and bounded reads.",
+      "acceptance": ["public-report-contracts", "known-totals", "paging", "filters", "unauthorized-refused", "bounded-provider-query"]
+    },
+    {
+      "id": "customized-kit-upgrade",
+      "prompt": "Upgrade this customized 3.3.0 application to the supplied exact 3.4.0 candidate through the target CLI. Preserve application instructions and custom skills, preview conflicts, apply the reviewed change and verify the installed Kit. Do not change the frozen source or deploy services.",
+      "acceptance": ["preview-read-only", "custom-content-preserved", "coordinated-upgrade", "both-agent-adapters", "no-deployment", "build-and-kit-integrity"]
+    }
+  ]
+}

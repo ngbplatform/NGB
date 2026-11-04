@@ -30,8 +30,8 @@ await writeFile(join(work, 'NuGet.Config'), `<?xml version="1.0" encoding="utf-8
   <fallbackPackageFolders><clear /></fallbackPackageFolders>
 </configuration>\n`)
 
-const archives = (await readdir(feed)).filter(name => /^NGB\.Platform\..*\.3\.3\.0\.nupkg$/.test(name)).sort()
-if (!archives.includes('NGB.Platform.Mcp.3.3.0.nupkg') || !archives.includes('NGB.Platform.Mcp.AspNetCore.3.3.0.nupkg')) {
+const archives = (await readdir(feed)).filter(name => /^NGB\.Platform\..*\.3\.4\.0\.nupkg$/.test(name)).sort()
+if (!archives.includes('NGB.Platform.Mcp.3.4.0.nupkg') || !archives.includes('NGB.Platform.Mcp.AspNetCore.3.4.0.nupkg')) {
   throw new Error('Both MCP candidate packages must exist before external verification.')
 }
 const packages = await Promise.all(archives.map(async name => ({

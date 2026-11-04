@@ -5,6 +5,62 @@ Vue. It uses official NuGet/npm packages. No NGB repository checkout is required
 The initial UI provides users, roles, permission editing, role audit history and
 Work Center. Notes and Attachments are disabled by default.
 
+## AI Development Kit and verification
+
+The matching AI Development Kit is installed locally in `ai/vendor/`, with
+`AGENTS.md`, `CLAUDE.md` and skills for Codex and Claude Code. Open this application
+in your IDE or terminal. Agent installation and model configuration are separate;
+no IDE extension or NGB checkout is required to read the installed guidance.
+
+Keep application instructions in `ai/custom/instructions.md`. Author custom skills
+once in `ai/custom/skills/app-*/SKILL.md`; generated adapters direct each agent to
+that canonical file so relative references retain their original base directory.
+Preview changes before applying them:
+
+```sh
+node infrastructure/ngb.mjs ai status --format json
+node infrastructure/ngb.mjs ai sync
+node infrastructure/ngb.mjs ai sync --apply
+```
+
+The CLI preserves text outside the marked blocks in root instruction files.
+Locally edited or deleted managed files require review. Use hash-bound choices
+with `--resolutions reviewed-resolutions.json` when a conflict is reported.
+Unrelated agent skills and application sources remain application-owned.
+
+`ngb.config.json` declares this application's projects, layer roles and test
+suites. Update it when adding projects. The same CLI runs locally and in CI:
+
+```sh
+node infrastructure/ngb.mjs doctor --format json
+node infrastructure/ngb.mjs validate
+node infrastructure/ngb.mjs validate --profile build
+node infrastructure/ngb.mjs test --profile unit
+node infrastructure/ngb.mjs test --profile integration
+node infrastructure/ngb.mjs test --profile e2e
+node infrastructure/ngb.mjs test --profile all
+node infrastructure/ngb.mjs certify --profile external-application
+```
+
+Default validation inspects files without restoring dependencies or executing
+application code. The build and test profiles execute trusted project tooling.
+Unit tests include frontend coverage; backend suites emit coverage reports.
+The complete test profile checks the full compiled backend source inventory at
+100% lines, branches and methods, and frontend sources at 100% lines, branches,
+functions and statements. Missing tests, skipped tests and missing required
+evidence fail the profile. Reports and logs are under `.ngb/reports/<run-id>/`.
+
+Integration/E2E use disposable PostgreSQL and Keycloak resources. They do not use
+the deployment `.env`. Docker with Compose and Playwright Chromium are required
+for browser tests; the CLI installs the browser into its isolated execution home.
+Certification additionally requires performance and business acceptance evidence;
+a successful build or unit profile alone does not establish certification.
+
+Installed reference examples live in `ai/vendor/examples/`. Copy an example to a
+separate directory before restoring/building it, and follow its README. The
+document example records the SDK's unsupported zero-effect Post; it does not
+change the platform lifecycle or introduce a fictitious effect handler.
+
 ## Start locally
 
 Prerequisites: Docker with Compose v2, Node.js 24.19 or later in the 24.x line,
@@ -228,27 +284,42 @@ for model providers, startup requirements, limits and deployment configuration.
 
 Select a supported transition from the [upgrade guide](https://docs.ngbplatform.com/architecture/external-app-upgrades)
 and replace `TARGET_VERSION` below with its exact target version. Preview and apply
-from the NGB checkout without copying or regenerating application source:
+from this application:
 
 ```sh
-node ngb.mjs upgrade --app ../MyApplication --to TARGET_VERSION
-node ngb.mjs upgrade --app ../MyApplication --to TARGET_VERSION --apply
+node infrastructure/ngb.mjs upgrade --to TARGET_VERSION
+node infrastructure/ngb.mjs upgrade --to TARGET_VERSION --apply
 ```
 
-Before publication, add `--local`; other artifact locations use `--packages /path/to/candidate`.
+Before publication, select an approved sealed set with `--packages /path/to/candidate`.
 The currently registered transition is listed in the guide. The tool requires one
 root solution, `NgbPlatformVersion` in `Directory.Build.props`, a mapped
 `NuGet.Config`, and the `web` frontend. Other layouts require manual migration.
-Preview writes nothing. Apply updates NGB versions and lockfiles and validates both
-builds in a private temporary copy. It also manages ignored local packages, their
-configuration and `.gitignore` entries. Changes are applied only after both builds pass.
-Application source, secrets, data and running services remain untouched. Originals are
-saved in `.ngb/upgrades`. Concurrent edits, mixed versions, conditional platform
-versions and unsupported transitions stop the upgrade. Dependency-file backups are
-not database backups.
+Preview writes nothing inside the application; verified target CLI acquisition
+uses an external cache. Apply prepares matching SDK/UI, CLI/helper and Kit changes
+in a private temporary copy and validates builds before committing one transaction.
+It also manages ignored local packages, their configuration and `.gitignore`
+entries. Application code, tests and configuration require application review.
+Originals and recovery receipts are saved in `.ngb/transactions/<id>/`.
+Concurrent edits, mixed versions, conditional platform versions and unsupported
+transitions stop the upgrade. File backups are not database backups.
 
-New apps carry the tool at `infrastructure/ngb.mjs`. Future releases must register
-their transitions and document any required tool update. Read the migration guide
+After an interrupted update, inspect the recovery plan before applying it:
+
+```sh
+node infrastructure/ngb.mjs recover --format json
+node infrastructure/ngb.mjs recover --apply
+```
+
+Recovery verifies original bytes and refuses to overwrite subsequent edits or
+take over a live operation. Existing historical `.ngb/upgrades` records remain
+available. Keep the recovery directory until the upgrade has been reviewed.
+
+New apps carry the tool at `infrastructure/ngb.mjs`; it acquires the exact target
+CLI when a registered newer transition requires it. Existing 3.3.0 applications
+bootstrap through `npm exec --ignore-scripts --package=@ngbplatform/cli@3.4.0 -- ngb
+upgrade --app . --to 3.4.0` after publication. Future releases must register
+their transitions and document the required tool version. Read the migration guide
 for application-specific configuration and tests. Installing a template never
 rewrites an existing app.
 

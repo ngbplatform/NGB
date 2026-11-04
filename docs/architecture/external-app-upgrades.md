@@ -4,8 +4,9 @@ Use the official template to create an independent application, then update its
 NuGet/npm dependencies through supported upgrade transitions. This page covers
 application creation, extension boundaries and the upgrade contract.
 
-The version-specific examples below target **3.3.0**, with **3.2.0 → 3.3.0** as the
-current registered upgrade transition. Registry commands require that target to be published;
+The current candidate targets **3.4.0**, with **3.3.0 → 3.4.0** as its registered
+upgrade transition and the [AI Development Kit](../guides/ai-development-kit.md).
+The historical 3.2.0 → 3.3.0 procedure remains below. Registry commands require the target to be published;
 use local packages before publication. A transition is certified only when its
 candidate evidence passes and registry verification subsequently permits promotion.
 Merely updating a version in this repository does not establish a published or
@@ -19,7 +20,7 @@ Run these commands in the directory that should contain your new application,
 after the target release is published. No NGB checkout is required:
 
 ```sh
-dotnet new install NGB.Platform.Templates::3.3.0
+dotnet new install NGB.Platform.Templates@3.4.0
 dotnet new ngb -n MyApplication
 cd MyApplication
 node infrastructure/configure.mjs administrator@example.com
@@ -48,6 +49,8 @@ npm --prefix quality ci
 node ui/scripts/pack-platform-ui.mjs --local-candidate
 bash packaging/nuget/pack-platform.sh
 bash packaging/nuget/verify-platform-packages.sh
+node ai-devkit/prepare.mjs
+node packaging/cli/pack.mjs
 node quality/external-consumer/release.mjs seal
 ```
 
@@ -63,7 +66,7 @@ node ngb.mjs create MyApplication --local --start --email administrator@example.
 ```
 
 The CLI initializes `.env` itself; do not run `configure.mjs` again in this app.
-After publication, replace `--local` with `--version 3.3.0`. Output defaults to a
+After publication, replace `--local` with `--version 3.4.0`. Output defaults to a
 sibling of the NGB checkout. `--output` selects another nonexistent directory outside
 the checkout. Application names contain 2–64 letters/digits and start with a letter.
 
@@ -92,8 +95,9 @@ third-party dependencies. Local mode does not mean an offline installation.
 
 ### Starter contents and first login
 
-The starter contains API, Migrator, Background Jobs and Vue projects, Keycloak and
-PostgreSQL. It provides login, the platform shell, users, roles, permission editing,
+The starter contains API, Migrator, Background Jobs and Vue projects, unit/integration
+tests, the assembly inspection helper, and AI Kit instructions/skills/references.
+Its runtime services include Keycloak and PostgreSQL. It provides login, the platform shell, users, roles, permission editing,
 audit history, Work Center, health endpoints and a real worker. It includes no
 business vertical, empty extension projects, Watchdog, Seq, MinIO or pgAdmin.
 `platform.schema.validate` is the initial registered job. Logs go to stdout.
@@ -178,16 +182,31 @@ patch in that minor. Major upgrades require an explicit source range and migrati
 guide, including manual changes. No promise covers automatic compatibility of every
 historical application.
 
-The checked-in matrix selects **3.2.0 → 3.3.0**. Most runtime
+The checked-in matrix selects **3.3.0 → 3.4.0**. Most runtime
 packages have 3.0.0 as their major baseline. Attachments, Notes and Attachments.MinIO
-were first published at 3.1.0. The new MCP packages start at 3.3.0 and have no prior
-runtime baseline. `NGB.Platform.Templates` was first published at 3.2.0;
+were first published at 3.1.0. MCP packages start at 3.3.0 and use that published
+version as their baseline. `NGB.Platform.Templates` was first published at 3.2.0;
 assembly compatibility and symbols do not apply to that content package. These exceptions are explicit in
 `packaging/nuget/baselines.json`; there are no blanket runtime exemptions.
 
-The tool also retains the registered **3.1.0 → 3.2.0** path. Historical matrices,
-baselines and both frozen source fixtures remain unchanged. This does not register
-a direct 3.1.0 → 3.3.0 upgrade.
+The tool also retains **3.1.0 → 3.2.0** and **3.2.0 → 3.3.0**. Historical matrices,
+baselines and frozen source fixtures remain unchanged. These adjacent transitions
+do not register a direct jump from 3.1.0 to 3.4.0.
+
+## Migrate 3.3.0 to 3.4.0
+
+Follow the [AI Kit upgrade procedure](../guides/ai-development-kit.md#updates-and-conflicts)
+to acquire the exact npm CLI without a platform checkout, preview conflicts and
+apply coordinated SDK/UI/CLI/Kit changes. For an unpublished sealed candidate,
+use the repository entry point with `--packages /absolute/candidate` or its verified
+extracted CLI. Existing root instructions and application custom skills are preserved.
+
+The upgrade validates isolated builds before committing a recoverable transaction.
+It does not run migrations, start services or introduce the new starter's tests
+into an existing business application. Integrate application-owned `ngb.config.json`
+and test projects explicitly. Run business acceptance and the deployment/backup
+procedure below against the matching target. Candidate release evidence must also
+prove preservation of real persisted data, permissions, history and jobs.
 
 ## Migrate 3.2.0 to 3.3.0
 
@@ -319,7 +338,7 @@ the clean-starter profile and registry smoke also use fresh download caches.
 | --- | --- |
 | clean-starter | Installed template, real login/role lifecycle/audit, admin contract, worker job, health/logs, migration sequencing; no MinIO |
 | generated-extension | Fresh generated app plus custom catalog, Runtime validator/handler, PostgreSQL provider and app migration |
-| core-upgrade | Frozen published 3.2.0 app, maintenance stop, target migration on the same state, preserved data/grants/audit/history, continued custom behavior and queued-job idempotence |
+| core-upgrade | Frozen published 3.3.0 app upgraded to 3.4.0, maintenance stop, target migration on the same state, preserved data/grants/audit/history, continued custom behavior and queued-job idempotence |
 | notes-upgrade | Existing and new Notes, history and authorization; Attachments disabled and no MinIO |
 | attachments-upgrade | Existing/new attachment metadata and objects, matching download SHA-256, authorization and private MinIO |
 
@@ -337,26 +356,31 @@ checks. The generated-extension profile installs the example's DDL separately.
 Normal template creation does not create either checkpoint table. Following the
 extension tutorial intentionally adds them to that application's own database.
 
-The 3.3.0 matrix also adds mandatory `mcp-contract`, `mcp-external` and
-`mcp-verticals` candidate gates. They check protocol/schema behavior, an independent
-package-only consumer with real Keycloak, and the actual four vertical API hosts.
+The current matrix retains the mandatory `mcp-contract`, `mcp-external` and
+`mcp-verticals` candidate gates introduced in 3.3.0. They check protocol/schema
+behavior, an independent package-only consumer with real Keycloak, and the actual
+four vertical API hosts.
 Upgrade profiles verify explicit MCP opt-in on the preserved application state;
 their assertions do not turn every existing business feature into a certified
 external upgrade scenario.
 
 Documents, relationships, accounting, operational/reference registers, reporting and
-projections retain their broader regression suites, run locally before release. Full
-backend/frontend tests and coverage for the platform, PM, Trade, Agency Billing and
-CRM are separate local checks, outside release certification. The candidate's Compose
+projections retain their broader regression suites. In 3.4.0, full backend/frontend
+tests and coverage for the platform, PM, Trade, Agency Billing and CRM are mandatory
+candidate-bound release gates. These product regressions remain outside the generic
+AI Development Kit. The candidate's Compose
 gate builds the generated starter. It does not build the existing vertical Docker images, including CRM;
 those have a separate container-build gate after package publication.
 
-`quality/external-consumer/matrix.json` binds 22 candidate gates and two
+`quality/external-consumer/matrix.json` binds 30 candidate gates and two
 post-publication gates to commands and assertions. `quality-inventory.json`
 classifies measured executable helpers, generated code, static content and process
 orchestration. Certification retains helper tests, the framework browser matrix and
-performance-tooling contracts. Full backend/frontend coverage thresholds remain 100%
-in the separate local suites; a certification pass does not attest to those results.
+performance-tooling contracts. Five additional Kit profiles verify artifacts,
+contracts, the independent application, coordinated upgrades and real agent results.
+Full backend/frontend coverage thresholds remain 100%; release certification requires
+the full-quality reports for the exact candidate. The legacy reduced certification
+mode cannot satisfy those gates.
 Process orchestration uses real behavior and failure tests, not synthetic coverage.
 
 ## Certified package identity

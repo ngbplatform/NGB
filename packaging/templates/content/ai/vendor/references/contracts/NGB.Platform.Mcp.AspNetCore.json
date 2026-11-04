@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "package": "NGB.Platform.Mcp.AspNetCore",
+  "version": "3.4.0",
+  "packageSha256": "57d74d11b9579df878f171956ebfbb032dd36725b79207bec0ecc498faf46519",
+  "assembly": {
+    "name": "NGB.Mcp.AspNetCore",
+    "version": "3.0.0.0",
+    "sha256": "bbcd0da1bc13198efdf409e17a5ac35ca3652dccecbf4ce64ad054fbf0ea9a6b"
+  },
+  "contractSha256": "aec7b7dff8c8fb28d9f80ff5681ce9c27140c8a0da66544594c6c92efcfae563",
+  "types": [
+    {
+      "name": "NGB.Mcp.AspNetCore.DependencyInjection",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "66a92759bb1ba770dcc44bc66a2f6546ab56683f47064613a796c5bb0d7373d9",
+      "methods": [
+        "AddNgbMcp",
+        "GetNgbMcpEndpoint",
+        "MapNgbMcp"
+      ],
+      "fields": [
+        "CurrentUserPolicyName"
+      ]
+    },
+    {
+      "name": "NGB.Mcp.AspNetCore.NgbMcpOptions",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "e5a0fabeabec354cc163aa77d1177087dbe63900294ce4344abe2511313ff85d",
+      "methods": [
+        ".ctor",
+        "get_AllowLocalhostHttp",
+        "get_AllowedOrigins",
+        "get_AuthenticationScheme",
+        "get_ConcurrentRequests",
+        "get_MaxRequestBytes",
+        "get_PublicUiOrigin",
+        "get_RequestTimeoutSeconds",
+        "get_RequestsPerMinute",
+        "get_Resource",
+        "get_UiRoutes",
+        "set_AllowLocalhostHttp",
+        "set_AllowedOrigins",
+        "set_AuthenticationScheme",
+        "set_ConcurrentRequests",
+        "set_MaxRequestBytes",
+        "set_PublicUiOrigin",
+        "set_RequestTimeoutSeconds",
+        "set_RequestsPerMinute",
+        "set_Resource",
+        "set_UiRoutes"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Mcp.AspNetCore.NgbMcpToolMetadata",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "57eb59d2f4972a2484ba7f39a4ca51606458fe61a6dba505f3beb4867605fd1d",
+      "methods": [],
+      "fields": [
+        "CompatibilityOnly"
+      ]
+    }
+  ]
+}

@@ -1,32 +1,40 @@
 {
   "name": "ngb-application-web",
-  "version": "3.3.0",
+  "version": "3.4.0",
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=22.14.0"
+    "node": ">=24.19.0 <25"
   },
   "scripts": {
     "dev": "vite",
     "typecheck": "vue-tsc --noEmit -p tsconfig.json",
     "build": "npm run typecheck && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
-    "@ngbplatform/ui": "3.3.0",
+    "@ngbplatform/ui": "3.4.0",
     "keycloak-js": "^26.2.3",
     "pinia": "^3.0.3",
     "vue": "^3.5.0",
     "vue-router": "^4.5.0"
   },
   "devDependencies": {
+    "@playwright/test": "1.59.1",
     "@vitejs/plugin-vue": "^6.0.3",
+    "@vitest/browser-playwright": "4.1.12",
+    "@vitest/coverage-v8": "4.1.12",
     "autoprefixer": "^10.4.20",
     "postcss": "^8.5.23",
+    "playwright": "1.59.1",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.7.3",
     "vite": "^7.3.0",
-    "vue-tsc": "^3.3.9"
+    "vue-tsc": "^3.3.9",
+    "vitest": "4.1.12",
+    "vitest-browser-vue": "2.1.0"
   },
   "overrides": {
     "postcss-selector-parser": "7.1.6"

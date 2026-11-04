@@ -15,6 +15,16 @@ This site is the consolidated platform documentation for <strong>NGB Platform</s
 - [Host composition](/start-here/host-composition)
 - [Reading path](/start-here/reading-path)
 
+## AI Development Kit 3.4.0 candidate
+
+The AI Development Kit supplies versioned Codex and Claude Code guidance, public
+SDK references, application tests and a shared CLI for independent applications.
+Registry installation requires the matching 3.4.0 packages to be published.
+
+- [AI Development Kit guide](/guides/ai-development-kit)
+- [3.4.0 candidate release notes](/guides/ai-development-kit-release-3-4)
+- [Upgrade from 3.3.0 to 3.4.0](/architecture/external-app-upgrades#migrate-3-3-0-to-3-4-0)
+
 ## MCP Server and AI Assistant in 3.3.0
 
 MCP exposes the hosting application's authorized business reads as the current user. It runs in the existing API process and is enabled with `FeatureManagement:Mcp`.

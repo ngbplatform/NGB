@@ -4,7 +4,8 @@ import { posix } from 'node:path'
 import { unzipSync } from 'fflate'
 import { assertExactVersion, hashDirectory } from './contracts.mjs'
 
-export const templateContentExcludes = ['**/bin/**', '**/obj/**', '**/node_modules/**', '**/dist/**', '.env', '.local/**']
+export const templateContentExcludes = ['**/bin/**', '**/obj/**', '**/node_modules/**', '**/dist/**',
+  '**/TestResults/**', '**/coverage/**', '**/test-results/**', '.env', '.local/**', '.ngb/**']
 
 export const requiredProfiles = ['clean-starter', 'generated-extension', 'core-upgrade', 'notes-upgrade', 'attachments-upgrade']
 export const requiredGates = [
@@ -16,20 +17,29 @@ export const requiredGates = [
 ]
 
 export const mcpGates = ['mcp-contract', 'mcp-external', 'mcp-verticals']
+export const aiKitGates = ['ai-kit-artifacts', 'ai-kit-contracts', 'ai-kit-independent-app', 'ai-kit-upgrade',
+  'ai-kit-agents', 'full-backend-coverage', 'full-frontend-coverage', 'full-quality']
+
+export function includesAiKit(version) {
+  assertExactVersion(version)
+  const [major, minor] = version.split('.').map(Number)
+  return major > 3 || major === 3 && minor >= 4
+}
 
 export function digest(bytes, algorithm = 'sha256', encoding = 'hex') {
   return createHash(algorithm).update(bytes).digest(encoding)
 }
 
 export function validateMatrix(matrix) {
-  assert.ok(matrix.schemaVersion === 1 || matrix.schemaVersion === 2)
+  assert.ok([1, 2, 3].includes(matrix.schemaVersion))
   if (matrix.target === '3.3.0') assert.equal(matrix.schemaVersion, 2, 'MCP gates are mandatory for 3.3.0.')
+  if (includesAiKit(matrix.target)) assert.equal(matrix.schemaVersion, 3, 'AI Kit and full regression gates are mandatory from 3.4.0.')
   assertExactVersion(matrix.source)
   assertExactVersion(matrix.target)
   assert.notEqual(matrix.source, matrix.target)
   assert.deepEqual(Object.keys(matrix.profiles).sort(), [...requiredProfiles].sort())
   assert.deepEqual(matrix.gates.map(gate => gate.id).sort(),
-    [...requiredGates, ...(matrix.schemaVersion === 2 ? mcpGates : [])].sort())
+    [...requiredGates, ...(matrix.schemaVersion >= 2 ? mcpGates : []), ...(matrix.schemaVersion === 3 ? aiKitGates : [])].sort())
   for (const gate of matrix.gates) {
     assert.ok(['candidate', 'publication', 'promotion'].includes(gate.blocks), `Invalid gate stage: ${gate.id}`)
     const expectedStage = gate.id === 'publish-identity' ? 'publication'
@@ -43,10 +53,13 @@ export function validateMatrix(matrix) {
     assert.equal(profile.target, matrix.target)
     assert.equal(profile.source, id.endsWith('-upgrade') ? matrix.source : null)
     assert.equal(profile.minio, id === 'attachments-upgrade')
-    if (matrix.schemaVersion === 2 && id.endsWith('-upgrade')) {
+    if (matrix.schemaVersion >= 2 && id.endsWith('-upgrade')) {
       for (const assertion of ['mcpOptInAfterUpgrade', 'mcpReadOnlySnapshot']) {
         assert.ok(profile.assertions.includes(assertion), `Missing MCP upgrade assertion: ${id}/${assertion}`)
       }
+    }
+    if (matrix.schemaVersion === 3 && id.endsWith('-upgrade')) {
+      assert.ok(profile.assertions.includes('coordinatedCliKitUpgrade'), `Missing coordinated CLI/Kit upgrade assertion: ${id}`)
     }
   }
   assert.equal(matrix.profiles['notes-upgrade'].minio, false)
@@ -112,5 +125,6 @@ export function assertArtifactInventory(manifest, inventory) {
     ...(item.kind === 'runtime' ? [`nuget-release/${item.id}.${manifest.version}.snupkg`] : []),
   ])
   paths.push(`npm/ngbplatform-ui-${manifest.version}.tgz`)
+  if (includesAiKit(manifest.version)) paths.push(`npm/ngbplatform-cli-${manifest.version}.tgz`)
   assert.deepEqual(manifest.artifacts.map(item => item.path).sort(), paths.sort(), 'Artifact inventory is incomplete or contains extras.')
 }

@@ -26,6 +26,8 @@ async function releaseFixture(t) {
     const path = `quality/external-consumer/${name}`
     await cp(join(repository, name === 'matrix.json' ? 'quality/external-consumer/history/matrix-3.2.0.json' : path), join(root, path))
   }
+  await save('quality/ai-devkit/certification-data.mjs',
+    await readFile(join(repository, 'quality/ai-devkit/certification-data.mjs')))
   await symlink(join(repository, 'quality/node_modules'), join(root, 'quality/node_modules'))
   await save('.gitignore', 'artifacts/\nquality/node_modules\n')
   await save('quality/upgrade-certification/source-3.1.0.json', '{}')
@@ -38,6 +40,10 @@ async function releaseFixture(t) {
   const entries = {
     'content/README.md': strToU8('Current instructions\n'),
     'content/.template.config/template.json': strToU8('{"identity":"NGB"}'),
+  }
+  for (const name of ['contracts.mjs', 'kit-contracts.mjs', 'kit-files.mjs', 'file-data.mjs', 'transaction.mjs']) {
+    const path = `content/infrastructure/ngb/${name}`
+    entries[path] = await readFile(join(repository, 'packaging/templates', path))
   }
   for (const host of ['Api', 'Migrator', 'BackgroundJobs']) {
     entries[`content/NgbApplication.${host}/packages.lock.json`] = strToU8('{"version":1}')

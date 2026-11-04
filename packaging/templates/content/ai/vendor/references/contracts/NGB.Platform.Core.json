@@ -1,0 +1,1747 @@
+{
+  "schemaVersion": 1,
+  "package": "NGB.Platform.Core",
+  "version": "3.4.0",
+  "packageSha256": "9a0fc0032dcf64bb4237c8c70be78616a5facaf94e9f6a4d5f39a0deaa36c109",
+  "assembly": {
+    "name": "NGB.Core",
+    "version": "3.0.0.0",
+    "sha256": "4f0c7965be243803ecd83fff7ed768f72586226fbeca992d55e4bc82918a4945"
+  },
+  "contractSha256": "e5bf2adea639b7d9a613f0cd99761b11039704f0ec8260810394014bb9c3d3ba",
+  "types": [
+    {
+      "name": "NGB.Core.AuditLog.AuditEntityKind",
+      "attributes": "Public, Sealed",
+      "contractSha256": "dbf466bd367e032054c2b575739fae158686ea91aec14c55c87179deeea90bb3",
+      "methods": [],
+      "fields": [
+        "Attachment",
+        "Catalog",
+        "ChartOfAccountsAccount",
+        "Document",
+        "DocumentRelationship",
+        "Note",
+        "OperationalRegister",
+        "Period",
+        "ReferenceRegister",
+        "SecurityProvisioningOperation",
+        "SecurityRole",
+        "SecurityUser",
+        "value__"
+      ]
+    },
+    {
+      "name": "NGB.Core.AuditLog.AuditEvent",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "5bbb240a733319f4ee9dee2099ef90bb50f57485982ce84446b8d50afbae25ce",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_ActionCode",
+        "get_ActorUserId",
+        "get_AuditEventId",
+        "get_Changes",
+        "get_CorrelationId",
+        "get_EntityId",
+        "get_EntityKind",
+        "get_MetadataJson",
+        "get_OccurredAtUtc",
+        "op_Equality",
+        "op_Inequality",
+        "set_ActionCode",
+        "set_ActorUserId",
+        "set_AuditEventId",
+        "set_Changes",
+        "set_CorrelationId",
+        "set_EntityId",
+        "set_EntityKind",
+        "set_MetadataJson",
+        "set_OccurredAtUtc"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Core.AuditLog.AuditFieldChange",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "f1e6f0b134904430c7b00974b0bc5b7b9458e412eceaac4eb22528675b14bef2",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_FieldPath",
+        "get_NewValueJson",
+        "get_OldValueJson",
+        "op_Equality",
+        "op_Inequality",
+        "set_FieldPath",
+        "set_NewValueJson",
+        "set_OldValueJson"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Core.AuditLog.AuditLogQuery",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "7c06ef6d30ee770bad6075e92e1494e7edd66bc51206d57b11c4ed12ca21e96d",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_ActionCode",
+        "get_ActorUserId",
+        "get_AfterAuditEventId",
+        "get_AfterOccurredAtUtc",
+        "get_EntityId",
+        "get_EntityKind",
+        "get_FromUtc",
+        "get_Limit",
+        "get_Offset",
+        "get_ToUtc",
+        "op_Equality",
+        "op_Inequality",
+        "set_ActionCode",
+        "set_ActorUserId",
+        "set_AfterAuditEventId",
+        "set_AfterOccurredAtUtc",
+        "set_EntityId",
+        "set_EntityKind",
+        "set_FromUtc",
+        "set_Limit",
+        "set_Offset",
+        "set_ToUtc"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Core.AuditLog.PlatformUser",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "f14fccecce9a2c1af3d5e65f4d3d138f8b6f017f18218590ce397a22afe7ffe4",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_AuthSubject",
+        "get_CreatedAtUtc",
+        "get_DisplayName",
+        "get_Email",
+        "get_IsActive",
+        "get_UpdatedAtUtc",
+        "get_UserId",
+        "op_Equality",
+        "op_Inequality",
+        "set_AuthSubject",
+        "set_CreatedAtUtc",
+        "set_DisplayName",
+        "set_Email",
+        "set_IsActive",
+        "set_UpdatedAtUtc",
+        "set_UserId"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Core.Base.Entity",
+      "attributes": "Public, Abstract, BeforeFieldInit",
+      "contractSha256": "09a48bd7f3b492190676a5093dd0a3098ac128306f6e943fc64810bae013277d",
+      "methods": [
+        ".ctor",
+        "get_Id",
+        "set_Id"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Core.Base.Paging.PageSizeBase",
+      "attributes": "Public, Abstract, BeforeFieldInit",
+      "contractSha256": "8a7e16d4a5cdff919d1af53d4f07253093c9ece823d4cac61f6fa87bda74b3a3",
+      "methods": [
+        ".ctor",
+        "get_DisablePaging",
+        "get_PageSize",
+        "set_DisablePaging",
+        "set_PageSize"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Core.Catalogs.CatalogRecord",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "cd593aafddd8c78495aa427f5dcae76ca35285ee309688ed4ebfb70449c4394f",
+      "methods": [
+        ".ctor",
+        "get_CatalogCode",
+        "get_CreatedAtUtc",
+        "get_IsDeleted",
+        "get_UpdatedAtUtc",
+        "set_CatalogCode",
+        "set_CreatedAtUtc",
+        "set_IsDeleted",
+        "set_UpdatedAtUtc"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Core.Catalogs.Exceptions.CatalogNotFoundException",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "796bfc819bb49fefa32f2ef9a204a861616d4bcb25f0c04747abc3e179de1961",
+      "methods": [
+        ".ctor",
+        "get_CatalogId"
+      ],
+      "fields": [
+        "Code"
+      ]
+    },
+    {
+      "name": "NGB.Core.Catalogs.Exceptions.CatalogPresentationMetadataUnsafeIdentifierException",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "549f82a36deca356217d7a8eba937c9756eb2236ae03c3b343e869a7b43eb4ec",
+      "methods": [
+        ".ctor",
+        "get_CatalogCode",
+        "get_DisplayColumn",
+        "get_TableName"
+      ],
+      "fields": [
+        "Code"
+      ]
+    },
+    {
+      "name": "NGB.Core.Catalogs.Exceptions.CatalogSchemaValidationException",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "361d3d51978148389ac0ae75af2146564e65eb58626da04ab958ee73c8fe3f06",
+      "methods": [
+        ".ctor",
+        "get_Diagnostics"
+      ],
+      "fields": [
+        "Code"
+      ]
+    },
+    {
+      "name": "NGB.Core.Catalogs.Exceptions.CatalogTypedStorageMisconfiguredException",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "022834a57b739e0a644c4493a4814657e142624237f3b33174ac7733f32c48e6",
+      "methods": [
+        ".ctor",
+        "get_CatalogCode",
+        "get_Reason"
+      ],
+      "fields": [
+        "Code"
+      ]
+    },
+    {
+      "name": "NGB.Core.Catalogs.Exceptions.CatalogTypedStorageOperationException",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "235f54a096294a10d96dccf4b1654e57668e859abb0ddce165a66ef1f7009387",
+      "methods": [
+        ".ctor",
+        "get_CatalogCode",
+        "get_CatalogId",
+        "get_Operation"
+      ],
+      "fields": [
+        "Code"
+      ]
+    },
+    {
+      "name": "NGB.Core.Catalogs.Exceptions.CatalogTypeNotFoundException",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "afdb3b46e2f7dfe095e585eb7d367fb5d03718076c6a6824612b4802a28a147a",
+      "methods": [
+        ".ctor",
+        "get_CatalogCode"
+      ],
+      "fields": [
+        "Code"
+      ]
+    },
+    {
+      "name": "NGB.Core.Dimensions.DeterministicDimensionSetId",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "6e0dfbf1190dc7db782f7f7413f67119191099df99300dd325d3a19efb13587e",
+      "methods": [
+        "FromBag",
+        "FromCanonicalItems"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Core.Dimensions.DimensionBag",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "bc38f3900be1e59cb73a641f4e23568e602d3d2ec5a62823b70a510d7eeda59a",
+      "methods": [
+        ".ctor",
+        "GetEnumerator",
+        "get_Count",
+        "get_Empty",
+        "get_IsEmpty",
+        "get_Item",
+        "get_Items"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Core.Dimensions.DimensionScope",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "92088a6cce12078b1be1a10d122f535e9bf49061ead3d48af55d41784fee07cc",
+      "methods": [
+        ".ctor",
+        "get_DimensionId",
+        "get_IncludeDescendants",
+        "get_ValueIds"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Core.Dimensions.DimensionScopeBag",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "bd0d19373d73f81e96a01b2684538b13eaecd792c41c699fd44156ac910cf6f0",
+      "methods": [
+        ".ctor",
+        "GetEnumerator",
+        "get_Count",
+        "get_Empty",
+        "get_IsEmpty",
+        "get_Item",
+        "get_Items"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Core.Dimensions.DimensionValue",
+      "attributes": "Public, SequentialLayout, Sealed, BeforeFieldInit",
+      "contractSha256": "652ea299f14dcb74c227a70a0037cdaed5d44a1e8cb33c8aa76347eb681d16c3",
+      "methods": [
+        ".ctor",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_DimensionId",
+        "get_ValueId",
+        "op_Equality",
+        "op_Inequality"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Core.Dimensions.Enrichment.DimensionBagEnrichmentExtensions",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "a768068904f997589a77c55d77f20ff413321c74a871a60f87881c516d0c62a2",
+      "methods": [
+        "CollectValueKeys",
+        "ToValueDisplayMap"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Core.Dimensions.Enrichment.DimensionValueKey",
+      "attributes": "Public, SequentialLayout, Sealed, BeforeFieldInit",
+      "contractSha256": "5a0d03ae071da7a6947f1c947d7fac486b3339a50dc5ee1656a75681911b3744",
+      "methods": [
+        ".ctor",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_DimensionId",
+        "get_ValueId",
+        "op_Equality",
+        "op_Inequality",
+        "set_DimensionId",
+        "set_ValueId"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Core.Documents.Actions.DocumentActionCode",
+      "attributes": "Public, SequentialLayout, Sealed, BeforeFieldInit",
+      "contractSha256": "bf5bd587e05909c96b0a8b2b1009d7829f0204a31c7f64e129e0080aafea0064",
+      "methods": [
+        ".ctor",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_Value",
+        "op_Equality",
+        "op_Inequality"
+      ],
+      "fields": [
+        "MaxLength"
+      ]
+    },
+    {
+      "name": "NGB.Core.Documents.Actions.DocumentActionConfirmationMode",
+      "attributes": "Public, Sealed",
+      "contractSha256": "8af299cec01786747ed9136cc817f60afe355b68d530158f4d6b7aec4926b867",
+      "methods": [],
+      "fields": [
+        "Confirm",
+        "None",
+        "RequireReason",
+        "value__"
+      ]
+    },
+    {
+      "name": "NGB.Core.Documents.Actions.DocumentActionContextKeys",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "4ab525a401b4e5201f23b026758371ff7e814816602046b1d0ba16ca0bd4d57e",
+      "methods": [],
+      "fields": [
+        "ActionCode",
+        "DocumentId",
+        "DocumentType",
+        "DocumentTypeCode"
+      ]
+    },
+    {
+      "name": "NGB.Core.Documents.Actions.DocumentActionExecutionKind",
+      "attributes": "Public, Sealed",
+      "contractSha256": "31cf7d08e2794ef65af01f14b15d55ea6bd464fbc27cd4de6afd52e014e852fb",
+      "methods": [],
+      "fields": [
+        "Command",
+        "Derivation",
+        "Navigation",
+        "View",
+        "value__"
+      ]
+    },
+    {
+      "name": "NGB.Core.Documents.Actions.DocumentActionForbiddenException",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "149951489971c5d30846e5f2237159f640061f39684431b25543a14271c659d3",
+      "methods": [
+        ".ctor"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Core.Documents.Actions.DocumentActionIdempotencyConflictException",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "086b9b611f114bd818a8d980c99a2efa16e5061a5cc8ae24409b65f3318a6d7b",
+      "methods": [
+        ".ctor"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Core.Documents.Actions.DocumentActionInProgressException",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "2b7dba44a22209693e3486b657e26ebccb8379c691475bf4fbcfcced11f38125",
+      "methods": [
+        ".ctor"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Core.Documents.Actions.DocumentActionKind",
+      "attributes": "Public, Sealed",
+      "contractSha256": "5c86c47f37747b7ccc12a576871876414a18c40cc538392c25af9761bf03147f",
+      "methods": [],
+      "fields": [
+        "Dangerous",
+        "Primary",
+        "Secondary",
+        "value__"
+      ]
+    },
+    {
+      "name": "NGB.Core.Documents.Actions.DocumentActionNotFoundException",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "6aecf89505a0c1cdb7866c80aead694bb8b53d9a3cc8a264b4ba7f73cc8c3b45",
+      "methods": [
+        ".ctor"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Core.Documents.Actions.DocumentActionSecurityContext",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "c3623507165cbc59ee48685a60b30ab8f65b1eab63a7e545feae59787df21177",
+      "methods": [
+        ".ctor",
+        "Has",
+        "get_IsActive",
+        "get_IsAuthenticated",
+        "get_IsBootstrapAdmin",
+        "get_Permissions",
+        "get_UserId"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Core.Documents.Actions.DocumentActionUnavailableException",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "10785ad8dbbe06bee2b8d02c487cda706d211d5389a2c1205efaad05caba6346",
+      "methods": [
+        ".ctor"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Core.Documents.Actions.DocumentVersionConflictException",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "ff6f4c2bcc0690ff5fea94e00e448fbf4b9221108614dbd53f13bf44b711c800",
+      "methods": [
+        ".ctor"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Core.Documents.Actions.StandardDocumentActionCodes",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "8c5350244fab527cbc6c87c84e6b79ccde20cbb9dbe711a6323f9cb64632a266",
+      "methods": [],
+      "fields": [
+        "MarkForDeletion",
+        "MarkForDeletionValue",
+        "Post",
+        "PostValue",
+        "Print",
+        "PrintValue",
+        "Repost",
+        "RepostValue",
+        "UnmarkForDeletion",
+        "UnmarkForDeletionValue",
+        "Unpost",
+        "UnpostValue",
+        "ViewAudit",
+        "ViewAuditValue",
+        "ViewEffects",
+        "ViewEffectsValue",
+        "ViewFlow",
+        "ViewFlowValue"
+      ]
+    },
+    {
+      "name": "NGB.Core.Documents.DeterministicDocumentRelationshipId",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "b6b67fae63bbc5d0ce195fac69b3e1fc4ea25cb6f48cdb464cb2cd5344486fb9",
+      "methods": [
+        "From",
+        "FromNormalizedCode",
+        "NormalizeRelationshipCodeNorm"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Core.Documents.DocumentRecord",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "d387031220d25625b57e3af8681d236d066cd862e61c08a3cf75f79c30ddd7a9",
+      "methods": [
+        ".ctor",
+        "get_CreatedAtUtc",
+        "get_DateUtc",
+        "get_MarkedForDeletionAtUtc",
+        "get_Number",
+        "get_PostedAtUtc",
+        "get_Status",
+        "get_TypeCode",
+        "get_UpdatedAtUtc",
+        "get_Version",
+        "set_CreatedAtUtc",
+        "set_DateUtc",
+        "set_MarkedForDeletionAtUtc",
+        "set_Number",
+        "set_PostedAtUtc",
+        "set_Status",
+        "set_TypeCode",
+        "set_UpdatedAtUtc",
+        "set_Version"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Core.Documents.DocumentRelationshipRecord",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "c2e1a9b88322e9b33e0735af9b5a98a04344e31d444648c17612547c53eb6938",
+      "methods": [
+        ".ctor",
+        "get_CreatedAtUtc",
+        "get_FromDocumentId",
+        "get_RelationshipCode",
+        "get_RelationshipCodeNorm",
+        "get_ToDocumentId",
+        "set_CreatedAtUtc",
+        "set_FromDocumentId",
+        "set_RelationshipCode",
+        "set_RelationshipCodeNorm",
+        "set_ToDocumentId"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Core.Documents.DocumentStatus",
+      "attributes": "Public, Sealed",
+      "contractSha256": "f7e57d437951fac3578c0ae125aaa5530e0c45238ea76d46085257e5208db6d8",
+      "methods": [],
+      "fields": [
+        "Draft",
+        "MarkedForDeletion",
+        "Posted",
+        "value__"
+      ]
+    },
+    {
+      "name": "NGB.Core.Documents.Exceptions.DocumentDerivationInvariantViolationException",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "a5b051d1b9620f000e6ee32dd2010abab7055acc8e9ef289fb2d611c2b066c74",
+      "methods": [
+        ".ctor",
+        "get_DerivedDraftId",
+        "get_Reason"
+      ],
+      "fields": [
+        "Code"
+      ]
+    },
+    {
+      "name": "NGB.Core.Documents.Exceptions.DocumentDerivationNotFoundException",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "724931d709e5dbe1224e96c56aeb9ebf30901d55c238a7d661428c0496338238",
+      "methods": [
+        ".ctor",
+        "get_DerivationCode"
+      ],
+      "fields": [
+        "Code"
+      ]
+    },
+    {
+      "name": "NGB.Core.Documents.Exceptions.DocumentDerivationSourceTypeMismatchException",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "b8153900dd20394690fc5a5b6007c59a74cdccc32c285d79cacebd634c5d37e8",
+      "methods": [
+        ".ctor",
+        "get_ActualFromTypeCode",
+        "get_DerivationCode",
+        "get_DocumentId",
+        "get_ExpectedFromTypeCode"
+      ],
+      "fields": [
+        "Code"
+      ]
+    },
+    {
+      "name": "NGB.Core.Documents.Exceptions.DocumentMarkedForDeletionException",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "5d93f281fcb505fba00373b04d72657c47d6d8e8c2755bc01b23049cfd76ece3",
+      "methods": [
+        ".ctor",
+        "get_DocumentId",
+        "get_MarkedForDeletionAtUtc",
+        "get_Operation"
+      ],
+      "fields": [
+        "ErrorCodeConst"
+      ]
+    },
+    {
+      "name": "NGB.Core.Documents.Exceptions.DocumentNotFoundException",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "37b4451a281ea9623676021a0a9e0933862f6a757ad823454d70c86ee90a7c9a",
+      "methods": [
+        ".ctor",
+        "get_DocumentId"
+      ],
+      "fields": [
+        "Code"
+      ]
+    },
+    {
+      "name": "NGB.Core.Documents.Exceptions.DocumentPostingHandlerMisconfiguredException",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "1bb64fa1b37e6d8d78476c8195475248513e4bd3cdeeeab5a0eccd519ccfa3da",
+      "methods": [
+        ".ctor"
+      ],
+      "fields": [
+        "Code"
+      ]
+    },
+    {
+      "name": "NGB.Core.Documents.Exceptions.DocumentPostingHandlerNotConfiguredException",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "3f944fe61fec90b6377ab882dd9f161de4f747c2af0029e9429abebe7ccd123e",
+      "methods": [
+        ".ctor",
+        "get_DocumentId",
+        "get_TypeCode"
+      ],
+      "fields": [
+        "Code"
+      ]
+    },
+    {
+      "name": "NGB.Core.Documents.Exceptions.DocumentRelationshipTypeNotFoundException",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "d4e00bde8d5fde2e920d1ab546cd145ca93cbca40e0f480cadfdcd153ed0437b",
+      "methods": [
+        ".ctor",
+        "get_RelationshipCode"
+      ],
+      "fields": [
+        "Code"
+      ]
+    },
+    {
+      "name": "NGB.Core.Documents.Exceptions.DocumentRelationshipValidationException",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "25d3008090052536f9ba172ad16909762eb6d822e1bfa11fdc1cdca8855cca86",
+      "methods": [
+        ".ctor",
+        "get_FromDocumentId",
+        "get_Reason",
+        "get_RelationshipCode",
+        "get_ToDocumentId"
+      ],
+      "fields": [
+        "Code"
+      ]
+    },
+    {
+      "name": "NGB.Core.Documents.Exceptions.DocumentSchemaValidationException",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "8702932b7425cfd1e1e9dba85be13593ef5088f5b13c81ab1aa679f9ac5f986d",
+      "methods": [
+        ".ctor",
+        "get_Diagnostics"
+      ],
+      "fields": [
+        "Code"
+      ]
+    },
+    {
+      "name": "NGB.Core.Documents.Exceptions.DocumentTypeMismatchException",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "e378681c61dcecef34ecb8993f6ae219c74120652697fb5e387e4471fce5e291",
+      "methods": [
+        ".ctor",
+        "get_ActualTypeCode",
+        "get_DocumentId",
+        "get_ExpectedTypeCode"
+      ],
+      "fields": [
+        "ErrorCodeConst"
+      ]
+    },
+    {
+      "name": "NGB.Core.Documents.Exceptions.DocumentTypeNotFoundException",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "8417ff0a6a8d9938c60e88bd9cbb536cf1fb9d7437929aa46eae4cad60e76535",
+      "methods": [
+        ".ctor",
+        "get_TypeCode"
+      ],
+      "fields": [
+        "Code"
+      ]
+    },
+    {
+      "name": "NGB.Core.Documents.GeneralJournalEntry.GeneralJournalEntryAllocationRecord",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "eddf1730796d3dead97319ff3225df8a9497d9d5eeb477844b3ec7d08d6864d9",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_Amount",
+        "get_CreditLineNo",
+        "get_DebitLineNo",
+        "get_DocumentId",
+        "get_EntryNo",
+        "op_Equality",
+        "op_Inequality",
+        "set_Amount",
+        "set_CreditLineNo",
+        "set_DebitLineNo",
+        "set_DocumentId",
+        "set_EntryNo"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Core.Documents.GeneralJournalEntry.GeneralJournalEntryHeaderRecord",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "a060d868d77f849c47fbc901c5ce1f75419d3430a0a6355e1d3b25456990c928",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_ApprovalState",
+        "get_ApprovedAtUtc",
+        "get_ApprovedBy",
+        "get_AutoReverse",
+        "get_AutoReverseOnUtc",
+        "get_CreatedAtUtc",
+        "get_DocumentId",
+        "get_ExternalReference",
+        "get_InitiatedAtUtc",
+        "get_InitiatedBy",
+        "get_JournalType",
+        "get_Memo",
+        "get_PostedAtUtc",
+        "get_PostedBy",
+        "get_ReasonCode",
+        "get_RejectReason",
+        "get_RejectedAtUtc",
+        "get_RejectedBy",
+        "get_ReversalOfDocumentId",
+        "get_Source",
+        "get_SubmittedAtUtc",
+        "get_SubmittedBy",
+        "get_UpdatedAtUtc",
+        "op_Equality",
+        "op_Inequality",
+        "set_ApprovalState",
+        "set_ApprovedAtUtc",
+        "set_ApprovedBy",
+        "set_AutoReverse",
+        "set_AutoReverseOnUtc",
+        "set_CreatedAtUtc",
+        "set_DocumentId",
+        "set_ExternalReference",
+        "set_InitiatedAtUtc",
+        "set_InitiatedBy",
+        "set_JournalType",
+        "set_Memo",
+        "set_PostedAtUtc",
+        "set_PostedBy",
+        "set_ReasonCode",
+        "set_RejectReason",
+        "set_RejectedAtUtc",
+        "set_RejectedBy",
+        "set_ReversalOfDocumentId",
+        "set_Source",
+        "set_SubmittedAtUtc",
+        "set_SubmittedBy",
+        "set_UpdatedAtUtc"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Core.Documents.GeneralJournalEntry.GeneralJournalEntryLineRecord",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "81aee7f172e53a19ac6b600d8cb2d759478ec63416d842528afb98afc9e1191b",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_AccountId",
+        "get_Amount",
+        "get_DimensionSetId",
+        "get_DocumentId",
+        "get_LineNo",
+        "get_Memo",
+        "get_Side",
+        "op_Equality",
+        "op_Inequality",
+        "set_AccountId",
+        "set_Amount",
+        "set_DimensionSetId",
+        "set_DocumentId",
+        "set_LineNo",
+        "set_Memo",
+        "set_Side"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Core.Documents.GeneralJournalEntry.GeneralJournalEntryModels",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "6b30c1d2adb0fed6c21481366b38982610eaed3b9638256510b2958cde4b4e03",
+      "methods": [],
+      "fields": []
+    },
+    {
+      "name": "NGB.Core.Documents.GeneralJournalEntry.GeneralJournalEntryModels+ApprovalState",
+      "attributes": "NestedPublic, Sealed",
+      "contractSha256": "13faff85eb09fd5ddfe3de2b88fcf2ac238b6ed6d86cf770f262aa35fc17301e",
+      "methods": [],
+      "fields": [
+        "Approved",
+        "Draft",
+        "Rejected",
+        "Submitted",
+        "value__"
+      ]
+    },
+    {
+      "name": "NGB.Core.Documents.GeneralJournalEntry.GeneralJournalEntryModels+JournalType",
+      "attributes": "NestedPublic, Sealed",
+      "contractSha256": "9e78f7683e34a62beaa7bb113267b306745831e823abd2e16170754fed9cec0c",
+      "methods": [],
+      "fields": [
+        "Adjusting",
+        "Closing",
+        "Opening",
+        "Reversing",
+        "Standard",
+        "value__"
+      ]
+    },
+    {
+      "name": "NGB.Core.Documents.GeneralJournalEntry.GeneralJournalEntryModels+LineSide",
+      "attributes": "NestedPublic, Sealed",
+      "contractSha256": "4ffe9bc4e437410b8627a599d19cfa3b09b5993d983eba629a3745e99b7f3fac",
+      "methods": [],
+      "fields": [
+        "Credit",
+        "Debit",
+        "value__"
+      ]
+    },
+    {
+      "name": "NGB.Core.Documents.GeneralJournalEntry.GeneralJournalEntryModels+Source",
+      "attributes": "NestedPublic, Sealed",
+      "contractSha256": "f843ac8007edd83030a7692b48aaa9029b57d1d5e2c8b49c0c9de59f2f0950e7",
+      "methods": [],
+      "fields": [
+        "Manual",
+        "System",
+        "value__"
+      ]
+    },
+    {
+      "name": "NGB.Core.Documents.Relationships.Graph.DocumentRelationshipDocumentHeader",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "4f2a9bf8f0a18ae8bc7150d8c2c41e7650c8decc356e6dd3aacdf27e62a68a2e",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_DateUtc",
+        "get_DocumentId",
+        "get_Number",
+        "get_Status",
+        "get_TypeCode",
+        "op_Equality",
+        "op_Inequality",
+        "set_DateUtc",
+        "set_DocumentId",
+        "set_Number",
+        "set_Status",
+        "set_TypeCode"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Core.Documents.Relationships.Graph.DocumentRelationshipEdgeCursor",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "5ee04c50a5e5d372f813805b43bae7917603450bd40f91156a3e32cdaf2b04f0",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_AfterCreatedAtUtc",
+        "get_AfterRelationshipId",
+        "op_Equality",
+        "op_Inequality",
+        "set_AfterCreatedAtUtc",
+        "set_AfterRelationshipId"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Core.Documents.Relationships.Graph.DocumentRelationshipEdgeItem",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "19b71de54d13b4c4b05c19ff368af6524968cc90040be12c6ef3abf18c4b7488",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_CreatedAtUtc",
+        "get_FromDocumentId",
+        "get_OtherDocument",
+        "get_RelationshipCode",
+        "get_RelationshipCodeNorm",
+        "get_RelationshipId",
+        "get_ToDocumentId",
+        "op_Equality",
+        "op_Inequality",
+        "set_CreatedAtUtc",
+        "set_FromDocumentId",
+        "set_OtherDocument",
+        "set_RelationshipCode",
+        "set_RelationshipCodeNorm",
+        "set_RelationshipId",
+        "set_ToDocumentId"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Core.Documents.Relationships.Graph.DocumentRelationshipEdgePage",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "0e122518ba28a06fa74f675b2a92ff0990a4b7deafb3d6f68b0409ebe8d43721",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_HasMore",
+        "get_Items",
+        "get_NextCursor",
+        "op_Equality",
+        "op_Inequality",
+        "set_HasMore",
+        "set_Items",
+        "set_NextCursor"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Core.Documents.Relationships.Graph.DocumentRelationshipEdgePageRequest",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "7e899805ba795bdb0413ac1669e62b23f3e1bf253a10c1bcbcceb7aac8863253",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_Cursor",
+        "get_DocumentId",
+        "get_PageSize",
+        "get_RelationshipCode",
+        "op_Equality",
+        "op_Inequality",
+        "set_Cursor",
+        "set_DocumentId",
+        "set_PageSize",
+        "set_RelationshipCode"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Core.Documents.Relationships.Graph.DocumentRelationshipGraph",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "61279864709fefe5cb187580c52bbe42721b9f85c436d905370214befc5fcf72",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_Edges",
+        "get_Nodes",
+        "get_RootDocumentId",
+        "op_Equality",
+        "op_Inequality",
+        "set_Edges",
+        "set_Nodes",
+        "set_RootDocumentId"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Core.Documents.Relationships.Graph.DocumentRelationshipGraphEdge",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "b758e08d104f465d14c77d577aa5fdfb21b80f5a79ed890b9afcc901c9ce8bf9",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_CreatedAtUtc",
+        "get_FromDocumentId",
+        "get_RelationshipCode",
+        "get_RelationshipCodeNorm",
+        "get_RelationshipId",
+        "get_ToDocumentId",
+        "op_Equality",
+        "op_Inequality",
+        "set_CreatedAtUtc",
+        "set_FromDocumentId",
+        "set_RelationshipCode",
+        "set_RelationshipCodeNorm",
+        "set_RelationshipId",
+        "set_ToDocumentId"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Core.Documents.Relationships.Graph.DocumentRelationshipGraphNode",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "3d604bc6705b8f5924cff03ee1b6823ec27e0dd876e47db29283d5ce54034b24",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_DateUtc",
+        "get_Depth",
+        "get_DocumentId",
+        "get_Number",
+        "get_Status",
+        "get_TypeCode",
+        "op_Equality",
+        "op_Inequality",
+        "set_DateUtc",
+        "set_Depth",
+        "set_DocumentId",
+        "set_Number",
+        "set_Status",
+        "set_TypeCode"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Core.Documents.Relationships.Graph.DocumentRelationshipGraphRequest",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "db74a2a79bcc41bc47aa368a0aa6f53e8669960656b71d500de0990262fae65c",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_Direction",
+        "get_MaxDepth",
+        "get_MaxEdges",
+        "get_MaxNodes",
+        "get_RelationshipCodes",
+        "get_RootDocumentId",
+        "op_Equality",
+        "op_Inequality",
+        "set_Direction",
+        "set_MaxDepth",
+        "set_MaxEdges",
+        "set_MaxNodes",
+        "set_RelationshipCodes",
+        "set_RootDocumentId"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Core.Documents.Relationships.Graph.DocumentRelationshipTraversalDirection",
+      "attributes": "Public, Sealed",
+      "contractSha256": "9e65b05c4fa18147a70eea623514a51e3cc6fd94370e1a2a1d4b3b6a155006d2",
+      "methods": [],
+      "fields": [
+        "Both",
+        "Incoming",
+        "None",
+        "Outgoing",
+        "value__"
+      ]
+    },
+    {
+      "name": "NGB.Core.Features.NgbFeatureDisabledException",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "3c5ceaca49d05587b77305891b134f419069ca04cbdead5964ff32dac3faec52",
+      "methods": [
+        ".ctor"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Core.Features.NgbFeatures",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "3ac13f322c517b2748cdc47bbff0959ea49550b27b382598ac4e7c89a0a7885f",
+      "methods": [],
+      "fields": [
+        "AiAssistant",
+        "Attachments",
+        "Mcp",
+        "Notes"
+      ]
+    },
+    {
+      "name": "NGB.Core.Locks.AdvisoryLockPeriodScope",
+      "attributes": "Public, Sealed",
+      "contractSha256": "d6e9da578e4fb8a0d2a4f42d927b91ce5ab6744c09b93049c2bdf1ff3f1c5d23",
+      "methods": [],
+      "fields": [
+        "Accounting",
+        "OperationalRegister",
+        "value__"
+      ]
+    },
+    {
+      "name": "NGB.Core.Reporting.AccountingReportCodes",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "f813343a0ff774042383b4299bad5fee39e253a1aaa79bb50a5544aad8232089",
+      "methods": [],
+      "fields": [
+        "AccountCard",
+        "BalanceSheet",
+        "CashFlowStatementIndirect",
+        "Consistency",
+        "GeneralJournal",
+        "GeneralLedgerAggregated",
+        "IncomeStatement",
+        "LedgerAnalysis",
+        "PostingLog",
+        "StatementOfChangesInEquity",
+        "TrialBalance"
+      ]
+    },
+    {
+      "name": "NGB.Core.Reporting.AccountingReportGroupCodes",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "de4e71808780f55877f22271ae193028e97fe94aac0d56ec12ef1b867b334db2",
+      "methods": [],
+      "fields": [
+        "Accounting"
+      ]
+    },
+    {
+      "name": "NGB.Core.Reporting.Exceptions.ReportDatasetTypeNotFoundException",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "1752f7285ce4a7520382d582f468a8d22233d8044f809a59ee93272f566abb62",
+      "methods": [
+        ".ctor",
+        "get_DatasetCode"
+      ],
+      "fields": [
+        "Code"
+      ]
+    },
+    {
+      "name": "NGB.Core.Reporting.Exceptions.ReportLayoutValidationException",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "d3caa89de72cb00141e275dd39c8ac969e2ceac0bb4d1dc9cae9d05bf52b1df1",
+      "methods": [
+        ".ctor"
+      ],
+      "fields": [
+        "Code"
+      ]
+    },
+    {
+      "name": "NGB.Core.Reporting.Exceptions.ReportTypeNotFoundException",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "3420b1714aa55e2c06d7e9e05362c3f25490a0077cf0aad16020a055c9457d96",
+      "methods": [
+        ".ctor",
+        "get_ReportCode"
+      ],
+      "fields": [
+        "Code"
+      ]
+    },
+    {
+      "name": "NGB.Core.Reporting.Exceptions.ReportVariantCodeConflictException",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "8dbd575042bbc7bbb969de8e7a3b8aff1d91753fc891d93ac9dce9d7776d5f96",
+      "methods": [
+        ".ctor"
+      ],
+      "fields": [
+        "Code"
+      ]
+    },
+    {
+      "name": "NGB.Core.Reporting.Exceptions.ReportVariantNotFoundException",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "fd0c083eb2c89e8118092f11823a47df739c26bde7218b7369b8cb218dc6834f",
+      "methods": [
+        ".ctor"
+      ],
+      "fields": [
+        "Code"
+      ]
+    },
+    {
+      "name": "NGB.Core.Reporting.Exceptions.ReportVariantValidationException",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "01135aec6e8b01f7c82533368a0edccd538043f978a46cce80c030d08f6d27f1",
+      "methods": [
+        ".ctor"
+      ],
+      "fields": [
+        "Code"
+      ]
+    },
+    {
+      "name": "NGB.Core.Security.NgbPermissionActions",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "3793c315c501c679a7f1d8804fe0446935408de9d50c7045996cbcda9b19e723",
+      "methods": [],
+      "fields": [
+        "CloseFiscalYear",
+        "CloseMonth",
+        "Create",
+        "Deactivate",
+        "Delete",
+        "DeleteDraft",
+        "DeleteVariant",
+        "Edit",
+        "EditDraft",
+        "Execute",
+        "Export",
+        "Lookup",
+        "Manage",
+        "ManageSharedVariants",
+        "MarkForDeletion",
+        "Post",
+        "Print",
+        "Reactivate",
+        "Read",
+        "ReopenFiscalYear",
+        "ReopenMonth",
+        "Repost",
+        "SavePrivateVariant",
+        "UnmarkForDeletion",
+        "Unpost",
+        "Update",
+        "View",
+        "ViewAudit",
+        "ViewEffects",
+        "ViewFlow"
+      ]
+    },
+    {
+      "name": "NGB.Core.Security.NgbPermissionKey",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "1505d5c594a23c4922967909948b1424bb3f34bf13f14d197d0f5f49e95ca611",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Equals",
+        "GetHashCode",
+        "Parse",
+        "ToString",
+        "get_ActionCode",
+        "get_ResourceCode",
+        "get_ResourceKind",
+        "op_Equality",
+        "op_Inequality"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Core.Security.NgbPermissionResources",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "cfb9c326238a7f945b2298db0369ee39183bb6c27270b9bdebee3d2a6749a9e7",
+      "methods": [],
+      "fields": [
+        "Attachments",
+        "Audit",
+        "ChartOfAccounts",
+        "Integrity",
+        "Notes",
+        "PeriodClosing",
+        "Permissions",
+        "PostingLog",
+        "Roles",
+        "Users"
+      ]
+    },
+    {
+      "name": "NGB.Core.Security.NgbResourceKinds",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "2cd8fc8351bee76a64f64daa72bb4751a150740d2583e09a58cd82c014f8fff0",
+      "methods": [],
+      "fields": [
+        "Admin",
+        "Catalog",
+        "Document",
+        "External",
+        "Page",
+        "Report",
+        "System"
+      ]
+    },
+    {
+      "name": "NGB.Core.Security.NgbSystemPermissions",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "649285b9b7f5f94bf1f3f072d75d6c83eeafdd7cfe625e634aae9a1a0657b30c",
+      "methods": [
+        "get_All"
+      ],
+      "fields": [
+        "AttachmentsCreate",
+        "AttachmentsDelete",
+        "AttachmentsRead",
+        "AuditView",
+        "ChartOfAccountsManage",
+        "ChartOfAccountsView",
+        "IntegrityView",
+        "NotesCreate",
+        "NotesDelete",
+        "NotesRead",
+        "NotesUpdate",
+        "PeriodClosingCloseFiscalYear",
+        "PeriodClosingCloseMonth",
+        "PeriodClosingReopenFiscalYear",
+        "PeriodClosingReopenMonth",
+        "PeriodClosingView",
+        "PermissionsView",
+        "PostingLogView",
+        "RolesManage",
+        "RolesView",
+        "UsersManage",
+        "UsersView"
+      ]
+    },
+    {
+      "name": "NGB.Core.Security.PlatformRole",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "29bb7b8f80cb3693580136c28d6ae1781b05bf904ead4d6f958b4a7d041dc682",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_Code",
+        "get_CreatedAtUtc",
+        "get_Description",
+        "get_IsActive",
+        "get_IsSystem",
+        "get_Name",
+        "get_RoleId",
+        "get_UpdatedAtUtc",
+        "op_Equality",
+        "op_Inequality",
+        "set_Code",
+        "set_CreatedAtUtc",
+        "set_Description",
+        "set_IsActive",
+        "set_IsSystem",
+        "set_Name",
+        "set_RoleId",
+        "set_UpdatedAtUtc"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Core.Security.PlatformUserAccessState",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "0d2fbbd3f084fb5e23de1c7951a1d1d49c74cc11d819514aea2768b83fe6b6b5",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_AccessVersion",
+        "get_AuthSubject",
+        "get_DisplayName",
+        "get_Email",
+        "get_IsActive",
+        "get_UserId",
+        "op_Equality",
+        "op_Inequality",
+        "set_AccessVersion",
+        "set_AuthSubject",
+        "set_DisplayName",
+        "set_Email",
+        "set_IsActive",
+        "set_UserId"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Core.Security.PlatformUserAccessVersion",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "94c3efddb3d9e27491716d28a54683271d166862c0b4b7131f2d3cc0878c2a04",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_UpdatedAtUtc",
+        "get_UserId",
+        "get_Version",
+        "op_Equality",
+        "op_Inequality",
+        "set_UpdatedAtUtc",
+        "set_UserId",
+        "set_Version"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Core.Security.UserProvisioningOperation",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "f9cd89b95e45642fa6cba9787f3141885050aed73b4481c3a104c52b2056000a",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_CreatedAtUtc",
+        "get_Error",
+        "get_KeycloakUserId",
+        "get_OperationId",
+        "get_OperationType",
+        "get_PlatformUserId",
+        "get_RequestedByUserId",
+        "get_RequestedEmail",
+        "get_Status",
+        "get_UpdatedAtUtc",
+        "op_Equality",
+        "op_Inequality",
+        "set_CreatedAtUtc",
+        "set_Error",
+        "set_KeycloakUserId",
+        "set_OperationId",
+        "set_OperationType",
+        "set_PlatformUserId",
+        "set_RequestedByUserId",
+        "set_RequestedEmail",
+        "set_Status",
+        "set_UpdatedAtUtc"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Core.WorkCenter.NotificationChannel",
+      "attributes": "Public, Sealed",
+      "contractSha256": "ffeebe7181a5ef71f3460e9024fc3dc863f5fb2b16f3c1bad78462915ffe72bb",
+      "methods": [],
+      "fields": [
+        "InApp",
+        "value__"
+      ]
+    },
+    {
+      "name": "NGB.Core.WorkCenter.NotificationSeverity",
+      "attributes": "Public, Sealed",
+      "contractSha256": "01a22a344d7cb71acd8549f025aee3ee44bb55748314bc57b4c777e232b3238c",
+      "methods": [],
+      "fields": [
+        "Critical",
+        "Information",
+        "Success",
+        "Warning",
+        "value__"
+      ]
+    },
+    {
+      "name": "NGB.Core.WorkCenter.WorkCenterItemKind",
+      "attributes": "Public, Sealed",
+      "contractSha256": "e9f7cab2f3984cc95af7aeaf66066930e8e31270e2530eb8037874b164627f8e",
+      "methods": [],
+      "fields": [
+        "Notification",
+        "Task",
+        "value__"
+      ]
+    },
+    {
+      "name": "NGB.Core.WorkCenter.WorkCenterItemNotFoundException",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "9bd7e4bdbd3a5d23a37c6e2263c631d0bb26487b7e297d79484ab2e8ad053d83",
+      "methods": [
+        ".ctor"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Core.WorkCenter.WorkCenterNotification",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "19d340111e846fe80976704f424b4dab084767558f36a2bc601e69ed9fecd8e7",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_Body",
+        "get_CausationId",
+        "get_CorrelationId",
+        "get_CreatedAtUtc",
+        "get_DeduplicationKey",
+        "get_DefinitionCode",
+        "get_ExpiresAtUtc",
+        "get_Id",
+        "get_Severity",
+        "get_Source",
+        "get_Title",
+        "op_Equality",
+        "op_Inequality",
+        "set_Body",
+        "set_CausationId",
+        "set_CorrelationId",
+        "set_CreatedAtUtc",
+        "set_DeduplicationKey",
+        "set_DefinitionCode",
+        "set_ExpiresAtUtc",
+        "set_Id",
+        "set_Severity",
+        "set_Source",
+        "set_Title"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Core.WorkCenter.WorkCenterPreferenceKind",
+      "attributes": "Public, Sealed",
+      "contractSha256": "7c1b622929869bd8f44a6827849ec79a2b7280367693ed63512d253aad70321a",
+      "methods": [],
+      "fields": [
+        "Notification",
+        "Task",
+        "value__"
+      ]
+    },
+    {
+      "name": "NGB.Core.WorkCenter.WorkCenterPriority",
+      "attributes": "Public, Sealed",
+      "contractSha256": "d7efb83e8bc6ede8a021478a9d7aff3ca5b6f56e56929b0f58ecba52bda28fda",
+      "methods": [],
+      "fields": [
+        "Critical",
+        "High",
+        "Low",
+        "Normal",
+        "value__"
+      ]
+    },
+    {
+      "name": "NGB.Core.WorkCenter.WorkCenterSourceReference",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "f0a4906e27ec75941ddf0c4f7a6c9d2e5810cf25ae31464692d8ee9daf0b4ea7",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_EntityId",
+        "get_ResourceCode",
+        "get_ResourceKind",
+        "get_SubtitleSnapshot",
+        "get_TitleSnapshot",
+        "op_Equality",
+        "op_Inequality",
+        "set_EntityId",
+        "set_ResourceCode",
+        "set_ResourceKind",
+        "set_SubtitleSnapshot",
+        "set_TitleSnapshot"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Core.WorkCenter.WorkCenterTask",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "e523fd60dec50b86d61000b2815162de4f03df243e0211e36fb7be4d5b09ff0a",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_AssignedRoleId",
+        "get_AssignedUserId",
+        "get_CancelledAtUtc",
+        "get_CausationId",
+        "get_ClaimedByUserId",
+        "get_CompletedAtUtc",
+        "get_CorrelationId",
+        "get_CreatedAtUtc",
+        "get_DeduplicationKey",
+        "get_Description",
+        "get_DueAtUtc",
+        "get_Id",
+        "get_PreferenceCode",
+        "get_Priority",
+        "get_Source",
+        "get_Status",
+        "get_TaskCode",
+        "get_Title",
+        "get_Version",
+        "op_Equality",
+        "op_Inequality",
+        "set_AssignedRoleId",
+        "set_AssignedUserId",
+        "set_CancelledAtUtc",
+        "set_CausationId",
+        "set_ClaimedByUserId",
+        "set_CompletedAtUtc",
+        "set_CorrelationId",
+        "set_CreatedAtUtc",
+        "set_DeduplicationKey",
+        "set_Description",
+        "set_DueAtUtc",
+        "set_Id",
+        "set_PreferenceCode",
+        "set_Priority",
+        "set_Source",
+        "set_Status",
+        "set_TaskCode",
+        "set_Title",
+        "set_Version"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Core.WorkCenter.WorkCenterTaskClaimConflictException",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "523fce41833564c62b35691fbcea4d5d7cbef7cfab17d9229d2c2546c03d45dc",
+      "methods": [
+        ".ctor"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Core.WorkCenter.WorkCenterTaskStatus",
+      "attributes": "Public, Sealed",
+      "contractSha256": "2d06d18ca996418fb3fdc5098313a74e7ebad4642b63191a3a1bdb1de4f6ce3f",
+      "methods": [],
+      "fields": [
+        "Cancelled",
+        "Completed",
+        "InProgress",
+        "Open",
+        "value__"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,563 @@
+{
+  "schemaVersion": 1,
+  "package": "NGB.Platform.Api",
+  "version": "3.4.0",
+  "packageSha256": "f7693b5e81fd95a0970125a7b149662e7d8a251c11cc85f75e25871c50859459",
+  "assembly": {
+    "name": "NGB.Api",
+    "version": "3.0.0.0",
+    "sha256": "0f2b144143c33bf0c6f76aeaac671f5f36aef6c4ef02c9139c6cb628f042a7fd"
+  },
+  "contractSha256": "18ddb0b616559426acdd99465fcd2ea1d8646051cf0ec58190d7292126b09c73",
+  "types": [
+    {
+      "name": "NGB.Api.Attachments.AttachmentsNotesApiExtensions",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "404a96d45ca1b46940b96c8c44872a03c48a7052321b58fa1c6ec54409c2d694",
+      "methods": [
+        "AddNgbAttachmentsNotesApi"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Api.Controllers.AccountingPeriodClosingController",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "451a6226d4eec61917a8ea04816af2d58e40c105e2c424b0f3bc9e6cee85be23",
+      "methods": [
+        ".ctor",
+        "CloseFiscalYear",
+        "CloseMonth",
+        "GetCalendar",
+        "GetFiscalYearStatus",
+        "GetMonthStatus",
+        "ReopenFiscalYear",
+        "ReopenMonth",
+        "SearchRetainedEarningsAccounts"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Api.Controllers.AdminControllerBase",
+      "attributes": "Public, Abstract, BeforeFieldInit",
+      "contractSha256": "6b10ce06316e772657b7d04ab264dd1a586b646d3fb6e76dfc206e19cd43bf10",
+      "methods": [
+        ".ctor",
+        "CreateChartOfAccount",
+        "GetChartOfAccount",
+        "GetChartOfAccounts",
+        "GetChartOfAccountsByIds",
+        "GetChartOfAccountsMetadata",
+        "GetMainMenu",
+        "MarkChartOfAccountForDeletion",
+        "SetChartOfAccountActive",
+        "UnmarkChartOfAccountForDeletion",
+        "UpdateChartOfAccount"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Api.Controllers.AttachmentsController",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "5175b67c52732fd83953066c2fb49f86b54b11e02abedb596a9a986b0439f44d",
+      "methods": [
+        ".ctor",
+        "Complete",
+        "CreateUpload",
+        "Delete",
+        "Download",
+        "DownloadFromAudit",
+        "List"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Api.Controllers.AuditControllerBase",
+      "attributes": "Public, Abstract, BeforeFieldInit",
+      "contractSha256": "e873a6dc8786b1ce52acd5845692d6055e5249d96057ad9625a45995fd57e70e",
+      "methods": [
+        ".ctor",
+        "GetEntityAuditLog"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Api.Controllers.BusinessObjectContentController",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "03950eacbab85168585669cc19d6ae5bbab986723b3914a98b41abfbcd495196",
+      "methods": [
+        ".ctor",
+        "Get"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Api.Controllers.CatalogControllerBase",
+      "attributes": "Public, Abstract, BeforeFieldInit",
+      "contractSha256": "531a9380549b23a9dc14722d34e3f0b4eb87a6f6676623b375ebb9ac18250504",
+      "methods": [
+        ".ctor",
+        "Create",
+        "GetAllMetadata",
+        "GetById",
+        "GetByIds",
+        "GetPage",
+        "GetTypeMetadata",
+        "Lookup",
+        "MarkForDeletion",
+        "UnmarkForDeletion",
+        "Update"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Api.Controllers.DocumentControllerBase",
+      "attributes": "Public, Abstract, BeforeFieldInit",
+      "contractSha256": "9bcb108191c003b8a102e3fca4494a70bf0593838ca73e2520291ff6f4b457d2",
+      "methods": [
+        ".ctor",
+        "CreateDraft",
+        "DeleteDraft",
+        "ExecuteAction",
+        "GetAllMetadata",
+        "GetById",
+        "GetByIdsAcrossTypes",
+        "GetEditorState",
+        "GetEffects",
+        "GetGraph",
+        "GetPage",
+        "GetTypeMetadata",
+        "LookupAcrossTypes",
+        "MarkForDeletion",
+        "Post",
+        "Repost",
+        "UnmarkForDeletion",
+        "Unpost",
+        "UpdateDraft"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Api.Controllers.FeaturesController",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "1b8f0b06034889f5cf3608f147025f9b50af87a734b72f35440031ab5741fbdc",
+      "methods": [
+        ".ctor",
+        "Get"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Api.Controllers.GeneralJournalEntriesController",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "1fd36486b16fc8cc27989a0804cc9a8a22910bb13afdda6a33db1a18ba46942a",
+      "methods": [
+        ".ctor",
+        "Approve",
+        "CreateDraft",
+        "GetAccountContext",
+        "GetById",
+        "GetPage",
+        "MarkForDeletion",
+        "PostApproved",
+        "Reject",
+        "ReplaceLines",
+        "ReversePosted",
+        "Submit",
+        "UnmarkForDeletion",
+        "UpdateHeader"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Api.Controllers.NotesController",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "b33a684b7c59037e60e9e4d8b304f1bd794abf7056ef0843fba7f72d117f4c75",
+      "methods": [
+        ".ctor",
+        "Create",
+        "Delete",
+        "List",
+        "Update"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Api.Controllers.ReportControllerBase",
+      "attributes": "Public, Abstract, BeforeFieldInit",
+      "contractSha256": "8f58d7268f9d49e0fab649a22ebdb60a8f512f61f63149ea37d195bf4d304d65",
+      "methods": [
+        ".ctor",
+        "DeleteVariant",
+        "Execute",
+        "ExportXlsx",
+        "ExportXlsxForm",
+        "GetAllDefinitions",
+        "GetDefinition",
+        "GetVariant",
+        "GetVariants",
+        "SaveVariant"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Api.Controllers.SecurityControllerBase",
+      "attributes": "Public, Abstract, BeforeFieldInit",
+      "contractSha256": "2170f46514df59dbf8914b18aa0335488b24ef15b1a257589bd98fd2a7360445",
+      "methods": [
+        ".ctor",
+        "CreateRole",
+        "CreateUser",
+        "DeactivateRole",
+        "DeactivateUser",
+        "GetCurrentAccess",
+        "GetPermissionDefinitions",
+        "GetRole",
+        "GetRoles",
+        "GetUser",
+        "GetUserEffectiveAccess",
+        "GetUsers",
+        "ReactivateRole",
+        "ReactivateUser",
+        "ReplaceRolePermissions",
+        "ReplaceUserRoles",
+        "UpdateRole",
+        "UpdateUser"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Api.Controllers.WorkCenterControllerBase",
+      "attributes": "Public, Abstract, BeforeFieldInit",
+      "contractSha256": "53936015924605ae130432bae0b04d6e5f9b28948536176909586c1b60901997",
+      "methods": [
+        ".ctor",
+        "ClaimTask",
+        "DismissNotification",
+        "GetItems",
+        "GetPreferences",
+        "GetSummary",
+        "MarkNotificationRead",
+        "MarkTaskRead",
+        "SnoozeTask",
+        "UpdatePreferences"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Api.CurrentUser.HttpCurrentActorContext",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "719999dad3b39391bf91e2b3fcf9d27b92f19432eea19a7a1cfe8876305edadb",
+      "methods": [
+        ".ctor",
+        "get_Current"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Api.DependencyInjection",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "eeb5f5b9ac8437cd1e5a4d6715716a45e56468f9b63beb64acb882bdc528fad5",
+      "methods": [
+        "AddControllersApi",
+        "AddCurrentUserInfrastructure",
+        "AddExternalLinks",
+        "AddInfrastructure",
+        "AddKeycloakAdminClient",
+        "AddWebApplication",
+        "MapRootEndpoint",
+        "UseHealthChecks",
+        "UseSwagger"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Api.Features.NgbFeatureAttribute",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "200ed9e21db342c422c71cf3e2b8e1a039e42b2b268af36b115c04d55168a5c7",
+      "methods": [
+        ".ctor",
+        "OnResourceExecutionAsync"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Api.Models.ExternalLinksSettings",
+      "attributes": "Public, BeforeFieldInit",
+      "contractSha256": "8a667eb420e82d9296837d95663b58dc4b6a5accc2abd3792adc5ff57b4b0b83",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "PrintMembers",
+        "ToString",
+        "get_BackgroundJobsUiUrl",
+        "get_EqualityContract",
+        "get_HealthUiUrl",
+        "op_Equality",
+        "op_Inequality",
+        "set_BackgroundJobsUiUrl",
+        "set_HealthUiUrl"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Api.Models.KeycloakApiClientSettings",
+      "attributes": "Public, BeforeFieldInit",
+      "contractSha256": "fa7f1bb14298cee85e98788896ccb7e5dc3a8f046d53c02ab28c3322f2d8f7e4",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "PrintMembers",
+        "ToString",
+        "get_ClientId",
+        "get_ClientSecret",
+        "get_EqualityContract",
+        "get_Realm",
+        "get_Url",
+        "op_Equality",
+        "op_Inequality",
+        "set_ClientId",
+        "set_ClientSecret",
+        "set_Realm",
+        "set_Url"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Api.Reporting.HttpReportVariantAccessContext",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "3ba7ba32813cd8e34b723414cb40109b650d80338058434c3243fc659da9703c",
+      "methods": [
+        ".ctor",
+        "get_AuthSubject",
+        "get_DisplayName",
+        "get_Email",
+        "get_IsActive"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Api.Reporting.ReportRequestBudget",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "6bddbdde5896512ba034b6f6663d119733078fbd57892f730fa6bda1b7becb82",
+      "methods": [
+        ".ctor",
+        "AcquireAsync",
+        "Dispose",
+        "Statistics",
+        "Timeout"
+      ],
+      "fields": [
+        "MeterName"
+      ]
+    },
+    {
+      "name": "NGB.Api.Reporting.ReportRequestBudgetAttribute",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "76bb0aefb03e0a61464b55dae12324d63785ed4637d8d8039c55bff30024120c",
+      "methods": [
+        ".ctor"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Api.Reporting.ReportRequestBudgetFilter",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "e9f9576a072a51803002293d0bde511a96d4672adb7600e4385563085014e002",
+      "methods": [
+        ".ctor",
+        "OnResourceExecutionAsync"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Api.Reporting.ReportRequestLimits",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "7e6d6eb42732f65f70d7816ee50ff60cc3604d2a54b37dec9f41b2cca322234e",
+      "methods": [
+        ".ctor",
+        "get_ConcurrentDownloads",
+        "get_ConcurrentPages",
+        "get_DownloadQueueTimeoutSeconds",
+        "get_DownloadTimeoutSeconds",
+        "get_PageQueueTimeoutSeconds",
+        "get_PageTimeoutSeconds",
+        "get_QueuedDownloads",
+        "get_QueuedPages",
+        "set_ConcurrentDownloads",
+        "set_ConcurrentPages",
+        "set_DownloadQueueTimeoutSeconds",
+        "set_DownloadTimeoutSeconds",
+        "set_PageQueueTimeoutSeconds",
+        "set_PageTimeoutSeconds",
+        "set_QueuedDownloads",
+        "set_QueuedPages"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Api.Search.CommandPaletteSearchScope",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "2692ca28e803273bd9b9715ca0fd8ac3a0d7511856296ac5a37adabd7c87b0d4",
+      "methods": [
+        "Parse"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Api.Sso.KeycloakAdminClient",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "ef78f9707f69d0553181a69254ea055f61baf099ba9b063b60b6af2af0da490a",
+      "methods": [
+        ".ctor",
+        "CreateUserAsync",
+        "FindUserByEmailAsync",
+        "FindUsersByEmailsAsync",
+        "GetCachedUsers",
+        "GetUserByIdAsync",
+        "GetUsersAsync",
+        "GetUsersByIdsAsync",
+        "SetTemporaryPasswordAsync",
+        "SetUserEnabledAsync",
+        "UpdateUserAsync"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Api.Sso.KeycloakAdminClientException",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "9dbd76d26cee7720b7c5fe3439ebfc9c403a41756ec9363672e757f39f3bface",
+      "methods": [
+        ".ctor"
+      ],
+      "fields": [
+        "Code"
+      ]
+    },
+    {
+      "name": "NGB.Api.Sso.KeycloakAdminClientSettings",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "0de1a231dc9a8adb988a70a96b22a2761acc93ad9d69d305c19a4ce8abf17204",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_AdminBatchConcurrency",
+        "get_AttemptTimeout",
+        "get_BaseUrl",
+        "get_ClientId",
+        "get_ClientSecret",
+        "get_MaxCachedUserLookups",
+        "get_MaxConcurrentAdminRequests",
+        "get_MaxPendingUserLookups",
+        "get_MaxQueuedAdminRequests",
+        "get_MaxResponseContentBytes",
+        "get_MissingUserCacheTtl",
+        "get_Realm",
+        "get_TotalRequestTimeout",
+        "get_UserLookupCacheTtl",
+        "op_Equality",
+        "op_Inequality",
+        "set_AdminBatchConcurrency",
+        "set_AttemptTimeout",
+        "set_BaseUrl",
+        "set_ClientId",
+        "set_ClientSecret",
+        "set_MaxCachedUserLookups",
+        "set_MaxConcurrentAdminRequests",
+        "set_MaxPendingUserLookups",
+        "set_MaxQueuedAdminRequests",
+        "set_MaxResponseContentBytes",
+        "set_MissingUserCacheTtl",
+        "set_Realm",
+        "set_TotalRequestTimeout",
+        "set_UserLookupCacheTtl"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Api.Sso.KeycloakAdminRequestGate",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "8abe9e12a795073f5644c8b60f866ac0baf9881f566f58339f238b9a8f0f92cd",
+      "methods": [
+        ".ctor",
+        "AcquireAsync",
+        "Dispose",
+        "DisposeAsync"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Api.Sso.KeycloakUserLookupCache",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "c49273ed6e005c94da5d636ea6d4857aaf95c28a6a86c3240ffb89ccf75e39a2",
+      "methods": [
+        ".ctor",
+        "GetByEmailAsync",
+        "GetByIdAsync",
+        "InvalidateEmail",
+        "InvalidateUser",
+        "Remember",
+        "TryGetByEmail",
+        "TryGetById"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Api.Sso.TokenCacheService",
+      "attributes": "Public, BeforeFieldInit",
+      "contractSha256": "1a7c801a468affa8de0c45bb7169c7e4c33599e112fdf35aae44920f3ce03d4c",
+      "methods": [
+        ".ctor",
+        "GetTokenAsync"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Api.WorkCenter.NgbWorkCenterHostingOptions",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "8bdfc3abc2d11508787bcefc45c50c0aa5b2d33728a61554e80ac267f3750b7b",
+      "methods": [
+        ".ctor",
+        "get_MaintenanceInterval",
+        "get_MaximumProjectionBatchesPerPoll",
+        "get_PollInterval",
+        "get_ProjectionBatchSize",
+        "set_MaintenanceInterval",
+        "set_MaximumProjectionBatchesPerPoll",
+        "set_PollInterval",
+        "set_ProjectionBatchSize"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Api.WorkCenter.WorkCenterHub",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "52ad627c5c7f470cfac89b1ca223ba19d5c8976b4d26c82dbfee20d82b0930bb",
+      "methods": [
+        ".ctor",
+        "OnConnectedAsync"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Api.WorkCenter.WorkCenterRealtimeExtensions",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "b2c3e042cb92f417f4cbde6d7800596f985248222d2ec78f0e28512ac0cb87a5",
+      "methods": [
+        "AddNgbWorkCenterHealth",
+        "AddNgbWorkCenterOutboxProcessing",
+        "AddNgbWorkCenterRealtime",
+        "MapNgbWorkCenterHub"
+      ],
+      "fields": []
+    }
+  ]
+}

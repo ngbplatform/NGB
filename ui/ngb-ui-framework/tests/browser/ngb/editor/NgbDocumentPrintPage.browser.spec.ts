@@ -362,6 +362,9 @@ describe('NgbDocumentPrintPage', () => {
   })
 
   it('prefetches and formats catalog, chart-of-accounts, and document lookups including duplicate and invalid values', async () => {
+    mocks.route.query = {}
+    mocks.route.fullPath = '/documents/pm.invoice/doc-1/print'
+
     const catalogId = '44444444-4444-4444-4444-444444444444'
     const coaId = '55555555-5555-5555-5555-555555555555'
     const documentId = '66666666-6666-6666-6666-666666666666'

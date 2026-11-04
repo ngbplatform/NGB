@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "claude-terminal-discovery-macos-arm64-v1",
+  "clientVersion": "2.1.308",
+  "modelSelection": "client-default",
+  "maximumSecondsPerAttempt": 300,
+  "maximumEstimatedCostUsdPerAttempt": 2,
+  "maximumTurnsPerAttempt": 20,
+  "tools": ["Read", "Glob", "Grep", "Skill"],
+  "permissionMode": "dontAsk",
+  "settings": { "disableAllHooks": true },
+  "environment": {
+    "DISABLE_AUTOUPDATER": "1",
+    "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "CLAUDE_CODE_AUTO_CONNECT_IDE": "false"
+  },
+  "authentication": "Existing claude.ai subscription only; no API keys or provider credentials are inherited.",
+  "isolation": "Restricted file tools, no shell, writes, web tools, personal hooks or MCP configuration. Managed organization policy remains in force.",
+  "attemptPolicy": "One attempt per working directory; no automatic retry, conversation resume or human assistance. This discovery profile alone does not certify the full agent matrix."
+}

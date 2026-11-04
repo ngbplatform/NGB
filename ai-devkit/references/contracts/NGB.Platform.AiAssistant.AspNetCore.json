@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "package": "NGB.Platform.AiAssistant.AspNetCore",
+  "version": "3.4.0",
+  "packageSha256": "b4a4bf13a05ad869b730bf7f34640f3557f6323096142792a59e73695408c7d3",
+  "assembly": {
+    "name": "NGB.AiAssistant.AspNetCore",
+    "version": "3.0.0.0",
+    "sha256": "909cbe77b0e666c4ad46ad3f7149530b0b11afe8e25fa9fc1f4a628e6f570bb5"
+  },
+  "contractSha256": "9dc3b3255574b55754c53edbce581197d34248b06a8f4ed42610aa30b6bb072d",
+  "types": [
+    {
+      "name": "NGB.AiAssistant.AspNetCore.AiAssistantHttpOptions",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "49984565a264351867a546cf94e035cfa23766b9ef03ef7c9207cfe82e5a0707",
+      "methods": [
+        ".ctor",
+        "get_McpLoopbackPort",
+        "get_ReportPageSize",
+        "get_TrustDevelopmentServerCertificate",
+        "set_McpLoopbackPort",
+        "set_ReportPageSize",
+        "set_TrustDevelopmentServerCertificate"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.AiAssistant.AspNetCore.DependencyInjection",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "e985ed0be9dcba086a3b1451e7b283bd5272b6b9c63a4bce98be2e3ac7451090",
+      "methods": [
+        "AddNgbAiAssistant",
+        "MapNgbAiAssistant"
+      ],
+      "fields": []
+    }
+  ]
+}

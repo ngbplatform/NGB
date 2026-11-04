@@ -1,0 +1,90 @@
+{
+  "schemaVersion": 1,
+  "id": "claude-terminal-upgrade-macos-arm64-v1",
+  "clientVersion": "2.1.308",
+  "modelSelection": "client-default",
+  "maximumSecondsPerAttempt": 1800,
+  "maximumEstimatedCostUsdPerAttempt": 10,
+  "maximumTurnsPerAttempt": 100,
+  "tools": [
+    "Read",
+    "Glob",
+    "Grep",
+    "Skill",
+    "Edit",
+    "Write",
+    "Bash"
+  ],
+  "permissionMode": "dontAsk",
+  "settingSources": [
+    "project"
+  ],
+  "settings": {
+    "disableAllHooks": true,
+    "disableSkillShellExecution": true,
+    "disableBundledSkills": true,
+    "disableClaudeAiConnectors": true,
+    "syncClaudeAiSkills": false,
+    "syncClaudeAiPlugins": false,
+    "autoMemoryEnabled": false,
+    "enableWorkflows": false,
+    "permissions": {
+      "blockReadsOutsideWorkingDirectories": true,
+      "deny": [
+        "PowerShell",
+        "NotebookEdit",
+        "WebFetch",
+        "WebSearch",
+        "Agent",
+        "mcp__*"
+      ]
+    },
+    "sandbox": {
+      "enabled": true,
+      "failIfUnavailable": true,
+      "autoAllowBashIfSandboxed": true,
+      "allowUnsandboxedCommands": false,
+      "excludedCommands": [],
+      "filesystem": {
+        "disabled": false
+      },
+      "network": {
+        "allowedDomains": [
+          "api.nuget.org",
+          "registry.npmjs.org"
+        ],
+        "deniedDomains": [],
+        "allowLocalBinding": false,
+        "allowUnixSockets": [],
+        "allowAllUnixSockets": false,
+        "allowMachLookup": [
+          "com.apple.trustd.agent"
+        ]
+      }
+    }
+  },
+  "environment": {
+    "DISABLE_AUTOUPDATER": "1",
+    "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "CLAUDE_CODE_AUTO_CONNECT_IDE": "false"
+  },
+  "sandboxPreflight": {
+    "package": "@anthropic-ai/sandbox-runtime",
+    "version": "0.0.81",
+    "integrity": "sha512-bjHDu87gjIR7+Oxy9jPiK3v8CvSELCzfpXa3fjqfSKdvlZET2iF51xcXILWPayTpowB3xtZeQVf2JR916nVW/w==",
+    "scope": "Standalone runtime probe of the declared filesystem/network rules. The installed Claude client still enforces its own native sandbox and file-tool restrictions. This probe does not claim binary equivalence between the two runtimes."
+  },
+  "authentication": "Existing claude.ai subscription only; no API keys, provider credentials or personal MCP configuration are inherited.",
+  "isolation": "The frozen 3.3.0 application and private scratch are writable; supplied target CLI and candidate are read-only. The native sandbox permits only public NuGet/npm registry hosts, denies the SDK checkout and unrelated home/temp files, and allows the .NET runtime shared-memory/lock directories required for first-run restore. No Docker, personal MCP servers, hooks, web tools or delegation. The task explicitly permits managed instruction/adaptor updates; independent acceptance verifies exact ownership and source preservation. macOS trustd.agent is allowed for native TLS certificate verification; direct shell egress remains denied.",
+  "buildPolicy": "The target CLI performs the upgrade and lock regeneration in its private temporary staging area. Third-party dependencies may restore from the two declared public registry hosts; NGB package identities must match the supplied immutable candidate. Preflight proves transport and filesystem boundaries before any inference; the independent oracle performs clean locked builds afterward.",
+  "attemptPolicy": "One attempt per task and working directory; no automatic retry, conversation resume, human hints or acceptance-feedback repair. Record actual model, usage, client-side cost estimate, transcript and produced source. A process completion alone is not acceptance.",
+  "networkDomains": [
+    "api.nuget.org",
+    "registry.npmjs.org"
+  ],
+  "runtimeDirectories": [
+    "/private/tmp/.dotnet/shm",
+    "/private/tmp/.dotnet/lockfiles"
+  ]
+}

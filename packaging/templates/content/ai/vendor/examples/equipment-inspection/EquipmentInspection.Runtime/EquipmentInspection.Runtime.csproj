@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <ItemGroup>
+        <ProjectReference Include="../EquipmentInspection.Definitions/EquipmentInspection.Definitions.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="NGB.Platform.Accounting" Version="[$(NgbPlatformVersion)]" />
+        <PackageReference Include="NGB.Platform.Application.Abstractions" Version="[$(NgbPlatformVersion)]" />
+        <PackageReference Include="NGB.Platform.Contracts" Version="[$(NgbPlatformVersion)]" />
+        <PackageReference Include="NGB.Platform.Core" Version="[$(NgbPlatformVersion)]" />
+        <PackageReference Include="NGB.Platform.Definitions" Version="[$(NgbPlatformVersion)]" />
+        <PackageReference Include="NGB.Platform.ReferenceRegisters" Version="[$(NgbPlatformVersion)]" />
+        <PackageReference Include="NGB.Platform.Runtime" Version="[$(NgbPlatformVersion)]" />
+        <PackageReference Include="NGB.Platform.Tools" Version="[$(NgbPlatformVersion)]" />
+    </ItemGroup>
+</Project>

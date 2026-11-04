@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "package": "NGB.Platform.Watchdog",
+  "version": "3.4.0",
+  "packageSha256": "c1af7a2fdaa54ff72c012b0aa76b4cab20b2be6c93905f8754069a2a36ba4864",
+  "assembly": {
+    "name": "NGB.Watchdog",
+    "version": "3.0.0.0",
+    "sha256": "5156a80336449a6b79d21b659199b38f480148df931e917f467e45936a19c495"
+  },
+  "contractSha256": "23dcd9c065ae83ec530910d2a0dca1e77172da411b71d956d07b851efebf00cd",
+  "types": [
+    {
+      "name": "NGB.Watchdog.HealthChecks.DependencyInjection",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "65bf88e6a6ab965e03ea22eb1f0f5e5ca3f30fdff9ebed2dc1cc18f0e8382987",
+      "methods": [
+        "AddWebClient"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Watchdog.HealthChecks.WebClientHealthCheck",
+      "attributes": "Public, BeforeFieldInit",
+      "contractSha256": "f7b4273ba702ff559dc3de01f4636edb3d0e8358edbacca089e1b4daaef625d3",
+      "methods": [
+        ".ctor"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Watchdog.Hosting.WatchdogHostingExtensions",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "36269806fe1575b0308d91a92e689cc4d2f48156e5ef9bfc2d469a363032420c",
+      "methods": [
+        "AddNgbWatchdog",
+        "MapNgbWatchdog",
+        "UseNgbWatchdog"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Watchdog.Hosting.WatchdogOptions",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "ad2563ae1ff1ea083d8d1d09e6be76fed878fc6b560a516b2f66986cb9d2e98b",
+      "methods": [
+        ".ctor",
+        "AddCustomStylesheet",
+        "get_ApiPath",
+        "get_AsideMenuOpened",
+        "get_CustomStylesheets",
+        "get_HealthPath",
+        "get_MapAccountEndpoints",
+        "get_PageTitle",
+        "get_RequireAuthorization",
+        "get_UiPath",
+        "set_ApiPath",
+        "set_AsideMenuOpened",
+        "set_HealthPath",
+        "set_MapAccountEndpoints",
+        "set_PageTitle",
+        "set_RequireAuthorization",
+        "set_UiPath"
+      ],
+      "fields": []
+    }
+  ]
+}

@@ -19,8 +19,11 @@ using NGB.Runtime.Security;
 using NgbApplication.Api;
 
 var builder = WebApplication.CreateBuilder(args);
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
-    ?? throw new InvalidOperationException("ConnectionStrings:DefaultConnection is required.");
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+if (string.IsNullOrWhiteSpace(connectionString))
+{
+    throw new InvalidOperationException("ConnectionStrings:DefaultConnection is required.");
+}
 
 builder.Host.AddSerilog();
 builder.Services.AddInfrastructure(builder.Configuration, "NgbApplication");
@@ -57,3 +60,7 @@ app.MapNgbAiAssistant();
 app.MapNgbWorkCenterHub();
 app.MapHealthChecks("/health").AllowAnonymous();
 app.Run();
+
+public partial class Program
+{
+}

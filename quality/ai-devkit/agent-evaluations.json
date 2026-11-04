@@ -1,0 +1,94 @@
+{
+  "schemaVersion": 1,
+  "version": "3.4.0",
+  "profile": "terminal-macos-arm64-v4",
+  "platform": "darwin",
+  "architecture": "arm64",
+  "clients": [
+    "codex",
+    "claude"
+  ],
+  "workingDirectories": [
+    "root",
+    "subdirectory"
+  ],
+  "attempts": 1,
+  "maximumSecondsPerAttempt": 1800,
+  "humanAssistance": "none",
+  "fixturePolicy": "Fresh package-only application per attempt. Only synthetic data. No platform checkout, deployment credentials, personal MCP configuration or previous agent conversation.",
+  "tasks": [
+    {
+      "id": "skill-discovery",
+      "prompt": "Inspect this application's local development guidance and identify the installed SDK/Kit version, the canonical official and custom instruction paths, and the appropriate document-development skill. Distinguish Post with no registered handler from Post with an explicitly registered handler that emits no records: describe support, resulting document status and effects for each. Do not modify files.",
+      "acceptance": [
+        "correct-versions",
+        "official-and-custom-discovery",
+        "document-skill-discovery",
+        "missing-handler-refused",
+        "empty-handler-supported",
+        "no-source-changes"
+      ]
+    },
+    {
+      "id": "new-catalog",
+      "prompt": "Add an EquipmentCategory catalog with type code example.equipment_category through the existing public NGB catalog API workflow. Its code field is required, nonwhitespace, unique and at most 64 characters; name is required, nonwhitespace, at most 200 characters and supplies the display text. Preserve unspecified fields on partial updates. Exactly equal duplicate codes must return HTTP 409 on create/update, including concurrent creates; no case-folding rule is required. Include an immutable application migration and database-enforced uniqueness. Preserve authorization for both active application administrators and trusted ngb-admin without manual grants; ungranted readers, inactive users, display-name-only administrators and anonymous users must not gain access. Use Definitions for metadata, Runtime for provider-neutral validation and PostgreSql for SQL/storage. Use only supplied public SDK packages, preserve existing migrations, project/dependency/build configuration, installed guidance and application entry points, and include appropriate tests. Invalid missing, empty, whitespace and oversized fields must return HTTP 400 on create/update. The complete application solution, including its tests, must still build.",
+      "acceptance": [
+        "public-sdk-only",
+        "layering",
+        "real-create-read-update",
+        "duplicate-code-refused",
+        "unauthorized-refused",
+        "migration-idempotent"
+      ]
+    },
+    {
+      "id": "existing-document-change",
+      "prompt": "Extend example.inspection with a completion_note text field (maximum 2000 characters). It must be persisted and round-trip through the existing public document API. Require a nonempty, nonwhitespace note at Post time while allowing missing/empty/whitespace notes in Draft saves. Preserve the other Post requirements, action version checks and idempotency, no-effect posting with the existing explicitly registered handler, and refusal when that handler is not configured. Add an application migration without changing any existing migration script. Preserve application project names/entry points, use only the supplied public packages, and do not change SDK business behavior. Use local Kit guidance and include appropriate tests. Keep existing project/dependency/build configuration and installed guidance unchanged; this task permits application C#/SQL, TypeScript tests under web/tests/unit or web/tests/e2e, and optional documentation. Update existing browser workflows to supply a valid completion note where Post succeeds, and run the frontend unit and E2E suites; frontend application source and test/build configuration must remain unchanged. Oversized notes must be rejected with HTTP 400 on create/update without truncation or partial writes. The complete application solution, including its tests, must still build.",
+      "acceptance": [
+        "draft-preserved",
+        "post-validation",
+        "stale-write-refused",
+        "missing-handler-refused",
+        "empty-handler-supported",
+        "no-sdk-business-changes"
+      ]
+    },
+    {
+      "id": "permission-correction",
+      "prompt": "Correct this application's equipment-edit authorization and UI capability handling using existing public NGB contracts. An active application administrator with registered role code equipment.administrator must receive edit and newly registered capabilities without manual grants, even when the role display name is renamed. Trusted Keycloak ngb-admin without a pre-existing platform user record must continue to work. A reader granted only catalog/example.equipment/view must be able to read but receive HTTP 403 for create/update/deletion marking; the real equipment editor must display the record with Save disabled. Keep inactive users and display-name-only administrators blocked. Keep deployment feature flags independent of permissions. Preserve ApplicationRoles.Administrator, existing migrations, project/dependency/build configuration, installed guidance and entry points; do not change SDK behavior or seed manual administrator grants. Include appropriate tests and keep the complete backend and frontend buildable.",
+      "acceptance": [
+        "active-admin-new-capability",
+        "trusted-keycloak-admin",
+        "reader-api-denied",
+        "reader-ui-denied",
+        "inactive-blocked",
+        "feature-flags-independent"
+      ]
+    },
+    {
+      "id": "report-extension",
+      "prompt": "Add a composable inspection summary with report and dataset code example.inspection_by_category through the public reporting contracts and PostgreSQL dataset binding. The application already has example.equipment_category (code/name) and nullable category_id on example.equipment. Group by category_name, sort ascending, and provide inspection_count using Count plus grand totals. Count only Posted inspections on categorized equipment; omit Drafts, uncategorized equipment and categories with no matching inspections. Add required from_utc/to_utc inclusive UTC date parameters, a category_id UUID-array filter and exact category_name text filter. Use parameterized provider-side aggregation and bounded public cursor paging; reject DisablePaging, arbitrary offsets and cursors reused with changed filters. Verify known synthetic totals and both administrator kinds without manual grants; ungranted readers, inactive users, display-name-only administrators and anonymous users must remain denied. Keep SQL in PostgreSql and provider-neutral definitions in Runtime. Preserve existing migrations, build/dependency files, installed guidance and application entry points. Include appropriate tests and keep the whole solution buildable.",
+      "acceptance": [
+        "public-report-contracts",
+        "known-totals",
+        "paging",
+        "filters",
+        "unauthorized-refused",
+        "bounded-provider-query"
+      ]
+    },
+    {
+      "id": "customized-kit-upgrade",
+      "prompt": "Upgrade this customized 3.3.0 application to the supplied exact 3.4.0 candidate using the target CLI supplied outside the application. Read the application instructions. Preview the upgrade before applying it and review the ownership collision at ai/vendor/instructions.md. Preserve that file byte for byte as ai/custom/legacy-instructions.md, then resolve the collision to the incoming official file with the preview-bound resolution contract. Preserve all existing application source, root instructions, ai/custom content and the checkpoint-review skill. Preserve the app-upgrade-proof custom skill and generate its Codex and Claude adapters. Coordinate SDK, UI, CLI and Kit versions, regenerate dependency locks through the CLI, and verify ai status plus backend/frontend builds. Keep resolution files and command logs outside the application. Do not edit the supplied candidate, target CLI or frozen source; do not run migrations, start services or deploy. The evaluator will independently check file preservation, exact candidate content, lock identities and clean builds; your written report is not acceptance evidence.",
+      "acceptance": [
+        "preview-read-only",
+        "reviewed-ownership-conflict",
+        "custom-content-preserved",
+        "coordinated-upgrade",
+        "both-agent-adapters",
+        "no-deployment",
+        "build-and-kit-integrity"
+      ]
+    }
+  ]
+}

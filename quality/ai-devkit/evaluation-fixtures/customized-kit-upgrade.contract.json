@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "task": "customized-kit-upgrade",
+  "prompt": "Upgrade this customized 3.3.0 application to the supplied exact 3.4.0 candidate using the target CLI supplied outside the application. Read the application instructions. Preview the upgrade before applying it and review the ownership collision at ai/vendor/instructions.md. Preserve that file byte for byte as ai/custom/legacy-instructions.md, then resolve the collision to the incoming official file with the preview-bound resolution contract. Preserve all existing application source, root instructions, ai/custom content and the checkpoint-review skill. Preserve the app-upgrade-proof custom skill and generate its Codex and Claude adapters. Coordinate SDK, UI, CLI and Kit versions, regenerate dependency locks through the CLI, and verify ai status plus backend/frontend builds. Keep resolution files and command logs outside the application. Do not edit the supplied candidate, target CLI or frozen source; do not run migrations, start services or deploy. The evaluator will independently check file preservation, exact candidate content, lock identities and clean builds; your written report is not acceptance evidence.",
+  "acceptance": [
+    "preview-read-only",
+    "reviewed-ownership-conflict",
+    "custom-content-preserved",
+    "coordinated-upgrade",
+    "both-agent-adapters",
+    "no-deployment",
+    "build-and-kit-integrity"
+  ],
+  "observableContract": {
+    "source": "Verified frozen external 3.3.0 checkpoint application plus the declared collision and app-upgrade-proof skill.",
+    "collision": "ai/vendor/instructions.md contains application-owned guidance. Preserve its exact bytes in ai/custom/legacy-instructions.md and install the exact incoming official instructions.",
+    "preservation": "Existing application files remain byte-identical except planned dependency versions/locks, managed ignore additions and official managed blocks in AGENTS.md/CLAUDE.md. No added application executable code is required.",
+    "versions": "SDK, UI, template, CLI and Kit are 3.4.0 with exact supplied artifact identities.",
+    "skills": "Preserve existing checkpoint-review and app-upgrade-proof sources. Both .agents and .claude receive the generated app-upgrade-proof adapter.",
+    "execution": "A trusted independent preview verifies read-only behavior and the declared conflict. The actual agent transcript must separately show its own preview, hash-bound resolution and target CLI application, with no deployment or migration commands.",
+    "verification": "Trusted evaluator checks exact source content and a reviewed tree identity, then performs independent clean locked restore/build and installed Kit status. Agent-written logs do not establish a pass."
+  }
+}

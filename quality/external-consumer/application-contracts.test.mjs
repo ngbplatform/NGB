@@ -88,6 +88,17 @@ test('shared props update the platform property and direct references together',
   assert.ok(!updated.includes('3.1.0'))
 })
 
+test('3.3 to 3.4 registers dependency changes for coordinated Kit installation', () => {
+  const files = Object.fromEntries(Object.entries(application()).map(([path, text]) => [path, text.replaceAll('3.1.0', '3.3.0')]))
+  const before = structuredClone(files)
+  const plan = planUpgrade(files, '3.4.0')
+  assert.equal(plan.source, '3.3.0')
+  assert.equal(plan.target, '3.4.0')
+  assert.deepEqual(files, before)
+  assert.equal(plan.changes['App.Api/Program.cs'], undefined)
+  assert.equal(JSON.parse(plan.changes['web/package.json']).dependencies['@ngbplatform/ui'], '3.4.0')
+})
+
 test('unsupported, ambiguous or mixed source versions fail before any mutation', () => {
   for (const change of [
     files => { delete files['Directory.Build.props'] },

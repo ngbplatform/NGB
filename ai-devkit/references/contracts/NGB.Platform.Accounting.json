@@ -1,0 +1,2109 @@
+{
+  "schemaVersion": 1,
+  "package": "NGB.Platform.Accounting",
+  "version": "3.4.0",
+  "packageSha256": "24e0d7c73e9e87e74d8b41259014f74246a4935652b1830658fa4f8092f73402",
+  "assembly": {
+    "name": "NGB.Accounting",
+    "version": "3.0.0.0",
+    "sha256": "f7fdfb654e32ad3a07e75808176af5b408ec4ed9b8a9bfc8a7d2c2ba9bc587b9"
+  },
+  "contractSha256": "b85c031c5a7527359b93a0e356b8a0605e6f179c54676da26c444e2acefe0018",
+  "types": [
+    {
+      "name": "NGB.Accounting.Accounts.Account",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "000a35eae02b28cadb807b10fa0a3f30292e5094b6a85c34f36337d662d80c45",
+      "methods": [
+        ".ctor",
+        "get_CashFlowLineCode",
+        "get_CashFlowRole",
+        "get_Code",
+        "get_DimensionRules",
+        "get_IsContra",
+        "get_Name",
+        "get_NegativeBalancePolicy",
+        "get_NormalBalance",
+        "get_StatementSection",
+        "get_Type"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Accounts.AccountAlreadyExistsException",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "87ea02596c971365c31425a15109555e9edf11f886feee1f8020fa69f22c8927",
+      "methods": [
+        ".ctor",
+        "get_AccountId",
+        "get_AttemptedAccountId",
+        "get_Code",
+        "get_CodeNorm",
+        "get_ExistingName"
+      ],
+      "fields": [
+        "ErrorCodeConst"
+      ]
+    },
+    {
+      "name": "NGB.Accounting.Accounts.AccountCode",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "8e85f31e223d3e6faf250e01dd75ce1543b163cc962de616e8e3ccc6c8835564",
+      "methods": [
+        "Normalize"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Accounts.AccountLookupRecord",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "925251b389aa062ea337bda0438b06e556381ffcca97797839cd5e1fe6b22b9d",
+      "methods": [
+        ".ctor",
+        "get_AccountId",
+        "get_Code",
+        "get_Name",
+        "set_AccountId",
+        "set_Code",
+        "set_Name"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Accounts.AccountNotFoundException",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "919910c515cf7cc6021db61ee10334df77b881f04d0d408e9c3ae0035ab2b442",
+      "methods": [
+        ".ctor",
+        "get_AccountId",
+        "get_Code"
+      ],
+      "fields": [
+        "ErrorCodeConst"
+      ]
+    },
+    {
+      "name": "NGB.Accounting.Accounts.AccountType",
+      "attributes": "Public, Sealed",
+      "contractSha256": "428e2539129659ffdd7490f112d2e0e6e387e8cc417a68ae2da9095d83db5822",
+      "methods": [],
+      "fields": [
+        "Asset",
+        "Equity",
+        "Expense",
+        "Income",
+        "Liability",
+        "value__"
+      ]
+    },
+    {
+      "name": "NGB.Accounting.Accounts.ChartOfAccounts",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "299333d1ed69de696a13cfcd9520571e10be53ea7952435b7fdba4d38f79e51e",
+      "methods": [
+        ".ctor",
+        "Add",
+        "Get",
+        "TryGet",
+        "TryGetByCode",
+        "get_Accounts",
+        "get_All"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Accounts.ChartOfAccountsAdminItem",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "1dcadd77e3459a220b4f03db5f749dde17c396271a090467349fc65e0732864b",
+      "methods": [
+        ".ctor",
+        "get_Account",
+        "get_IsActive",
+        "get_IsDeleted",
+        "set_Account",
+        "set_IsActive",
+        "set_IsDeleted"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Accounts.IAccountByIdResolver",
+      "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
+      "contractSha256": "32fe2e599483bfb4153728d8bcc4ddadf387b6bd8969f39ac5f89d0b95b9ba79",
+      "methods": [
+        "GetByIdAsync",
+        "GetByIdsAsync"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Accounts.IChartOfAccountsProvider",
+      "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
+      "contractSha256": "0440b4d59fe2f5b88822c8203653a9e23adf834c49b6a53c1f3b9e6a230ebd94",
+      "methods": [
+        "GetAsync"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Accounts.NegativeBalancePolicy",
+      "attributes": "Public, Sealed",
+      "contractSha256": "8f30f49a849ab924ee4d6be1e0c9268baca77a3097741387673c60594cce780f",
+      "methods": [],
+      "fields": [
+        "Allow",
+        "Forbid",
+        "Warn",
+        "value__"
+      ]
+    },
+    {
+      "name": "NGB.Accounting.Accounts.NormalBalance",
+      "attributes": "Public, Sealed",
+      "contractSha256": "dde301d9e948535c15fd91b187ba93eb15fdd9b9b791cc3b963113cd6e5b8683",
+      "methods": [],
+      "fields": [
+        "Credit",
+        "Debit",
+        "value__"
+      ]
+    },
+    {
+      "name": "NGB.Accounting.Accounts.NormalBalanceDefaults",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "31210849abbac3d33a7448d42a8f9beb907c113088c8faa9925a2e7e33ee8a3c",
+      "methods": [
+        "FromStatementSection"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Accounts.NormalBalanceExtensions",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "10d56abf7c99ebad1d1eb7ca4fec5ac38d8538de07148b6c9dea525d6b2bdfda",
+      "methods": [
+        "ApplyContra"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Accounts.StatementSection",
+      "attributes": "Public, Sealed",
+      "contractSha256": "26559e306697286b7b972e9371a26153f3821ac885bce20ac1522c8cdd3f853f",
+      "methods": [],
+      "fields": [
+        "Assets",
+        "CostOfGoodsSold",
+        "Equity",
+        "Expenses",
+        "Income",
+        "Liabilities",
+        "OtherExpense",
+        "OtherIncome",
+        "value__"
+      ]
+    },
+    {
+      "name": "NGB.Accounting.Accounts.StatementSectionDefaults",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "20cefa1c981bb0a101dc07f7f96c8d9ef1047b1411770a82ff99311055ccd778",
+      "methods": [
+        "FromAccountType"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Balances.AccountingBalance",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "451388639f89b4714ac1c858cfe7f7d0d2f43d2ae968a301004e4b25abbf8d60",
+      "methods": [
+        ".ctor",
+        "get_AccountCode",
+        "get_AccountId",
+        "get_ClosingBalance",
+        "get_DimensionSetId",
+        "get_Dimensions",
+        "get_OpeningBalance",
+        "get_Period",
+        "set_AccountCode",
+        "set_AccountId",
+        "set_ClosingBalance",
+        "set_DimensionSetId",
+        "set_Dimensions",
+        "set_OpeningBalance",
+        "set_Period"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Balances.AccountingBalanceCalculator",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "16817908188978d3f5bdf85ac08cb4ca99eba1688cd8b1fb4ab72d6ba77f0b33",
+      "methods": [
+        ".ctor",
+        "Calculate"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Balances.AccountingBalanceKey",
+      "attributes": "Public, SequentialLayout, Sealed, BeforeFieldInit",
+      "contractSha256": "6c29195103bdc43061d8e532fad3197804b6453a5715ecfc21414b2f5b252d13",
+      "methods": [
+        ".ctor",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_AccountId",
+        "get_DimensionSetId",
+        "op_Equality",
+        "op_Inequality",
+        "set_AccountId",
+        "set_DimensionSetId"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Balances.AccountingNegativeBalanceChecker",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "076665c6bd0edfa270a3c9225dd261670a979e4bd28266ad7426720292d6471b",
+      "methods": [
+        ".ctor",
+        "CheckAsync"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Balances.AccountingOperationalBalanceSnapshot",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "7df73592cfa5af32a5fc38d3a17affb66f648ad8333ec337933bf43160ef1a70",
+      "methods": [
+        ".ctor",
+        "get_AccountId",
+        "get_CreditTurnover",
+        "get_DebitTurnover",
+        "get_DimensionSetId",
+        "get_Period",
+        "get_PreviousClosingBalance",
+        "set_AccountId",
+        "set_CreditTurnover",
+        "set_DebitTurnover",
+        "set_DimensionSetId",
+        "set_Period",
+        "set_PreviousClosingBalance"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Balances.NegativeBalanceViolation",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "54f4d7319b7a6689528f4b112926a21605912f76157057c3fd3ddbbbcbadf1d2",
+      "methods": [
+        ".ctor",
+        "get_AccountCode",
+        "get_AccountId",
+        "get_AccountName",
+        "get_AccountType",
+        "get_ClosingBalance",
+        "get_DimensionSetId",
+        "get_Dimensions",
+        "get_Period",
+        "get_Policy",
+        "set_AccountCode",
+        "set_AccountId",
+        "set_AccountName",
+        "set_AccountType",
+        "set_ClosingBalance",
+        "set_DimensionSetId",
+        "set_Dimensions",
+        "set_Period",
+        "set_Policy"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.CashFlow.CashFlowLineDefinition",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "5e62d5d0ecb91bf39bd55075b2f0fc2d3097578a68cc65576720a840ab350b67",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_IsSystem",
+        "get_Label",
+        "get_LineCode",
+        "get_Method",
+        "get_Section",
+        "get_SortOrder",
+        "op_Equality",
+        "op_Inequality",
+        "set_IsSystem",
+        "set_Label",
+        "set_LineCode",
+        "set_Method",
+        "set_Section",
+        "set_SortOrder"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.CashFlow.CashFlowMethod",
+      "attributes": "Public, Sealed",
+      "contractSha256": "b56f49ff083145c193de2c0e1d2665fb94060573556ba49c8a4bd817d18df138",
+      "methods": [],
+      "fields": [
+        "Indirect",
+        "value__"
+      ]
+    },
+    {
+      "name": "NGB.Accounting.CashFlow.CashFlowRole",
+      "attributes": "Public, Sealed",
+      "contractSha256": "4636c6e06c5efe5fe2714d7d0ecb08448f0edc0d22bc1f582e4ec6ae9995a8b0",
+      "methods": [],
+      "fields": [
+        "CashEquivalent",
+        "FinancingCounterparty",
+        "InvestingCounterparty",
+        "NonCashOperatingAdjustment",
+        "None",
+        "WorkingCapital",
+        "value__"
+      ]
+    },
+    {
+      "name": "NGB.Accounting.CashFlow.CashFlowRoleRules",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "2ee5efc8e58c2110a31e52d910eb9aa85d342e80980b6cc22bdb0422410a51a5",
+      "methods": [
+        "ForbidsLineCode",
+        "GetAllowedRoles",
+        "RequiresLineCode",
+        "SupportsLineCode"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.CashFlow.CashFlowSection",
+      "attributes": "Public, Sealed",
+      "contractSha256": "685acb1a859d94bf6b151cc52443df924a83ddf6a89e30e32e8e8701747e41b3",
+      "methods": [],
+      "fields": [
+        "Financing",
+        "Investing",
+        "Operating",
+        "Reconciliation",
+        "value__"
+      ]
+    },
+    {
+      "name": "NGB.Accounting.CashFlow.CashFlowSystemLineCodes",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "abf2055d2df57ec9c4f2270366ea9d7cae143fb0ce7f566f8930094173f68d5a",
+      "methods": [],
+      "fields": [
+        "FinancingDebtNet",
+        "FinancingDistributionsNet",
+        "FinancingOtherNet",
+        "FinancingOwnerEquityNet",
+        "InvestingIntangiblesNet",
+        "InvestingInvestmentsNet",
+        "InvestingLoansReceivableNet",
+        "InvestingOtherNet",
+        "InvestingPropertyEquipmentNet",
+        "OperatingAdjustmentDepreciationAmortization",
+        "OperatingAdjustmentNonCashGainsLosses",
+        "OperatingAdjustmentOtherNonCash",
+        "WorkingCapitalAccountsPayable",
+        "WorkingCapitalAccountsReceivable",
+        "WorkingCapitalAccruedLiabilities",
+        "WorkingCapitalInventory",
+        "WorkingCapitalOtherCurrentAssets",
+        "WorkingCapitalOtherCurrentLiabilities",
+        "WorkingCapitalPrepaids"
+      ]
+    },
+    {
+      "name": "NGB.Accounting.Dimensions.AccountDimensionRule",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "5a43990a09e94df6a8430cb125bff520f2f3b2152913716ca05708489c3e0855",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_DimensionCode",
+        "get_DimensionId",
+        "get_IsRequired",
+        "get_Ordinal",
+        "op_Equality",
+        "op_Inequality"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Documents.AccountingDocumentTypeCodes",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "3f609cf39c26f7ffbde950fd50ed3f622e425384ab6846ed3aa9fa8adaa64abf",
+      "methods": [],
+      "fields": [
+        "GeneralJournalEntry"
+      ]
+    },
+    {
+      "name": "NGB.Accounting.Periods.AccountingPeriod",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "cc349dd04371e4a27ab4ecc486acc77f8636762f64b291e9e1c7e196e7e25070",
+      "methods": [
+        "FromDateOnly",
+        "FromDateTime"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Periods.ClosedPeriodRecord",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "64f71795d63e7939acf5c92aeea3f8ca4136981cfbf21f2222501f5ec6c03e5e",
+      "methods": [
+        ".ctor",
+        "get_ClosedAtUtc",
+        "get_ClosedBy",
+        "get_Period",
+        "set_ClosedAtUtc",
+        "set_ClosedBy",
+        "set_Period"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Periods.PeriodAlreadyClosedException",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "75aaf09c51776bf03fce346dd5f88b0957b5c371a285b4037a3f35a73c5d55a9",
+      "methods": [
+        ".ctor",
+        "get_Period"
+      ],
+      "fields": [
+        "ErrorCodeConst"
+      ]
+    },
+    {
+      "name": "NGB.Accounting.Posting.AccountingStornoFactory",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "fe657ce94ac493dbf2e7555c801e24cf5ae4c2bc7a9435b112dacd9a2a1181e7",
+      "methods": [
+        "Create"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Posting.IAccountingPostingContext",
+      "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
+      "contractSha256": "934a66e2c5712cb182e14c46e910195082cf9e6222bd6c614e2243aee309448f",
+      "methods": [
+        "GetChartOfAccountsAsync",
+        "Post",
+        "get_Entries"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Posting.Validators.BasicAccountingPostingValidator",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "d6346514a86d20fe845d4ab6b4e02d68bc04bac121428f077ea133c16f58ece1",
+      "methods": [
+        ".ctor",
+        "Validate"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Posting.Validators.IAccountingPostingValidator",
+      "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
+      "contractSha256": "17d2758f21a2e5dd9573f42bcceb84a30c1efcfba1013637957a052d290b6ff5",
+      "methods": [
+        "Validate"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.PostingState.PostingOperation",
+      "attributes": "Public, Sealed",
+      "contractSha256": "36c5462449c455d2cde31fcfa5a39c7d821131e96ecd5e48c333018d93eecc2a",
+      "methods": [],
+      "fields": [
+        "CloseFiscalYear",
+        "Post",
+        "Repost",
+        "Unpost",
+        "value__"
+      ]
+    },
+    {
+      "name": "NGB.Accounting.PostingState.PostingStateBeginResult",
+      "attributes": "Public, Sealed",
+      "contractSha256": "f86eefb01f1708510d1cc14edfbf367e87e87e49ac2342c0059a89d07e82acde",
+      "methods": [],
+      "fields": [
+        "AlreadyCompleted",
+        "Begun",
+        "InProgress",
+        "value__"
+      ]
+    },
+    {
+      "name": "NGB.Accounting.PostingState.Readers.PostingStateCursor",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "8e1540637da1ac0d595621b0b46a4d6c52ab0d277882cec4023154d1dacfeb11",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_AfterDocumentId",
+        "get_AfterOperation",
+        "get_AfterStartedAtUtc",
+        "op_Equality",
+        "op_Inequality",
+        "set_AfterDocumentId",
+        "set_AfterOperation",
+        "set_AfterStartedAtUtc"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.PostingState.Readers.PostingStatePage",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "a8bfbc695ccc74ceecc58f6804c5907dc6a008b66d749a19212781349d1ffd37",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_HasMore",
+        "get_NextCursor",
+        "get_Records",
+        "op_Equality",
+        "op_Inequality",
+        "set_HasMore",
+        "set_NextCursor",
+        "set_Records"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.PostingState.Readers.PostingStatePageRequest",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "c49473748dd2dc0d9315cec3442e35fa252ee6730912488f751bc46ecc6fc2b5",
+      "methods": [
+        ".ctor",
+        "get_Cursor",
+        "get_DocumentId",
+        "get_FromUtc",
+        "get_Operation",
+        "get_StaleAfter",
+        "get_Status",
+        "get_ToUtc",
+        "set_Cursor",
+        "set_DocumentId",
+        "set_FromUtc",
+        "set_Operation",
+        "set_StaleAfter",
+        "set_Status",
+        "set_ToUtc"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.PostingState.Readers.PostingStatePageRequestNormalization",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "12f366182d084300872461737b3bdb1881976e97c140b13a961946ca89ea274d",
+      "methods": [
+        "NormalizeForQuery"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.PostingState.Readers.PostingStatePageRequestNormalization+BoundsValidationMode",
+      "attributes": "NestedPublic, Sealed",
+      "contractSha256": "b42e36e68c8f3ce72db0dc12cc6599daf26de286faecfbae16dad5398f1a2af6",
+      "methods": [],
+      "fields": [
+        "BothExplicit",
+        "QueryDefaultsApplied",
+        "value__"
+      ]
+    },
+    {
+      "name": "NGB.Accounting.PostingState.Readers.PostingStatePageRequestNormalization+PostingLogQueryBounds",
+      "attributes": "NestedPublic, SequentialLayout, Sealed, BeforeFieldInit",
+      "contractSha256": "e30f798c8222036c8bffd3861bd0667178801ed6b12a7a9451432b64cf4270c1",
+      "methods": [
+        ".ctor",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_FromUtc",
+        "get_NowUtc",
+        "get_StaleAfter",
+        "get_ToUtc",
+        "op_Equality",
+        "op_Inequality",
+        "set_FromUtc",
+        "set_NowUtc",
+        "set_StaleAfter",
+        "set_ToUtc"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.PostingState.Readers.PostingStatePageRequestNormalization+UtcBoundsPolicy",
+      "attributes": "NestedPublic, Sealed",
+      "contractSha256": "3b71df82ddd896445913889f6d850bf28f1cb4e6b729779bedb3beefb0067d32",
+      "methods": [],
+      "fields": [
+        "LenientAssumeUtc",
+        "StrictUtc",
+        "value__"
+      ]
+    },
+    {
+      "name": "NGB.Accounting.PostingState.Readers.PostingStateRecord",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "28a0f07ebe6340e79d04d0dcdfde1a075b724419eeed82e36fee06fa6b115b4c",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_Age",
+        "get_CompletedAtUtc",
+        "get_DocumentId",
+        "get_Duration",
+        "get_Operation",
+        "get_StartedAtUtc",
+        "get_Status",
+        "op_Equality",
+        "op_Inequality",
+        "set_Age",
+        "set_CompletedAtUtc",
+        "set_DocumentId",
+        "set_Duration",
+        "set_Operation",
+        "set_StartedAtUtc",
+        "set_Status"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.PostingState.Readers.PostingStateStatus",
+      "attributes": "Public, Sealed",
+      "contractSha256": "2b87cc261f1148b9021c2c85a0b9e248b80f6230d20cbd7bf732de99ffb4a624",
+      "methods": [],
+      "fields": [
+        "Completed",
+        "InProgress",
+        "StaleInProgress",
+        "value__"
+      ]
+    },
+    {
+      "name": "NGB.Accounting.Registers.AccountingEntry",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "06b04b37f112af1d8dcdd7cac7bb8aa3ce657ed64c1dda28efc9f96840523cd9",
+      "methods": [
+        ".ctor",
+        "get_Amount",
+        "get_Credit",
+        "get_CreditDimensionSetId",
+        "get_CreditDimensions",
+        "get_Debit",
+        "get_DebitDimensionSetId",
+        "get_DebitDimensions",
+        "get_DocumentId",
+        "get_EntryId",
+        "get_IsStorno",
+        "get_Period",
+        "set_Amount",
+        "set_Credit",
+        "set_CreditDimensionSetId",
+        "set_CreditDimensions",
+        "set_Debit",
+        "set_DebitDimensionSetId",
+        "set_DebitDimensions",
+        "set_DocumentId",
+        "set_EntryId",
+        "set_IsStorno",
+        "set_Period"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Reports.AccountActivityQuery",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "0c742b22c81727c5b52e5b23d667dd36ed407a9c51b38bd85f746efb01c0c12a",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "EnsureInvariant",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_AccountId",
+        "get_DimensionScopes",
+        "get_FromInclusive",
+        "get_ToInclusive",
+        "op_Equality",
+        "op_Inequality",
+        "set_AccountId",
+        "set_DimensionScopes",
+        "set_FromInclusive",
+        "set_ToInclusive"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Reports.AccountCard.AccountCardGroupedReport",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "d0914db0bfcf80bc90bc5d47bd2c70d3b2aef8ce1bb3637e92ea6c30bdcda46e",
+      "methods": [
+        ".ctor",
+        "get_AccountCode",
+        "get_AccountId",
+        "get_ClosingBalance",
+        "get_DimensionScopes",
+        "get_FromInclusive",
+        "get_Grouping",
+        "get_OpeningBalance",
+        "get_Sections",
+        "get_ToInclusive",
+        "get_TotalCredit",
+        "get_TotalDebit",
+        "set_AccountCode",
+        "set_AccountId",
+        "set_ClosingBalance",
+        "set_DimensionScopes",
+        "set_FromInclusive",
+        "set_Grouping",
+        "set_OpeningBalance",
+        "set_Sections",
+        "set_ToInclusive",
+        "set_TotalCredit",
+        "set_TotalDebit"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Reports.AccountCard.AccountCardGrouping",
+      "attributes": "Public, Sealed",
+      "contractSha256": "1091e5cfdae50636f0e0f0ebe341df2de702cf0e9603e7133d5e5bf70642ebc9",
+      "methods": [],
+      "fields": [
+        "ByDay",
+        "ByDocument",
+        "ByMonth",
+        "None",
+        "value__"
+      ]
+    },
+    {
+      "name": "NGB.Accounting.Reports.AccountCard.AccountCardLine",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "7706e55c6bf2870bfd48c1ad19923fd47ddbdb43315eb5ad58a8e0f4d3f8230b",
+      "methods": [
+        ".ctor",
+        "get_AccountCode",
+        "get_AccountId",
+        "get_CounterAccountCode",
+        "get_CounterAccountDimensionSetId",
+        "get_CounterAccountDimensionValueDisplays",
+        "get_CounterAccountDimensions",
+        "get_CounterAccountId",
+        "get_CreditAmount",
+        "get_DebitAmount",
+        "get_Delta",
+        "get_DimensionSetId",
+        "get_DimensionValueDisplays",
+        "get_Dimensions",
+        "get_DocumentId",
+        "get_EntryId",
+        "get_PeriodUtc",
+        "set_AccountCode",
+        "set_AccountId",
+        "set_CounterAccountCode",
+        "set_CounterAccountDimensionSetId",
+        "set_CounterAccountDimensionValueDisplays",
+        "set_CounterAccountDimensions",
+        "set_CounterAccountId",
+        "set_CreditAmount",
+        "set_DebitAmount",
+        "set_DimensionSetId",
+        "set_DimensionValueDisplays",
+        "set_Dimensions",
+        "set_DocumentId",
+        "set_EntryId",
+        "set_PeriodUtc"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Reports.AccountCard.AccountCardLineCursor",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "ca5371932e6b12fb7001f89308c064573cf57b46b8043de66be2353c3ba80722",
+      "methods": [
+        ".ctor",
+        "get_AfterEntryId",
+        "get_AfterPeriodUtc",
+        "set_AfterEntryId",
+        "set_AfterPeriodUtc"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Reports.AccountCard.AccountCardLinePage",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "ed8b55863f030f0daa8543b01e1d13775f01b6de00f234864c1e4f5b162bfefa",
+      "methods": [
+        ".ctor",
+        "get_HasMore",
+        "get_Lines",
+        "get_NextCursor",
+        "get_PrefixDelta",
+        "get_TotalCredit",
+        "get_TotalDebit",
+        "set_HasMore",
+        "set_Lines",
+        "set_NextCursor",
+        "set_PrefixDelta",
+        "set_TotalCredit",
+        "set_TotalDebit"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Reports.AccountCard.AccountCardLinePageRequest",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "70274e1c9d8a7751c177cf23b99c72a27afb085e0de5c415c1a1c94fb72de69a",
+      "methods": [
+        ".ctor",
+        "get_AccountId",
+        "get_Cursor",
+        "get_DimensionScopes",
+        "get_FromInclusive",
+        "get_IncludePrefixDelta",
+        "get_IncludeTotals",
+        "get_ToInclusive",
+        "set_AccountId",
+        "set_Cursor",
+        "set_DimensionScopes",
+        "set_FromInclusive",
+        "set_IncludePrefixDelta",
+        "set_IncludeTotals",
+        "set_ToInclusive"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Reports.AccountCard.AccountCardReport",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "bfe65cd4fab0f23f5206d847d46d3ad14432a4be83d57d0927337fc2b7f64a41",
+      "methods": [
+        ".ctor",
+        "get_AccountCode",
+        "get_AccountId",
+        "get_ClosingBalance",
+        "get_FromInclusive",
+        "get_Lines",
+        "get_OpeningBalance",
+        "get_ToInclusive",
+        "get_TotalCredit",
+        "get_TotalDebit",
+        "set_AccountCode",
+        "set_AccountId",
+        "set_ClosingBalance",
+        "set_FromInclusive",
+        "set_Lines",
+        "set_OpeningBalance",
+        "set_ToInclusive",
+        "set_TotalCredit",
+        "set_TotalDebit"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Reports.AccountCard.AccountCardReportCursor",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "3873d99da5ed1ea1931932e079a4494fe37ec0f5d88e92a4b071228773cb1ed7",
+      "methods": [
+        ".ctor",
+        "get_AfterEntryId",
+        "get_AfterPeriodUtc",
+        "get_ClosingBalance",
+        "get_RunningBalance",
+        "get_SnapshotId",
+        "get_TotalCredit",
+        "get_TotalDebit",
+        "set_AfterEntryId",
+        "set_AfterPeriodUtc",
+        "set_ClosingBalance",
+        "set_RunningBalance",
+        "set_SnapshotId",
+        "set_TotalCredit",
+        "set_TotalDebit"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Reports.AccountCard.AccountCardReportLine",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "83fea205737e0c7127bed7262264e4aa9377a75c7a464670e35029bf6a4e5ae0",
+      "methods": [
+        ".ctor",
+        "get_AccountCode",
+        "get_AccountId",
+        "get_CounterAccountCode",
+        "get_CounterAccountId",
+        "get_CreditAmount",
+        "get_DebitAmount",
+        "get_Delta",
+        "get_DimensionSetId",
+        "get_DimensionValueDisplays",
+        "get_Dimensions",
+        "get_DocumentId",
+        "get_EntryId",
+        "get_PeriodUtc",
+        "get_RunningBalance",
+        "set_AccountCode",
+        "set_AccountId",
+        "set_CounterAccountCode",
+        "set_CounterAccountId",
+        "set_CreditAmount",
+        "set_DebitAmount",
+        "set_Delta",
+        "set_DimensionSetId",
+        "set_DimensionValueDisplays",
+        "set_Dimensions",
+        "set_DocumentId",
+        "set_EntryId",
+        "set_PeriodUtc",
+        "set_RunningBalance"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Reports.AccountCard.AccountCardReportPage",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "956a6f8b7e3a36deab801db33da632a81cd826bc2eb60673871b1a7a0f5f5bd7",
+      "methods": [
+        ".ctor",
+        "get_AccountCode",
+        "get_AccountId",
+        "get_ClosingBalance",
+        "get_FromInclusive",
+        "get_HasMore",
+        "get_Lines",
+        "get_NextCursor",
+        "get_OpeningBalance",
+        "get_ToInclusive",
+        "get_TotalCredit",
+        "get_TotalDebit",
+        "set_AccountCode",
+        "set_AccountId",
+        "set_ClosingBalance",
+        "set_FromInclusive",
+        "set_HasMore",
+        "set_Lines",
+        "set_NextCursor",
+        "set_OpeningBalance",
+        "set_ToInclusive",
+        "set_TotalCredit",
+        "set_TotalDebit"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Reports.AccountCard.AccountCardReportPageRequest",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "af2bfa5f3742dfac3e75a4b5f7dac65e6e6cc98a946961a5004ca7024fb89974",
+      "methods": [
+        ".ctor",
+        "get_AccountId",
+        "get_Cursor",
+        "get_DimensionScopes",
+        "get_FromInclusive",
+        "get_IncludeRangeTotals",
+        "get_ToInclusive",
+        "set_AccountId",
+        "set_Cursor",
+        "set_DimensionScopes",
+        "set_FromInclusive",
+        "set_IncludeRangeTotals",
+        "set_ToInclusive"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Reports.AccountCard.AccountCardReportSection",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "e8c343172dafc935530f873ad46b7a3b966c1c5f66fa4cf3ff00799380a3cc59",
+      "methods": [
+        ".ctor",
+        "get_ClosingBalance",
+        "get_Delta",
+        "get_FirstPeriodUtc",
+        "get_LastPeriodUtc",
+        "get_Lines",
+        "get_Title",
+        "get_TotalCredit",
+        "get_TotalDebit",
+        "set_ClosingBalance",
+        "set_Delta",
+        "set_FirstPeriodUtc",
+        "set_LastPeriodUtc",
+        "set_Lines",
+        "set_Title",
+        "set_TotalCredit",
+        "set_TotalDebit"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Reports.AccountingConsistency.AccountingConsistencyIssue",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "a58455c28552ebcbd1cebde70f99eeccdd2dd3e31f6424011b5b7eb288741a47",
+      "methods": [
+        ".ctor",
+        "get_AccountCode",
+        "get_AccountId",
+        "get_DimensionSetId",
+        "get_Kind",
+        "get_Message",
+        "get_Period",
+        "get_PreviousPeriod",
+        "set_AccountCode",
+        "set_AccountId",
+        "set_DimensionSetId",
+        "set_Kind",
+        "set_Message",
+        "set_Period",
+        "set_PreviousPeriod"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Reports.AccountingConsistency.AccountingConsistencyIssueKind",
+      "attributes": "Public, Sealed",
+      "contractSha256": "ad1046ef83efb6f35062e8bd8e3b494c37a5a247c0abfb2962234c4d8b3ffdb9",
+      "methods": [],
+      "fields": [
+        "BalanceChainMismatch",
+        "BalanceVsTurnoverMismatch",
+        "ClosedPeriodChainBroken",
+        "MissingKey",
+        "TurnoversVsRegisterMismatch",
+        "value__"
+      ]
+    },
+    {
+      "name": "NGB.Accounting.Reports.AccountingConsistency.AccountingConsistencyReport",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "03dd087add7204aafa4969de667fd4d0671907a220cb505140150ed2aed61f90",
+      "methods": [
+        ".ctor",
+        "get_BalanceChainMismatchCount",
+        "get_BalanceVsTurnoverMismatchCount",
+        "get_IsOk",
+        "get_Issues",
+        "get_MissingKeyCount",
+        "get_Period",
+        "get_PreviousPeriodForChainCheck",
+        "get_TurnoversVsRegisterDiffCount",
+        "set_BalanceChainMismatchCount",
+        "set_BalanceVsTurnoverMismatchCount",
+        "set_Issues",
+        "set_MissingKeyCount",
+        "set_Period",
+        "set_PreviousPeriodForChainCheck",
+        "set_TurnoversVsRegisterDiffCount"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Reports.BalanceSheet.BalanceSheetLine",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "060c8949383f58258ccc7f9538994629a4768bf57f1c503f8d42cecd0fe207ad",
+      "methods": [
+        ".ctor",
+        "get_AccountCode",
+        "get_AccountId",
+        "get_AccountName",
+        "get_Amount",
+        "set_AccountCode",
+        "set_AccountId",
+        "set_AccountName",
+        "set_Amount"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Reports.BalanceSheet.BalanceSheetReport",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "61a6bbf9be9f32a976bf79a20f9d01c45f97f60ddf315ef865cc1a181679952a",
+      "methods": [
+        ".ctor",
+        "get_AsOfPeriod",
+        "get_Difference",
+        "get_IsBalanced",
+        "get_Sections",
+        "get_TotalAssets",
+        "get_TotalEquity",
+        "get_TotalLiabilities",
+        "get_TotalLiabilitiesAndEquity",
+        "set_AsOfPeriod",
+        "set_Difference",
+        "set_IsBalanced",
+        "set_Sections",
+        "set_TotalAssets",
+        "set_TotalEquity",
+        "set_TotalLiabilities",
+        "set_TotalLiabilitiesAndEquity"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Reports.BalanceSheet.BalanceSheetReportRequest",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "de907597eb08268290a8317dc5a75b04d91078de6c27dea679150c707b7c1934",
+      "methods": [
+        ".ctor",
+        "get_AsOfPeriod",
+        "get_DimensionScopes",
+        "get_IncludeNetIncomeInEquity",
+        "get_IncludeZeroAccounts",
+        "set_AsOfPeriod",
+        "set_DimensionScopes",
+        "set_IncludeNetIncomeInEquity",
+        "set_IncludeZeroAccounts"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Reports.BalanceSheet.BalanceSheetSection",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "106cefa2fbd1b1fd9fcede91d1db5ac7174720e3f7bde28214d00050d6dad249",
+      "methods": [
+        ".ctor",
+        "get_Lines",
+        "get_Section",
+        "get_Title",
+        "get_Total",
+        "set_Lines",
+        "set_Section",
+        "set_Title",
+        "set_Total"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Reports.CashFlowIndirect.CashFlowIndirectLine",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "384ae0e1a74ddd4ab00b1c65599fac5561a8e7f54d0e32b2e3f292d082d5daa3",
+      "methods": [
+        ".ctor",
+        "get_Amount",
+        "get_IsSynthetic",
+        "get_Label",
+        "get_LineCode",
+        "set_Amount",
+        "set_IsSynthetic",
+        "set_Label",
+        "set_LineCode"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Reports.CashFlowIndirect.CashFlowIndirectReport",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "abe6a4ea6a073b85e1727fd078d67ef99d7be40177e7ca56d611874725fa4a60",
+      "methods": [
+        ".ctor",
+        "get_BeginningCash",
+        "get_EndingCash",
+        "get_FromInclusive",
+        "get_NetIncreaseDecreaseInCash",
+        "get_Sections",
+        "get_ToInclusive",
+        "set_BeginningCash",
+        "set_EndingCash",
+        "set_FromInclusive",
+        "set_NetIncreaseDecreaseInCash",
+        "set_Sections",
+        "set_ToInclusive"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Reports.CashFlowIndirect.CashFlowIndirectReportRequest",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "c946408b80fa919e859f61d73fc54980bc259048a3fbd654647cca1827ecf2a5",
+      "methods": [
+        ".ctor",
+        "Validate",
+        "get_FromInclusive",
+        "get_ToInclusive",
+        "set_FromInclusive",
+        "set_ToInclusive"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Reports.CashFlowIndirect.CashFlowIndirectSectionModel",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "3d4dc42334399cce4dc684b5c73636e91b75b38b91bf77ad857d3793e96eda77",
+      "methods": [
+        ".ctor",
+        "get_Label",
+        "get_Lines",
+        "get_Section",
+        "get_Total",
+        "set_Label",
+        "set_Lines",
+        "set_Section",
+        "set_Total"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Reports.GeneralJournal.GeneralJournalCursor",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "68f5f3957377286741177dcb6673b3ce8a983e3bbdbec43cec653c686a0657dd",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_AfterEntryId",
+        "get_AfterPeriodUtc",
+        "op_Equality",
+        "op_Inequality",
+        "set_AfterEntryId",
+        "set_AfterPeriodUtc"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Reports.GeneralJournal.GeneralJournalLine",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "edd9d9333a73b2aa245449d341128c480f860384c54a2cd98377e20732168a7c",
+      "methods": [
+        ".ctor",
+        "get_Amount",
+        "get_CreditAccountCode",
+        "get_CreditAccountId",
+        "get_CreditDimensionSetId",
+        "get_CreditDimensionValueDisplays",
+        "get_CreditDimensions",
+        "get_DebitAccountCode",
+        "get_DebitAccountId",
+        "get_DebitDimensionSetId",
+        "get_DebitDimensionValueDisplays",
+        "get_DebitDimensions",
+        "get_DocumentId",
+        "get_EntryId",
+        "get_IsStorno",
+        "get_PeriodUtc",
+        "set_Amount",
+        "set_CreditAccountCode",
+        "set_CreditAccountId",
+        "set_CreditDimensionSetId",
+        "set_CreditDimensionValueDisplays",
+        "set_CreditDimensions",
+        "set_DebitAccountCode",
+        "set_DebitAccountId",
+        "set_DebitDimensionSetId",
+        "set_DebitDimensionValueDisplays",
+        "set_DebitDimensions",
+        "set_DocumentId",
+        "set_EntryId",
+        "set_IsStorno",
+        "set_PeriodUtc"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Reports.GeneralJournal.GeneralJournalPage",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "cee9b902ce40bfc9452ba0e435e7719a57198d6072845dceeb77c1afd4cfc08d",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_HasMore",
+        "get_Lines",
+        "get_NextCursor",
+        "op_Equality",
+        "op_Inequality",
+        "set_HasMore",
+        "set_Lines",
+        "set_NextCursor"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Reports.GeneralJournal.GeneralJournalPageRequest",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "a0d14a72f017398291bfda6055c24a3dda7c2bdbf3354059dbc1a5d808c88bf2",
+      "methods": [
+        ".ctor",
+        "get_CreditAccountId",
+        "get_Cursor",
+        "get_DebitAccountId",
+        "get_DimensionScopes",
+        "get_DocumentId",
+        "get_FromInclusive",
+        "get_IsStorno",
+        "get_ToInclusive",
+        "set_CreditAccountId",
+        "set_Cursor",
+        "set_DebitAccountId",
+        "set_DimensionScopes",
+        "set_DocumentId",
+        "set_FromInclusive",
+        "set_IsStorno",
+        "set_ToInclusive"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Reports.GeneralLedgerAggregated.GeneralLedgerAggregatedLine",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "dd50326b44291bb2ec30ba73195b02c5f500be12fd99e351eafbea3f7d01539f",
+      "methods": [
+        ".ctor",
+        "get_AccountCode",
+        "get_AccountId",
+        "get_CounterAccountCode",
+        "get_CounterAccountId",
+        "get_CreditAmount",
+        "get_DebitAmount",
+        "get_Delta",
+        "get_DimensionSetId",
+        "get_DimensionValueDisplays",
+        "get_Dimensions",
+        "get_DocumentId",
+        "get_PeriodUtc",
+        "set_AccountCode",
+        "set_AccountId",
+        "set_CounterAccountCode",
+        "set_CounterAccountId",
+        "set_CreditAmount",
+        "set_DebitAmount",
+        "set_DimensionSetId",
+        "set_DimensionValueDisplays",
+        "set_Dimensions",
+        "set_DocumentId",
+        "set_PeriodUtc"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Reports.GeneralLedgerAggregated.GeneralLedgerAggregatedLineCursor",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "2bc1de01a7858ba044dda560fa9e2924cb95691095a080394388de5afd770dcd",
+      "methods": [
+        ".ctor",
+        "get_AfterCounterAccountCode",
+        "get_AfterCounterAccountId",
+        "get_AfterDimensionSetId",
+        "get_AfterDocumentId",
+        "get_AfterPeriodUtc",
+        "set_AfterCounterAccountCode",
+        "set_AfterCounterAccountId",
+        "set_AfterDimensionSetId",
+        "set_AfterDocumentId",
+        "set_AfterPeriodUtc"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Reports.GeneralLedgerAggregated.GeneralLedgerAggregatedPage",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "6490b4fec1de30f011a6b2bac4b91a7fd946f3fb4d1adff82c55a5bb7052a33b",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_HasMore",
+        "get_Lines",
+        "get_NextCursor",
+        "get_PrefixDelta",
+        "op_Equality",
+        "op_Inequality",
+        "set_HasMore",
+        "set_Lines",
+        "set_NextCursor",
+        "set_PrefixDelta"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Reports.GeneralLedgerAggregated.GeneralLedgerAggregatedPageRequest",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "eda290c6bb5273e56b08cbcc7dc11e0813bb3b49eaf9291aa199c921fb6b2030",
+      "methods": [
+        ".ctor",
+        "get_AccountId",
+        "get_Cursor",
+        "get_DimensionScopes",
+        "get_FromInclusive",
+        "get_IncludePrefixDelta",
+        "get_ToInclusive",
+        "set_AccountId",
+        "set_Cursor",
+        "set_DimensionScopes",
+        "set_FromInclusive",
+        "set_IncludePrefixDelta",
+        "set_ToInclusive"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Reports.GeneralLedgerAggregated.GeneralLedgerAggregatedReport",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "433415b8c6755522a49bc32c56e0553fe522e3392de50bd0063fa3ffb58f5340",
+      "methods": [
+        ".ctor",
+        "get_AccountCode",
+        "get_AccountId",
+        "get_ClosingBalance",
+        "get_FromInclusive",
+        "get_Lines",
+        "get_OpeningBalance",
+        "get_ToInclusive",
+        "get_TotalCredit",
+        "get_TotalDebit",
+        "set_AccountCode",
+        "set_AccountId",
+        "set_ClosingBalance",
+        "set_FromInclusive",
+        "set_Lines",
+        "set_OpeningBalance",
+        "set_ToInclusive",
+        "set_TotalCredit",
+        "set_TotalDebit"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Reports.GeneralLedgerAggregated.GeneralLedgerAggregatedReportCursor",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "0c9f672eb5c44e2c2d98d4b9e20af0847fb09a5eba3dc8b2c55ad90cdbe758f7",
+      "methods": [
+        ".ctor",
+        "get_AfterCounterAccountCode",
+        "get_AfterCounterAccountId",
+        "get_AfterDimensionSetId",
+        "get_AfterDocumentId",
+        "get_AfterPeriodUtc",
+        "get_ClosingBalance",
+        "get_RunningBalance",
+        "get_SnapshotId",
+        "get_TotalCredit",
+        "get_TotalDebit",
+        "set_AfterCounterAccountCode",
+        "set_AfterCounterAccountId",
+        "set_AfterDimensionSetId",
+        "set_AfterDocumentId",
+        "set_AfterPeriodUtc",
+        "set_ClosingBalance",
+        "set_RunningBalance",
+        "set_SnapshotId",
+        "set_TotalCredit",
+        "set_TotalDebit"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Reports.GeneralLedgerAggregated.GeneralLedgerAggregatedReportLine",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "c253c7165b785812f7083b7c71d2124af8cdaea0cda0e475e35740fe695a7bf8",
+      "methods": [
+        ".ctor",
+        "get_AccountCode",
+        "get_AccountId",
+        "get_CounterAccountCode",
+        "get_CounterAccountId",
+        "get_CreditAmount",
+        "get_DebitAmount",
+        "get_DimensionSetId",
+        "get_DimensionValueDisplays",
+        "get_Dimensions",
+        "get_DocumentId",
+        "get_PeriodUtc",
+        "get_RunningBalance",
+        "set_AccountCode",
+        "set_AccountId",
+        "set_CounterAccountCode",
+        "set_CounterAccountId",
+        "set_CreditAmount",
+        "set_DebitAmount",
+        "set_DimensionSetId",
+        "set_DimensionValueDisplays",
+        "set_Dimensions",
+        "set_DocumentId",
+        "set_PeriodUtc",
+        "set_RunningBalance"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Reports.GeneralLedgerAggregated.GeneralLedgerAggregatedReportPage",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "8070c998674cff441868dc28294e91c2d487c25156a6fd0ff7db810d912f3887",
+      "methods": [
+        ".ctor",
+        "get_AccountCode",
+        "get_AccountId",
+        "get_ClosingBalance",
+        "get_FromInclusive",
+        "get_HasMore",
+        "get_Lines",
+        "get_NextCursor",
+        "get_OpeningBalance",
+        "get_ToInclusive",
+        "get_TotalCredit",
+        "get_TotalDebit",
+        "set_AccountCode",
+        "set_AccountId",
+        "set_ClosingBalance",
+        "set_FromInclusive",
+        "set_HasMore",
+        "set_Lines",
+        "set_NextCursor",
+        "set_OpeningBalance",
+        "set_ToInclusive",
+        "set_TotalCredit",
+        "set_TotalDebit"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Reports.GeneralLedgerAggregated.GeneralLedgerAggregatedReportPageRequest",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "0e29ccc6e5cb29e5dcb6b6518ff0b06479da983afce35ce917708a8be219848d",
+      "methods": [
+        ".ctor",
+        "get_AccountId",
+        "get_Cursor",
+        "get_DimensionScopes",
+        "get_FromInclusive",
+        "get_ToInclusive",
+        "set_AccountId",
+        "set_Cursor",
+        "set_DimensionScopes",
+        "set_FromInclusive",
+        "set_ToInclusive"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Reports.IncomeStatement.IncomeStatementLine",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "c07cc596dcb3cfb88ec3ba793c39984166a46cfdfcbf8eb25f4b8e50fc8ddc22",
+      "methods": [
+        ".ctor",
+        "get_AccountCode",
+        "get_AccountId",
+        "get_AccountName",
+        "get_Amount",
+        "set_AccountCode",
+        "set_AccountId",
+        "set_AccountName",
+        "set_Amount"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Reports.IncomeStatement.IncomeStatementReport",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "6ef8dbe8568b55ec8d76b41506993cf475cc40ed54c916887c0131a9d26ccb3e",
+      "methods": [
+        ".ctor",
+        "get_FromInclusive",
+        "get_NetIncome",
+        "get_Sections",
+        "get_ToInclusive",
+        "get_TotalExpenses",
+        "get_TotalIncome",
+        "get_TotalOtherExpense",
+        "get_TotalOtherIncome",
+        "set_FromInclusive",
+        "set_NetIncome",
+        "set_Sections",
+        "set_ToInclusive",
+        "set_TotalExpenses",
+        "set_TotalIncome",
+        "set_TotalOtherExpense",
+        "set_TotalOtherIncome"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Reports.IncomeStatement.IncomeStatementReportRequest",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "902533c0581b934acaf234faea0db2e8cb0f2913fdcdd3ce59dd8cc07e2b6127",
+      "methods": [
+        ".ctor",
+        "Validate",
+        "get_DimensionScopes",
+        "get_FromInclusive",
+        "get_IncludeZeroLines",
+        "get_ToInclusive",
+        "set_DimensionScopes",
+        "set_FromInclusive",
+        "set_IncludeZeroLines",
+        "set_ToInclusive"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Reports.IncomeStatement.IncomeStatementSection",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "37bff2d0dbe412f0af2498b8d160d341acae06e5b5ad7a0f3b97bafe5d31c685",
+      "methods": [
+        ".ctor",
+        "get_Lines",
+        "get_Section",
+        "get_Total",
+        "set_Lines",
+        "set_Section",
+        "set_Total"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Reports.LedgerAnalysis.LedgerAnalysisFlatDetailCursor",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "824f574b63dd969ce9839bcacf0461aff5f082c07e64d847236f3e879123977e",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_AfterEntryId",
+        "get_AfterPeriodUtc",
+        "get_AfterPostingSide",
+        "op_Equality",
+        "op_Inequality",
+        "set_AfterEntryId",
+        "set_AfterPeriodUtc",
+        "set_AfterPostingSide"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Reports.LedgerAnalysis.LedgerAnalysisFlatDetailFieldSelection",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "a551645471aeec9b82ff891876f8e563e4979582b6e8d0f81d8321f8040521b0",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_DataType",
+        "get_FieldCode",
+        "get_Label",
+        "get_OutputCode",
+        "op_Equality",
+        "op_Inequality",
+        "set_DataType",
+        "set_FieldCode",
+        "set_Label",
+        "set_OutputCode"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Reports.LedgerAnalysis.LedgerAnalysisFlatDetailMeasureSelection",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "114e36a7666efa638c7a1afadf9dc347e09712b095b210313da080855e9122ad",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_DataType",
+        "get_Label",
+        "get_MeasureCode",
+        "get_OutputCode",
+        "op_Equality",
+        "op_Inequality",
+        "set_DataType",
+        "set_Label",
+        "set_MeasureCode",
+        "set_OutputCode"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Reports.LedgerAnalysis.LedgerAnalysisFlatDetailPage",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "5f90812e79c94a40ad58b08fd4f6754977ec0fcd95418f25627902fa596fb13b",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_HasMore",
+        "get_NextCursor",
+        "get_Rows",
+        "op_Equality",
+        "op_Inequality",
+        "set_HasMore",
+        "set_NextCursor",
+        "set_Rows"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Reports.LedgerAnalysis.LedgerAnalysisFlatDetailPageRequest",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "323ce1bc46b94d8020d2c5fd93b710cc117ce425731e3148deb7c5b92ab6d303",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_Cursor",
+        "get_DatasetCode",
+        "get_DetailFields",
+        "get_DisablePaging",
+        "get_FromUtc",
+        "get_Measures",
+        "get_PageSize",
+        "get_Predicates",
+        "get_ToUtcExclusive",
+        "op_Equality",
+        "op_Inequality",
+        "set_Cursor",
+        "set_DatasetCode",
+        "set_DetailFields",
+        "set_DisablePaging",
+        "set_FromUtc",
+        "set_Measures",
+        "set_PageSize",
+        "set_Predicates",
+        "set_ToUtcExclusive"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Reports.LedgerAnalysis.LedgerAnalysisFlatDetailPredicate",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "22f8368036008e159cc0fa67110982e4972475cd31f8afc73aec2383b720fee1",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_DataType",
+        "get_FieldCode",
+        "get_Label",
+        "get_OutputCode",
+        "get_Value",
+        "op_Equality",
+        "op_Inequality",
+        "set_DataType",
+        "set_FieldCode",
+        "set_Label",
+        "set_OutputCode",
+        "set_Value"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Reports.LedgerAnalysis.LedgerAnalysisFlatDetailRow",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "31ddee43e84952db0d95b7dff9eede8a0fb0c8d9a6b3f3ea8b30c1e5169a7c9c",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_Values",
+        "op_Equality",
+        "op_Inequality",
+        "set_Values"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Reports.StatementOfChangesInEquity.StatementOfChangesInEquityLine",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "d1d83dc5768ff3cb86fe72325c8e4131c88a0eebe0d3041989529ea9a53e5813",
+      "methods": [
+        ".ctor",
+        "get_AccountId",
+        "get_ChangeAmount",
+        "get_ClosingAmount",
+        "get_ComponentCode",
+        "get_ComponentName",
+        "get_IsSynthetic",
+        "get_OpeningAmount",
+        "set_AccountId",
+        "set_ChangeAmount",
+        "set_ClosingAmount",
+        "set_ComponentCode",
+        "set_ComponentName",
+        "set_IsSynthetic",
+        "set_OpeningAmount"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Reports.StatementOfChangesInEquity.StatementOfChangesInEquityReport",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "18b01db69da6ff09b21b04169e26d543ef8c9e9808732c3d1b641dac1da82529",
+      "methods": [
+        ".ctor",
+        "get_FromInclusive",
+        "get_Lines",
+        "get_ToInclusive",
+        "get_TotalChange",
+        "get_TotalClosing",
+        "get_TotalOpening",
+        "set_FromInclusive",
+        "set_Lines",
+        "set_ToInclusive",
+        "set_TotalChange",
+        "set_TotalClosing",
+        "set_TotalOpening"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Reports.StatementOfChangesInEquity.StatementOfChangesInEquityReportRequest",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "bbefa37570ce288949f60a97126081aad1e8bdf1b72e3af50cda3d894de154e4",
+      "methods": [
+        ".ctor",
+        "Validate",
+        "get_FromInclusive",
+        "get_ToInclusive",
+        "set_FromInclusive",
+        "set_ToInclusive"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Reports.TrialBalance.TrialBalanceReportPage",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "beab3716b52ad5d3ccb77fe64dd1d58256738cc1f5ef7423fe1d773f16a138ab",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_HasMore",
+        "get_Rows",
+        "get_Total",
+        "get_Totals",
+        "op_Equality",
+        "op_Inequality",
+        "set_HasMore",
+        "set_Rows",
+        "set_Total",
+        "set_Totals"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Reports.TrialBalance.TrialBalanceReportPageRequest",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "518885480434d789312ba4edbbee7854e89079df4bc26fec3540785dbf58df71",
+      "methods": [
+        ".ctor",
+        "get_DimensionScopes",
+        "get_FromInclusive",
+        "get_Limit",
+        "get_Offset",
+        "get_ShowSubtotals",
+        "get_ToInclusive",
+        "set_DimensionScopes",
+        "set_FromInclusive",
+        "set_Limit",
+        "set_Offset",
+        "set_ShowSubtotals",
+        "set_ToInclusive"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Reports.TrialBalance.TrialBalanceReportRow",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "79e3fe3a8adc9d1894585debf3a24075779aaf8bf522710cd30e438bbb3c570d",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_AccountDisplay",
+        "get_AccountId",
+        "get_ClosingBalance",
+        "get_CreditAmount",
+        "get_DebitAmount",
+        "get_GroupKey",
+        "get_OpeningBalance",
+        "get_OutlineLevel",
+        "get_RowKind",
+        "op_Equality",
+        "op_Inequality",
+        "set_AccountDisplay",
+        "set_AccountId",
+        "set_ClosingBalance",
+        "set_CreditAmount",
+        "set_DebitAmount",
+        "set_GroupKey",
+        "set_OpeningBalance",
+        "set_OutlineLevel",
+        "set_RowKind"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Reports.TrialBalance.TrialBalanceReportRowKind",
+      "attributes": "Public, Sealed",
+      "contractSha256": "8f782484f2212154edc1d076230e9b3a0dd0dab331534fc3e0fc4efb1d62f3b8",
+      "methods": [],
+      "fields": [
+        "Detail",
+        "Group",
+        "Subtotal",
+        "value__"
+      ]
+    },
+    {
+      "name": "NGB.Accounting.Reports.TrialBalance.TrialBalanceReportTotals",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "95b54e5103e334627e74ea163f564a8edb4c8df280ca4ebb4c017a0182ea1b94",
+      "methods": [
+        ".ctor",
+        "<Clone>$",
+        "Deconstruct",
+        "Equals",
+        "GetHashCode",
+        "ToString",
+        "get_ClosingBalance",
+        "get_CreditAmount",
+        "get_DebitAmount",
+        "get_OpeningBalance",
+        "op_Equality",
+        "op_Inequality",
+        "set_ClosingBalance",
+        "set_CreditAmount",
+        "set_DebitAmount",
+        "set_OpeningBalance"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Reports.TrialBalance.TrialBalanceRow",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "a71c718ab88e7cbf5194e9addf0efc816d37a03616fb516b99469362d3858e2a",
+      "methods": [
+        ".ctor",
+        "get_AccountCode",
+        "get_AccountId",
+        "get_ClosingBalance",
+        "get_CreditAmount",
+        "get_DebitAmount",
+        "get_DimensionSetId",
+        "get_DimensionValueDisplays",
+        "get_Dimensions",
+        "get_OpeningBalance",
+        "set_AccountCode",
+        "set_AccountId",
+        "set_ClosingBalance",
+        "set_CreditAmount",
+        "set_DebitAmount",
+        "set_DimensionSetId",
+        "set_DimensionValueDisplays",
+        "set_Dimensions",
+        "set_OpeningBalance"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Turnovers.AccountingTurnover",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "9a3cca748fded7943083ae985b3d93c3d4f8cb11828d48a7922a5478b46195a3",
+      "methods": [
+        ".ctor",
+        "get_AccountCode",
+        "get_AccountId",
+        "get_CreditAmount",
+        "get_DebitAmount",
+        "get_DimensionSetId",
+        "get_Dimensions",
+        "get_Period",
+        "set_AccountCode",
+        "set_AccountId",
+        "set_CreditAmount",
+        "set_DebitAmount",
+        "set_DimensionSetId",
+        "set_Dimensions",
+        "set_Period"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.Accounting.Turnovers.AccountingTurnoverCalculator",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "a21ee4710c84c6ca7d6199fc1688fb1fbdff85754abf589d27bcde3bae7db37e",
+      "methods": [
+        ".ctor",
+        "Calculate"
+      ],
+      "fields": []
+    }
+  ]
+}

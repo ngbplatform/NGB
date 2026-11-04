@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "package": "NGB.Platform.AiAssistant.Bedrock",
+  "version": "3.4.0",
+  "packageSha256": "64ce53a7d70e5005959f5176d28e73640beda629ea79e770efaa1b1f3eacdf83",
+  "assembly": {
+    "name": "NGB.AiAssistant.Bedrock",
+    "version": "3.0.0.0",
+    "sha256": "1ffa683577e75d7ed98d73fab1577b23e407e1d970b6c4dd608a0cbeb778b4ad"
+  },
+  "contractSha256": "56d944d9068cbe84ff8c9a40cb06a96d42561ef297f124627d3ca1bbae14a92c",
+  "types": [
+    {
+      "name": "NGB.AiAssistant.Bedrock.BedrockAssistantOptions",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "7d7ac4ff266d46c017bc4ef34e19510b7f73086c9b1b8abcea29d790b494aa72",
+      "methods": [
+        ".ctor",
+        "get_Model",
+        "get_Region",
+        "set_Model",
+        "set_Region"
+      ],
+      "fields": [
+        "SectionName"
+      ]
+    },
+    {
+      "name": "NGB.AiAssistant.Bedrock.DependencyInjection",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "5fb25280bafeb6679d64d7cb95ca323db56a7a4e70e9e3a34d9ee183a113d7f2",
+      "methods": [
+        "AddNgbBedrockChatClient"
+      ],
+      "fields": []
+    }
+  ]
+}

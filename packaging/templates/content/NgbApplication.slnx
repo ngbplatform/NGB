@@ -2,4 +2,7 @@
   <Project Path="NgbApplication.Api/NgbApplication.Api.csproj" />
   <Project Path="NgbApplication.Migrator/NgbApplication.Migrator.csproj" />
   <Project Path="NgbApplication.BackgroundJobs/NgbApplication.BackgroundJobs.csproj" />
+  <Project Path="NgbApplication.Tests/NgbApplication.Tests.csproj" />
+  <Project Path="NgbApplication.IntegrationTests/NgbApplication.IntegrationTests.csproj" />
+  <Project Path="infrastructure/validation/Ngb.Validation.csproj" />
 </Solution>

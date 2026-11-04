@@ -57,7 +57,7 @@ test('upgrade preview is read-only and failed validation preserves all source an
   assert.equal(failed.status, 1)
   assert.match(failed.stderr, /dotnet restore/)
   assert.deepEqual(await applicationFiles(app), before)
-  assert.ok(!(await readdir(join(app, '.ngb'))).includes('operation.lock'))
+  assert.ok(!(await readdir(app)).includes('.ngb'))
 })
 
 test('candidate identities reject corruption, path traversal, duplicates and mismatched integrity', async t => {
@@ -103,10 +103,11 @@ test('applying dependency changes preserves user code and records recoverable or
   })
   assert.equal(await readFile(join(root, 'dependency.json'), 'utf8'), 'new')
   assert.equal(await readFile(join(root, 'user.cs'), 'utf8'), 'user code')
-  const [entry] = await readdir(join(root, '.ngb/upgrades'))
-  assert.equal(await readFile(join(root, '.ngb/upgrades', entry, 'before/dependency.json'), 'utf8'), 'old')
-  const receipt = JSON.parse(await readFile(join(root, '.ngb/upgrades', entry, 'plan.json'), 'utf8'))
-  assert.equal(receipt.files['new.lock'], null)
+  const [entry] = await readdir(join(root, '.ngb/transactions'))
+  const receipt = JSON.parse(await readFile(join(root, '.ngb/transactions', entry, 'receipt.json'), 'utf8'))
+  const original = receipt.files.find(file => file.path === 'dependency.json').before
+  assert.equal(await readFile(join(root, '.ngb/transactions', entry, 'objects', original), 'utf8'), 'old')
+  assert.equal(receipt.files.find(file => file.path === 'new.lock').before, null)
 })
 
 test('user-owned local configuration and edited managed files are never overwritten', async t => {

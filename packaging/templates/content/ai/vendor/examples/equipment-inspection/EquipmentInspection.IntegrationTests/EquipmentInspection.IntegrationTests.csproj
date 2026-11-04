@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <IsTestProject>true</IsTestProject>
+        <OutputType>Exe</OutputType>
+        <GenerateProgramFile>false</GenerateProgramFile>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <None Update="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
+        <None Include="../MigrationFixtures/baseline.json" Link="migration-baseline.json" CopyToOutputDirectory="PreserveNewest" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="../EquipmentInspection.Api/EquipmentInspection.Api.csproj" />
+        <ProjectReference Include="../EquipmentInspection.BackgroundJobs/EquipmentInspection.BackgroundJobs.csproj" />
+        <ProjectReference Include="../EquipmentInspection.Migrator/EquipmentInspection.Migrator.csproj" />
+        <ProjectReference Include="../EquipmentInspection.Setup/EquipmentInspection.Setup.csproj" />
+        <ProjectReference Include="../EquipmentInspection.Definitions/EquipmentInspection.Definitions.csproj" />
+        <ProjectReference Include="../EquipmentInspection.Runtime/EquipmentInspection.Runtime.csproj" />
+        <ProjectReference Include="../EquipmentInspection.PostgreSql/EquipmentInspection.PostgreSql.csproj" />
+        <ProjectReference Include="../MigrationFixtures/Baseline/EquipmentInspection.MigrationBaseline.csproj" />
+        <ProjectReference Include="../MigrationFixtures/ChecksumDrift/EquipmentInspection.MigrationChecksumDrift.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <FrameworkReference Include="Microsoft.AspNetCore.App" />
+        <PackageReference Include="NGB.Platform.Api" Version="[$(NgbPlatformVersion)]" />
+        <PackageReference Include="NGB.Platform.BackgroundJobs" Version="[$(NgbPlatformVersion)]" />
+        <PackageReference Include="NGB.Platform.Runtime" Version="[$(NgbPlatformVersion)]" />
+        <PackageReference Include="NGB.Platform.Persistence" Version="[$(NgbPlatformVersion)]" />
+        <PackageReference Include="NGB.Platform.PostgreSql" Version="[$(NgbPlatformVersion)]" />
+        <PackageReference Include="NGB.Platform.PostgreSql.AspNetCore" Version="[$(NgbPlatformVersion)]" />
+        <PackageReference Include="NGB.Platform.Watchdog" Version="[$(NgbPlatformVersion)]" />
+        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
+        <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.13" />
+        <PackageReference Include="xunit" Version="2.9.3" />
+        <PackageReference Include="xunit.runner.visualstudio" Version="4.0.0" PrivateAssets="all" />
+        <PackageReference Include="coverlet.collector" Version="10.1.0" PrivateAssets="all" />
+        <PackageReference Include="Testcontainers" Version="4.15.0" />
+        <PackageReference Include="Testcontainers.Minio" Version="4.15.0" />
+        <PackageReference Include="Testcontainers.PostgreSql" Version="4.15.0" />
+    </ItemGroup>
+</Project>

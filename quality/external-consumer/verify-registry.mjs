@@ -21,11 +21,14 @@ for (const artifact of manifest.artifacts.filter(item => !item.path.endsWith('.s
   const npm = artifact.path.endsWith('.tgz')
   let url
   if (npm) {
-    const metadata = JSON.parse(await fetchRegistryBytes(`https://registry.npmjs.org/@ngbplatform%2fui/${manifest.version}`, registryOptions))
+    const name = basename(artifact.path) === `ngbplatform-cli-${manifest.version}.tgz` ? 'cli' : 'ui'
+    assert.equal(basename(artifact.path), `ngbplatform-${name}-${manifest.version}.tgz`, 'Unexpected npm artifact.')
+    const metadata = JSON.parse(await fetchRegistryBytes(`https://registry.npmjs.org/@ngbplatform%2f${name}/${manifest.version}`, registryOptions))
+    assert.equal(metadata.name, `@ngbplatform/${name}`)
     assert.equal(metadata.version, manifest.version)
     assert.equal(metadata.dist.integrity, artifact.integrity, 'npm registry integrity differs from the certified archive.')
     url = metadata.dist.tarball
-    assert.equal(new URL(url).origin, 'https://registry.npmjs.org')
+    assert.equal(url, `https://registry.npmjs.org/@ngbplatform/${name}/-/${name}-${manifest.version}.tgz`)
   } else {
     const id = basename(artifact.path).slice(0, -`.${manifest.version}.nupkg`.length).toLowerCase()
     url = `https://api.nuget.org/v3-flatcontainer/${id}/${manifest.version}/${id}.${manifest.version}.nupkg`

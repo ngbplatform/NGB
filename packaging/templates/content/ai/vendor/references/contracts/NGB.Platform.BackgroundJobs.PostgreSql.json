@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "package": "NGB.Platform.BackgroundJobs.PostgreSql",
+  "version": "3.4.0",
+  "packageSha256": "bd512cc85f0997c344a588884a66f33c1021262425119b9e7a93ee700f55de86",
+  "assembly": {
+    "name": "NGB.BackgroundJobs.PostgreSql",
+    "version": "3.0.0.0",
+    "sha256": "280d4d4ea40753be84e8acbb6578c195055ba7a2b3bc71229f839f223489eef6"
+  },
+  "contractSha256": "10c12a4f26ca7e577c3c680f2307afeddc3ca980ebe4eb6164f75162cd5d3506",
+  "types": [
+    {
+      "name": "NGB.BackgroundJobs.PostgreSql.DependencyInjection.PostgresBackgroundJobsServiceCollectionExtensions",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "c6868205fcb41e85fdc808ca8ec35d84c2ebeda8efc1c8970f3f3aac9df6709c",
+      "methods": [
+        "AddNgbPostgresBackgroundJobsAdapter"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.BackgroundJobs.PostgreSql.PostgresHangfireJobStorageFactory",
+      "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "contractSha256": "47c7ccff449a0fc21d89f984571ba96c1d75f414dadadb9f5cc08750e1ada304",
+      "methods": [
+        "Create"
+      ],
+      "fields": []
+    },
+    {
+      "name": "NGB.BackgroundJobs.PostgreSql.PostgresRecurringJobHashBatchReader",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "41398720d52d065b247aa1db1375a0cf2ef5f936627477d6c2167f8c83e08265",
+      "methods": [
+        ".ctor",
+        "GetManyAsync"
+      ],
+      "fields": []
+    }
+  ]
+}

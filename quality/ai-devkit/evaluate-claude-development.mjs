@@ -1,0 +1,413 @@
+import assert from 'node:assert/strict'
+import { execFile, spawn } from 'node:child_process'
+import { createHash } from 'node:crypto'
+import { closeSync, createReadStream, openSync, writeSync } from 'node:fs'
+import { lstat, mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises'
+import { homedir } from 'node:os'
+import { basename, dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { promisify } from 'node:util'
+import { applicationFiles, loadCandidate, managedPackageFiles } from '../../packaging/templates/content/infrastructure/ngb/application.mjs'
+import { digest } from '../../packaging/templates/content/infrastructure/ngb/kit-contracts.mjs'
+import { executionEnvironment, runTool } from '../../packaging/templates/content/infrastructure/ngb/process.mjs'
+import { assertConsumerIsolation, assertOutsideRepository } from '../external-consumer/contracts.mjs'
+import { requiresFrontendAcceptance } from './development-evidence.mjs'
+import { createAgentOutputRedactor, redactAgentOutput } from './agent-output.mjs'
+
+assert.ok(process.argv.length === 8 || (process.argv.length === 9 && process.argv[8] === '--preflight-only'),
+  'Usage: node evaluate-claude-development.mjs <task> <root|subdirectory> <candidate> <prepared-fixture> <new-output> <claude-binary> [--preflight-only]')
+const taskId = process.argv[2]
+const workingDirectory = process.argv[3]
+const repository = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
+const candidate = await loadCandidate(resolve(process.argv[4]))
+const fixture = await realpath(resolve(process.argv[5]))
+const application = await realpath(join(fixture, 'application'))
+const output = resolve(process.argv[6])
+const executable = await realpath(resolve(process.argv[7]))
+const preflightOnly = process.argv[8] === '--preflight-only'
+assertOutsideRepository(repository, fixture)
+assertOutsideRepository(application, output)
+assert.ok(['existing-document-change', 'new-catalog', 'report-extension', 'permission-correction'].includes(taskId))
+assert.ok(['root', 'subdirectory'].includes(workingDirectory))
+assert.equal(process.version, 'v24.19.0', 'Use the frozen Node toolchain.')
+const matrixBytes = await readFile(new URL('./agent-evaluations.json', import.meta.url))
+const profileBytes = await readFile(new URL('./claude-development-profile.json', import.meta.url))
+const oracleBytes = await readFile(new URL(`./evaluation-oracles/${taskId}.mjs`, import.meta.url))
+const runnerBytes = await readFile(fileURLToPath(import.meta.url))
+const redactorBytes = await readFile(new URL('./agent-output.mjs', import.meta.url))
+const matrix = JSON.parse(matrixBytes)
+const profile = JSON.parse(profileBytes)
+const task = matrix.tasks.find(value => value.id === taskId)
+assert.equal(process.platform, matrix.platform)
+assert.equal(process.arch, matrix.architecture)
+assert.equal(candidate.version, matrix.version)
+assert.ok(task && profile.maximumSecondsPerAttempt <= matrix.maximumSecondsPerAttempt)
+const fixtureBytes = await readFile(join(fixture, 'fixture.json'))
+const prepared = JSON.parse(fixtureBytes)
+const beforeBytes = await readFile(join(fixture, 'before.json'))
+const before = JSON.parse(beforeBytes)
+assert.equal(prepared.task, taskId)
+assert.equal(prepared.candidateSha256, candidate.manifestSha256)
+assert.equal(prepared.matrixSha256, digest(matrixBytes))
+assert.equal(prepared.beforeSha256, digest(beforeBytes))
+assert.equal(prepared.runnerSha256, digest(await readFile(new URL('./prepare-development-fixture.mjs', import.meta.url))))
+assert.equal(prepared.application, application)
+assert.equal(digest(await readFile(join(application, '.ngb/packages.json'))), prepared.managedPackagesSha256)
+const managedBefore = await managedPackageFiles(application)
+const inventory = async () => Object.fromEntries(Object.entries(await applicationFiles(application))
+  .map(([path, bytes]) => [path, digest(bytes)]).sort(([left], [right]) => left.localeCompare(right, 'en')))
+assert.deepEqual(await inventory(), before, 'Start each attempt from a fresh prepared application.')
+await assertConsumerIsolation(application, repository)
+for (const path of Object.keys(before)) {
+  assert.ok(!/(^|\/)\.env(?:\.|$)|(^|\/)\.codex\/|(^|\/)\.mcp\.json$|^\.claude\/settings/.test(path),
+    'The application must not contain credentials or client settings.')
+}
+await mkdir(output, { mode: 0o700 })
+const scratch = join(fixture, 'agent-scratch')
+await mkdir(scratch, { mode: 0o700 })
+// Claude falls back to a shared system directory when its temporary path is long.
+// Keep this directory private and short enough for the native shell sandbox.
+const temporary = await realpath(await mkdtemp('/private/tmp/ngb-cl-'))
+const environment = executionEnvironment(scratch, { TMPDIR: temporary })
+const agentEnvironment = Object.fromEntries(['HOME', 'USER', 'LOGNAME', 'LANG', 'LC_ALL', 'TERM']
+  .filter(name => process.env[name] !== undefined).map(name => [name, process.env[name]]))
+for (const [name, value] of Object.entries(environment)) {
+  if (!['HOME', 'USERPROFILE'].includes(name)) agentEnvironment[name] = value
+}
+Object.assign(agentEnvironment, profile.environment)
+agentEnvironment.CLAUDE_CODE_TMPDIR = temporary
+const abort = new AbortController()
+const cancel = () => abort.abort()
+process.once('SIGINT', cancel)
+process.once('SIGTERM', cancel)
+const exec = promisify(execFile)
+const options = { cwd: application, env: agentEnvironment, encoding: 'utf8', signal: abort.signal,
+  timeout: 15000, maxBuffer: 1024 * 1024 }
+const inputs = {
+  version: candidate.version,
+  artifactManifestSha256: candidate.manifestSha256,
+  artifactsSha256: Object.fromEntries(Object.entries(candidate.files).map(([path, bytes]) => [path, digest(bytes)])),
+  kitSha256: prepared.kitSha256,
+  matrixSha256: digest(matrixBytes),
+  profileSha256: digest(profileBytes),
+  oracleSha256: digest(oracleBytes),
+  runnerSha256: digest(runnerBytes),
+  outputRedactorSha256: digest(redactorBytes),
+  fixtureSha256: digest(fixtureBytes),
+  fixturePreparerSha256: prepared.runnerSha256,
+  beforeSha256: digest(beforeBytes),
+  managedPackagesSha256: prepared.managedPackagesSha256,
+  validationSha256: prepared.validationSha256,
+}
+const prefix = `attempts/claude/${workingDirectory}/${taskId}`
+const report = { schemaVersion: 1, scope: 'real-agent-development', status: 'not-ready',
+  profile: profile.id, inputs, application, startedAt: new Date().toISOString(), attempts: [] }
+const save = async (path, value) => {
+  const bytes = Buffer.isBuffer(value) ? value : typeof value === 'string' ? value : `${JSON.stringify(value, null, 2)}\n`
+  await mkdir(dirname(join(output, path)), { recursive: true })
+  await writeFile(join(output, path), bytes, { mode: 0o600, flag: 'wx' })
+  return { path, sha256: digest(bytes) }
+}
+const invoke = async (name, tool, args, cwd = application) => {
+  const result = await runTool(tool, args, { cwd, env: environment, signal: abort.signal,
+    timeoutMs: 600000, maxBytes: 8 * 1024 * 1024 })
+  await save(`preparation/${name}.log`, redactAgentOutput(result.output))
+  assert.equal(result.state, 'passed', `Evaluation preparation failed: ${name}.`)
+  return result.output
+}
+
+// Keep stdout and stderr separate. Kill the process group on cancellation,
+// deadline or excessive output, so a timed-out client cannot leave build tools.
+async function runAgent(args, cwd) {
+  const stdoutJournal = openSync(join(output, `${prefix}/live-transcript.jsonl`), 'wx', 0o600)
+  let stderrJournal
+  try {
+    stderrJournal = openSync(join(output, `${prefix}/live-stderr.log`), 'wx', 0o600)
+  } catch (error) {
+    closeSync(stdoutJournal)
+    throw error
+  }
+  return await new Promise(resolveResult => {
+    const child = spawn(executable, args, { cwd, env: agentEnvironment, detached: true,
+      shell: false, stdio: ['ignore', 'pipe', 'pipe'] })
+    const stdout = []
+    const stderr = []
+    const stdoutRedactor = createAgentOutputRedactor()
+    const stderrRedactor = createAgentOutputRedactor()
+    let bytes = 0
+    let failure = null
+    const stop = reason => {
+      failure ??= reason
+      if (!child.pid) return
+      try {
+        process.kill(-child.pid, 'SIGKILL')
+      } catch (error) {
+        if (error.code !== 'ESRCH') child.kill('SIGKILL')
+      }
+    }
+    const persist = (target, journal, text) => {
+      const chunk = Buffer.from(text)
+      let offset = 0
+      while (offset < chunk.length) offset += writeSync(journal, chunk, offset)
+      target.push(chunk)
+    }
+    const collect = (target, journal, redactor, chunk) => {
+      bytes += chunk.length
+      if (bytes > 32 * 1024 * 1024) stop('output-limit')
+      else {
+        try {
+          persist(target, journal, redactor.write(chunk))
+        } catch {
+          stop('journal-write-failed')
+        }
+      }
+    }
+    const onAbort = () => stop('cancelled')
+    const timer = setTimeout(() => stop('timeout'), profile.maximumSecondsPerAttempt * 1000)
+    abort.signal.addEventListener('abort', onAbort, { once: true })
+    child.stdout.on('data', chunk => collect(stdout, stdoutJournal, stdoutRedactor, chunk))
+    child.stderr.on('data', chunk => collect(stderr, stderrJournal, stderrRedactor, chunk))
+    child.on('error', error => { failure = error.code ?? 'spawn-error' })
+    child.on('close', (exitCode, signal) => {
+      clearTimeout(timer)
+      abort.signal.removeEventListener('abort', onAbort)
+      try {
+        persist(stdout, stdoutJournal, stdoutRedactor.end())
+        persist(stderr, stderrJournal, stderrRedactor.end())
+      } catch {
+        failure ??= 'journal-write-failed'
+      }
+      closeSync(stdoutJournal)
+      closeSync(stderrJournal)
+      resolveResult({ exitCode, failure: failure ?? signal,
+        stdout: Buffer.concat(stdout).toString('utf8'), stderr: Buffer.concat(stderr).toString('utf8') })
+    })
+    if (abort.signal.aborted) onAbort()
+  })
+}
+
+try {
+  for (const name of ['CLAUDE.md', 'skills', 'commands', 'agents']) {
+    try {
+      const path = join(homedir(), '.claude', name)
+      const details = await lstat(path)
+      assert.ok(details.isDirectory() && (await readdir(path)).length === 0, 'Unexpected personal Claude guidance.')
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error
+    }
+  }
+  for (let parent = fixture; ; parent = dirname(parent)) {
+    for (const name of ['CLAUDE.md', 'CLAUDE.local.md', 'AGENTS.md', '.claude']) {
+      await assert.rejects(lstat(join(parent, name)), { code: 'ENOENT' }, 'Unexpected ancestor instructions.')
+    }
+    if (dirname(parent) === parent) break
+  }
+  const version = (await exec(executable, ['--version'], options)).stdout.trim()
+  assert.equal(version, `${profile.clientVersion} (Claude Code)`, 'The frozen client version changed.')
+  const authentication = JSON.parse((await exec(executable, ['auth', 'status'], options)).stdout)
+  assert.ok(authentication.loggedIn && authentication.authMethod === 'claude.ai',
+    'Use the existing subscription login; do not inherit separate API credentials.')
+  const binaryHash = createHash('sha256')
+  for await (const chunk of createReadStream(executable)) binaryHash.update(chunk)
+  report.client = { version: profile.clientVersion, sha256: binaryHash.digest('hex') }
+  report.authentication = { method: authentication.authMethod, subscriptionType: authentication.subscriptionType }
+  await save('frozen/profile.json', profileBytes)
+  await save('frozen/matrix.json', matrixBytes)
+  await save('frozen/runner.mjs', runnerBytes)
+  await save('frozen/oracle.mjs', oracleBytes)
+  await save('frozen/fixture.json', fixtureBytes)
+  await save('frozen/before.json', beforeBytes)
+  for (const [path, bytes] of Object.entries(candidate.files).filter(([path]) => path.endsWith('.nupkg'))) {
+    assert.equal(digest(await readFile(join(fixture, 'feed', basename(path)))), digest(bytes),
+      'The prepared feed differs from the exact candidate.')
+  }
+  assert.equal(digest(await readFile(join(fixture, 'ui.tgz'))), digest(candidate.files[candidate.ui]))
+  assert.equal((await invoke('dotnet-version', 'dotnet', ['--version'])).trim(), '10.0.401')
+  const properties = ['-m:1', '-nodeReuse:false', '-p:UseSharedCompilation=false']
+  await invoke('restore', 'dotnet', ['restore', 'EquipmentInspection.slnx', '--locked-mode',
+    '--configfile', 'NuGet.Local.Config', ...properties])
+  const validation = JSON.parse(await invoke('validate', 'node', ['infrastructure/ngb.mjs', 'validate', '--format', 'json']))
+  assert.equal(validation.status, 'passed', 'The initial CLI inspection must pass before inference.')
+  if (requiresFrontendAcceptance(taskId)) {
+    await invoke('frontend-cache', 'npm', ['cache', 'add', join(fixture, 'ui.tgz'), '--ignore-scripts'], join(application, 'web'))
+    await invoke('frontend-install', 'npm', ['ci', '--ignore-scripts', '--no-audit', '--no-fund'], join(application, 'web'))
+  }
+  assert.deepEqual(await inventory(), before, 'Dependency preparation changed source inputs.')
+  const dotnetRoot = await realpath(dirname((await exec('/usr/bin/which', ['dotnet'], options)).stdout.trim()))
+  const nodeRoot = dirname(dirname(await realpath(process.execPath)))
+  const preflightPath = join(fixture, 'sandbox-preflight.mjs')
+  await writeFile(preflightPath, `import assert from 'node:assert/strict'
+import { closeSync, openSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+const [application, scratch, denied, repository] = process.argv.slice(2)
+assert.ok(readFileSync(application + '/EquipmentInspection.slnx').length > 0)
+writeFileSync(application + '/.evaluation-write-probe', 'synthetic')
+unlinkSync(application + '/.evaluation-write-probe')
+writeFileSync(scratch + '/write-probe', 'synthetic')
+for (const path of [denied, repository + '/AGENTS.md']) {
+  assert.throws(() => readFileSync(path), 'Source outside the application must be denied: ' + path)
+}
+assert.throws(() => {
+  const file = openSync(application + '/ai/vendor/instructions.md', 'r+')
+  closeSync(file)
+}, 'Managed guidance must be read-only.')
+assert.equal(execFileSync('dotnet', ['--version'], { encoding: 'utf8' }).trim(), '10.0.401')
+assert.equal(process.version, 'v24.19.0')
+execFileSync('dotnet', ['build', application + '/EquipmentInspection.slnx', '--no-restore', '-c', 'Release',
+  '-m:1', '-nodeReuse:false', '-p:UseSharedCompilation=false'],
+{ cwd: application, timeout: 120000, maxBuffer: 8 * 1024 * 1024 })
+console.log('Native sandbox boundary and pinned toolchains passed.')
+`, { flag: 'wx', mode: 0o400 })
+  const protectedPaths = ['ai', '.agents', '.claude', '.codex', '.git', 'AGENTS.md', 'CLAUDE.md',
+    '.ngb/nuget', '.ngb/packages.json', 'NuGet.Local.Config', 'web/.ngb-packages']
+    .map(path => join(application, path))
+  const filesystem = {
+    denyRead: ['/Users', '/Volumes', '/private/tmp', '/private/var/folders'],
+    allowRead: [application, scratch, temporary, nodeRoot, dotnetRoot, preflightPath],
+    allowWrite: [application, scratch, temporary],
+    denyWrite: [...protectedPaths, join(scratch, 'nuget')],
+  }
+  const settings = structuredClone(profile.settings)
+  settings.sandbox.filesystem = { ...settings.sandbox.filesystem, ...filesystem }
+  const automaticTools = profile.tools.filter(tool => !['Edit', 'Write'].includes(tool))
+  settings.permissions.allow = [...automaticTools]
+  for (const path of [application, scratch]) {
+    for (const tool of ['Edit', 'Write']) settings.permissions.allow.push(`${tool}(/${path}/**)`)
+  }
+  for (const path of [...protectedPaths, join(scratch, 'nuget')]) {
+    for (const tool of ['Edit', 'Write']) {
+      settings.permissions.deny.push(`${tool}(/${path})`, `${tool}(/${path}/**)`)
+    }
+  }
+  const cwd = workingDirectory === 'root' ? application : join(application, 'EquipmentInspection.Api')
+  const sandboxRoot = join(repository, 'artifacts/certification-tools/anthropic-sandbox-0.0.81')
+  const sandboxPackage = join(sandboxRoot, 'node_modules/@anthropic-ai/sandbox-runtime')
+  const sandboxMetadata = JSON.parse(await readFile(join(sandboxPackage, 'package.json')))
+  const sandboxLock = await readFile(join(sandboxRoot, 'package-lock.json'))
+  const locked = JSON.parse(sandboxLock).packages['node_modules/@anthropic-ai/sandbox-runtime']
+  assert.equal(sandboxMetadata.version, profile.sandboxPreflight.version)
+  assert.equal(locked.version, profile.sandboxPreflight.version)
+  assert.equal(locked.integrity, profile.sandboxPreflight.integrity)
+  const sandboxCli = join(sandboxPackage, sandboxMetadata.bin.srt)
+  report.sandboxPreflight = { version: sandboxMetadata.version, lockSha256: digest(sandboxLock),
+    cliSha256: digest(await readFile(sandboxCli)) }
+  const sandboxSettingsPath = join(fixture, 'sandbox-preflight.json')
+  await writeFile(sandboxSettingsPath, JSON.stringify({ filesystem, network: settings.sandbox.network }, null, 2),
+    { flag: 'wx', mode: 0o400 })
+  const preflightArgs = [sandboxCli, '--settings', sandboxSettingsPath, '--', process.execPath, preflightPath,
+    application, scratch, join(fixture, 'before.json'), repository]
+  await save('preparation/sandbox-configuration.json', { args: preflightArgs, settings, filesystem })
+  try {
+    const preflight = await exec(process.execPath, preflightArgs, { ...options, cwd, timeout: 180000 })
+    await save('preparation/sandbox.log', redactAgentOutput(preflight.stdout + preflight.stderr))
+  } catch (error) {
+    await save('preparation/sandbox.log', redactAgentOutput((error.stdout ?? '') + (error.stderr ?? '')))
+    throw new Error(`Native sandbox preflight failed (${error.code ?? error.signal}); see the saved log.`)
+  }
+  assert.deepEqual(await inventory(), before, 'Sandbox preparation changed application source.')
+  if (preflightOnly) {
+    report.status = 'preflight-passed-not-evaluated'
+  } else {
+    const context = [
+      `Evaluation environment: the application root is ${application}.`,
+      'Exact public candidate dependencies are already restored.',
+      'Use the supplied PATH, DOTNET_CLI_HOME, NUGET_PACKAGES and TMPDIR; do not replace them.',
+      'After all source and test edits, build the complete EquipmentInspection.slnx with -c Release --no-restore -m:1 -nodeReuse:false -p:UseSharedCompilation=false.',
+      'Shell network and Docker are unavailable in this coding profile.',
+      'Backend and frontend test runners require local sockets, which this editing sandbox denies; they run in independent acceptance.',
+      'The application CLI test profiles create fresh isolated environments and may restore packages or require Docker; they are not executable in this offline editing profile.',
+      'Independent HTTP/provider/browser acceptance and the authored tests run after source review.',
+      'You may inspect installed public package files in NUGET_PACKAGES.',
+      'Keep installed guidance and existing build/dependency inputs unchanged.',
+      'Work without questions or human assistance.',
+    ].join(' ')
+    const prompt = `${task.prompt}\n\n${context}`
+    const args = ['--print', '--verbose', '--output-format', 'stream-json',
+      '--max-turns', String(profile.maximumTurnsPerAttempt),
+      '--max-budget-usd', String(profile.maximumEstimatedCostUsdPerAttempt),
+      '--tools', profile.tools.join(','), '--allowedTools', automaticTools.join(','),
+      '--permission-mode', profile.permissionMode, '--permission-prompts', 'none',
+      '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}', '--setting-sources', profile.settingSources.join(','),
+      '--settings', JSON.stringify(settings), '--no-chrome', '--no-session-persistence',
+      '--add-dir', application, '--add-dir', scratch, '--', prompt]
+    const configuration = { args, cwd,
+      environment: JSON.parse(redactAgentOutput(JSON.stringify(agentEnvironment))), profileSha256: inputs.profileSha256,
+      clientSha256: report.client.sha256, promptSha256: digest(prompt) }
+    const configurationArtifact = await save(`${prefix}/configuration.json`, configuration)
+    await save(`${prefix}/prompt.txt`, prompt)
+    const attempt = { client: 'claude', clientVersion: profile.clientVersion, provider: 'anthropic',
+      workingDirectory, task: taskId, attempt: 1, state: 'not-run', platform: process.platform, architecture: process.arch,
+      humanAssistance: matrix.humanAssistance, configurationSha256: digest(JSON.stringify(configuration)),
+      oracleSha256: inputs.oracleSha256, profileSha256: inputs.profileSha256, runnerSha256: inputs.runnerSha256,
+      configuration: configurationArtifact,
+      outputRedactorSha256: inputs.outputRedactorSha256,
+      redactorSource: await save(`${prefix}/redactor.mjs`, redactorBytes),
+      profileSource: await save(`${prefix}/profile.json`, profileBytes),
+      runnerSource: await save(`${prefix}/runner.mjs`, runnerBytes) }
+    report.attempts.push(attempt)
+    await save(`${prefix}/started.json`, { ...attempt, state: 'running', inputs, startedAt: new Date().toISOString() })
+    const started = performance.now()
+    console.log(`Evaluating Claude ${taskId} from ${workingDirectory}; one bounded attempt.`)
+    const result = await runAgent(args, cwd)
+    attempt.elapsedSeconds = (performance.now() - started) / 1000
+    attempt.exitCode = result.exitCode
+    attempt.transcript = await save(`${prefix}/transcript.jsonl`, result.stdout)
+    await save(`${prefix}/stderr.log`, result.stderr)
+    const after = await inventory()
+    const producedFiles = await applicationFiles(application)
+    for (const [path, bytes] of Object.entries(producedFiles)) {
+      if (after[path] !== before[path]) await save(`${prefix}/produced/${path}`, bytes)
+    }
+    attempt.producedTreeSha256 = digest(JSON.stringify(Object.entries(after).sort()))
+    attempt.fixtureManifest = await save(`${prefix}/fixture.json`, { inputs, before, after })
+    attempt.diff = await save(`${prefix}/diff.json`, {
+      added: Object.keys(after).filter(path => !Object.hasOwn(before, path)),
+      removed: Object.keys(before).filter(path => !Object.hasOwn(after, path)),
+      modified: Object.keys(before).filter(path => Object.hasOwn(after, path) && before[path] !== after[path]),
+    })
+    try {
+      assert.ok(result.exitCode === 0 && !result.failure, `Agent process failed: ${result.failure ?? result.exitCode}.`)
+      const events = result.stdout.trim().split('\n').map(line => JSON.parse(line))
+      const initialized = events.find(event => event.type === 'system' && event.subtype === 'init')
+      const completed = events.findLast(event => event.type === 'result')
+      assert.ok(initialized && completed && completed.subtype === 'success' && !completed.is_error,
+        'Missing successful client output.')
+      attempt.model = initialized.model
+      attempt.usage = completed.usage
+      attempt.estimatedCostUsd = completed.total_cost_usd
+      attempt.discoveredSkills = initialized.skills
+      assert.deepEqual(initialized.mcp_servers, [], 'Unexpected MCP servers contaminated the attempt.')
+      assert.ok(initialized.skills?.includes('ngb-documents'), 'Claude did not natively discover project skills.')
+      assert.ok(Number.isFinite(completed.total_cost_usd) && completed.total_cost_usd >= 0
+        && completed.total_cost_usd <= profile.maximumEstimatedCostUsdPerAttempt,
+      'Reported estimated cost exceeded the frozen acceptance ceiling.')
+      const calls = events.flatMap(event => event.type === 'assistant' ? event.message.content : [])
+        .filter(item => item.type === 'tool_use')
+      assert.ok(calls.every(call => profile.tools.includes(call.name)), 'An unexpected external tool was invoked.')
+      attempt.toolNames = [...new Set(calls.map(call => call.name))]
+      await save(`${prefix}/answer.md`, completed.result ?? '')
+      assert.equal(digest(await readFile(join(application, '.ngb/packages.json'))), prepared.managedPackagesSha256)
+      assert.deepEqual(await managedPackageFiles(application), managedBefore, 'Managed candidate packages changed.')
+      attempt.state = 'completed-awaiting-independent-acceptance'
+    } catch (error) {
+      attempt.state = 'failed'
+      attempt.failure = error.message
+    }
+    await save(`${prefix}/attempt.json`, attempt)
+    console.log(`Claude ${taskId}: ${attempt.state}.`)
+    if (attempt.state === 'failed') process.exitCode = 2
+  }
+} catch (error) {
+  report.failure = error.message
+  process.exitCode = 1
+} finally {
+  process.removeListener('SIGINT', cancel)
+  process.removeListener('SIGTERM', cancel)
+  report.completedAt = new Date().toISOString()
+  try {
+    await save('development.json', report)
+    console.log(`Claude development evaluation: ${report.status}. ${report.failure ?? ''}`)
+  } finally {
+    await rm(temporary, { recursive: true, force: true })
+  }
+}

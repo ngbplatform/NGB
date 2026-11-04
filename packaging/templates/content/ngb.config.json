@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "solution": "NgbApplication.slnx",
+  "projects": [
+    {
+      "path": "NgbApplication.Api/NgbApplication.Api.csproj",
+      "role": "api"
+    },
+    {
+      "path": "NgbApplication.Migrator/NgbApplication.Migrator.csproj",
+      "role": "migrator"
+    },
+    {
+      "path": "NgbApplication.BackgroundJobs/NgbApplication.BackgroundJobs.csproj",
+      "role": "worker"
+    },
+    {
+      "path": "NgbApplication.Tests/NgbApplication.Tests.csproj",
+      "role": "tests"
+    },
+    {
+      "path": "NgbApplication.IntegrationTests/NgbApplication.IntegrationTests.csproj",
+      "role": "tests"
+    },
+    {
+      "path": "infrastructure/validation/Ngb.Validation.csproj",
+      "role": "tooling"
+    }
+  ],
+  "frontend": {
+    "path": "web"
+  },
+  "tests": {
+    "unit": [
+      "NgbApplication.Tests/NgbApplication.Tests.csproj"
+    ],
+    "integration": [
+      "NgbApplication.IntegrationTests/NgbApplication.IntegrationTests.csproj"
+    ],
+    "e2e": {
+      "config": "web/playwright.config.ts"
+    }
+  }
+}
