@@ -15,9 +15,9 @@
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Include="Anthropic" Version="12.60.0" />
-        <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.13" />
-        <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.13" />
+        <PackageReference Include="Anthropic" Version="13.5.0" />
+        <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.14" />
+        <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.14" />
     </ItemGroup>
 
 </Project>

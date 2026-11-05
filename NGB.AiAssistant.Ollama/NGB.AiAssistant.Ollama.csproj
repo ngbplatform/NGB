@@ -16,9 +16,9 @@
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Include="OllamaSharp" Version="5.5.0" />
-        <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.13" />
-        <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.13" />
+        <PackageReference Include="OllamaSharp" Version="5.5.2" />
+        <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.14" />
+        <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.14" />
     </ItemGroup>
 
 </Project>

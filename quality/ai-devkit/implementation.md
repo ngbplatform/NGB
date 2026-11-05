@@ -10,6 +10,12 @@ coverage, compatibility and rebuilt package evidence. Earlier limitations and
 candidate results below are historical. The full Backend/Frontend run remains
 with the user and is not claimed by these targeted results.
 
+The 2026-11-05 dependency refresh also synchronizes the current Kit example,
+template and acceptance projects with the user's updated platform packages.
+[Dependency refresh evidence](findings/dependency-refresh-2026-11-05.md) records
+the removal of the stale-package MCP NU1608 warning, rebuilt artifacts and
+targeted consumer verification.
+
 ## Verified architecture
 
 - The repository and application entry points share

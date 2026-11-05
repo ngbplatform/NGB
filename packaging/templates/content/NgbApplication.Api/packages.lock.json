@@ -6,9 +6,9 @@
         "type": "Direct",
         "requested": "[3.4.0, 3.4.0]",
         "resolved": "3.4.0",
-        "contentHash": "KOyj1K9XUYDEhFu8qv/ygtsLgeDTUlE0/kTVhaTj6soXdu4lBBpwxMH/r7Uu+ERVAxYuCXv/0vZyxDISGnr9iw==",
+        "contentHash": "fn0wViTzD67njKjEBxIagOTmXxpCUzDZlL1hU+eTJ68A6i3+ue/jfwX3AiUaZ2oghpAC/4mYCMD2d+mc4CBfOQ==",
         "dependencies": {
-          "ModelContextProtocol": "2.2.0",
+          "ModelContextProtocol": "2.3.1",
           "NGB.Platform.AiAssistant": "3.4.0",
           "NGB.Platform.Contracts": "3.4.0",
           "NGB.Platform.Core": "3.4.0",
@@ -22,21 +22,21 @@
         "type": "Direct",
         "requested": "[3.4.0, 3.4.0]",
         "resolved": "3.4.0",
-        "contentHash": "hxKX6MR7UMNYRy+fQuRI/SoDauL0DXEdpHYkUADrLlIJLWuNTYDNdz26ONluwLQ55qoYXOG4FDxlIQh3OOfI3w==",
+        "contentHash": "FHe4QNpk3NxwO46esDWLhSujEAzkuefaiRJXJ8ZmwmlDgATqL6qcciM69E6F21PzNWrLEpEK8f6HPg4Rwf4YaA==",
         "dependencies": {
           "NGB.Platform.AiAssistant": "3.4.0",
           "NGB.Platform.Tools": "3.4.0",
-          "OllamaSharp": "5.5.0"
+          "OllamaSharp": "5.5.2"
         }
       },
       "NGB.Platform.Api": {
         "type": "Direct",
         "requested": "[3.4.0, 3.4.0]",
         "resolved": "3.4.0",
-        "contentHash": "MozlR5/v113161/SQHm0TjxtrUfQ8aMd5U/w29vqDJLIEwWgi27gpuy2JA6FYMcDPo9zxEN2LsC/xCGyg1RkaA==",
+        "contentHash": "CQY810aVWxzGE4/Mq0/XRBF2HWS1w6nUAXOMCb4QUDWfpnRkLsGYmlcBQzssj6CjOPEi8CybtxRHGTIqn0x1Yw==",
         "dependencies": {
-          "Microsoft.AspNetCore.Authentication.JwtBearer": "10.0.13",
-          "Microsoft.AspNetCore.OpenApi": "10.0.13",
+          "Microsoft.AspNetCore.Authentication.JwtBearer": "10.0.14",
+          "Microsoft.AspNetCore.OpenApi": "10.0.14",
           "Microsoft.Extensions.Http.Resilience": "10.11.0",
           "NGB.Platform.Accounting": "3.4.0",
           "NGB.Platform.Application.Abstractions": "3.4.0",
@@ -54,7 +54,7 @@
         "type": "Direct",
         "requested": "[3.4.0, 3.4.0]",
         "resolved": "3.4.0",
-        "contentHash": "MaM14ufn+NE6prs+PrW4SF+nhV9ryy2vbBjGA0yE7QMw6zY6glw0Jo/zGJlFDV/p63KBBAZcr1VOj6jR9QI3uQ==",
+        "contentHash": "tEFLv7tO1JQoFy39X2OvjCELrxdy4S+Ska0HG8OM6c5TBwO02+lCdG7s0EfKj5TZ+Agu+qeDNyPlIjMtRKy3uA==",
         "dependencies": {
           "NGB.Platform.Contracts": "3.4.0",
           "NGB.Platform.Core": "3.4.0"
@@ -64,7 +64,7 @@
         "type": "Direct",
         "requested": "[3.4.0, 3.4.0]",
         "resolved": "3.4.0",
-        "contentHash": "uRi7PzmL4SGys6jbaqqTupQlKMcYLoYbRFipdgCpg4UVdHFOtU3CGs6wfhY4dRmY6/khUWe8KPAhXW6ex0/tkQ==",
+        "contentHash": "UsIrP6acFel59QA7RoNqS700AlQbadjuqdmn6oQ1e2ng3RcrIDk1s4i1LhvuYEMt3Ea2vCOfmqpJmbfEPH6niA==",
         "dependencies": {
           "NGB.Platform.Tools": "3.4.0"
         }
@@ -73,7 +73,7 @@
         "type": "Direct",
         "requested": "[3.4.0, 3.4.0]",
         "resolved": "3.4.0",
-        "contentHash": "lHZh824m/JD9BjrC4rhjRdYjXNlTnWgPPkE7qTd/hA1YEbH3ZM0WDCZk0C1dnl7XFXPERSrzn9+6zyw7WLVpgw==",
+        "contentHash": "Mqch45dHCfio4sywnMjam9n3BrfCaGq4e5hoNcKmGWVBSWK0YpSga7CfAB0crsj5htpnxJL6XnM6EGWFZR+qvg==",
         "dependencies": {
           "NGB.Platform.Tools": "3.4.0"
         }
@@ -82,12 +82,12 @@
         "type": "Direct",
         "requested": "[3.4.0, 3.4.0]",
         "resolved": "3.4.0",
-        "contentHash": "HI5QYzJoMm5ZNG2tCpxixQg3UwlRZAfqPZeSJfEuJLLw97bqetd9Kbg23NN4XgYXe5vW1Ia1d4r5sqa69jHu9g==",
+        "contentHash": "xtym0Yc0DZRBkWjXTFeUHWa6o3UIjBps7yV7chGFllhdHr/GwJETveaE30uaPrC5Xi6V3myYV5Zjk+hlCecIAA==",
         "dependencies": {
           "AspNetCore.HealthChecks.UI.Client": "9.0.0",
           "IdentityModel": "5.2.0",
-          "Microsoft.AspNetCore.Authentication.JwtBearer": "10.0.13",
-          "Microsoft.AspNetCore.Authentication.OpenIdConnect": "10.0.13",
+          "Microsoft.AspNetCore.Authentication.JwtBearer": "10.0.14",
+          "Microsoft.AspNetCore.Authentication.OpenIdConnect": "10.0.14",
           "NGB.Platform.Tools": "3.4.0",
           "Serilog.AspNetCore": "10.0.0"
         }
@@ -96,9 +96,9 @@
         "type": "Direct",
         "requested": "[3.4.0, 3.4.0]",
         "resolved": "3.4.0",
-        "contentHash": "0xvGLoCZREAAwcJNR/YxcS1v4IDbgU2KmECufo1HBDMNxfxDcHK5xVagkqhnJ9EQs7+Fm+6AUJRO1wWYRZVz8A==",
+        "contentHash": "SD82ySGqk+gwpb92dmVVHKGC+RnFCxq9gAjA97zt+nt8HIcWYEolI7wyyW1CudqBo4Jbawcb/uR+GMeWF3p+vg==",
         "dependencies": {
-          "ModelContextProtocol.AspNetCore": "2.2.0",
+          "ModelContextProtocol.AspNetCore": "2.3.1",
           "NGB.Platform.Application.Abstractions": "3.4.0",
           "NGB.Platform.Contracts": "3.4.0",
           "NGB.Platform.Core": "3.4.0",
@@ -112,7 +112,7 @@
         "type": "Direct",
         "requested": "[3.4.0, 3.4.0]",
         "resolved": "3.4.0",
-        "contentHash": "DgjEtTpZyAU9YWMBx01uNDNUAKBxfyc/w4Map4+XBYZI4xPZzIX2+kw4t3wJ8MKhBjFKWjN118KFz1DXxVFnTg==",
+        "contentHash": "xMxHM+G02xuPyDuG86Q7+ACqBd9YdGaHmPftroFo/PjAI/axTrWhq0dogI3CGHjSduiDDIphZEh7NMXfHu+jrg==",
         "dependencies": {
           "Dapper": "2.1.89",
           "Evolve": "3.2.0",
@@ -134,7 +134,7 @@
         "type": "Direct",
         "requested": "[3.4.0, 3.4.0]",
         "resolved": "3.4.0",
-        "contentHash": "4ifADpQegzQqVoJyOPp5oPcz1QC9zqAidvpJpy7W9oUguLCeudMrpwL9RvxDGt06yVmeC/Nv9aelvaTwwqhH8A==",
+        "contentHash": "Ju+3e3uFTqMMco1YSFexEg4iNPyKDfgewYgneXTJSFhYj9XdPSgg9zsuW1B4yBMTT04kI3eeydWVcz5rH9wUlw==",
         "dependencies": {
           "NGB.Platform.Hosting.AspNetCore": "3.4.0",
           "NGB.Platform.PostgreSql": "3.4.0",
@@ -146,7 +146,7 @@
         "type": "Direct",
         "requested": "[3.4.0, 3.4.0]",
         "resolved": "3.4.0",
-        "contentHash": "CtHEMrlMTqEOr53gvADaTWGpU5OXhRD0oPwXK08NqFAoV6OMLr1sVhiSA6JD6olZtIhuCRPsgW+KinakA4t//Q==",
+        "contentHash": "A+DSHGlYHOTZxhg43MyjAqvLEvj2dilit9gsuMQ/k1vgvMoyITYHgdnml+Hc2D16yxwHDGpWgDnmtn+PmxKIqA==",
         "dependencies": {
           "Microsoft.FeatureManagement": "4.8.0",
           "NGB.Platform.Accounting": "3.4.0",
@@ -167,7 +167,7 @@
         "type": "Direct",
         "requested": "[3.4.0, 3.4.0]",
         "resolved": "3.4.0",
-        "contentHash": "FaEJXPrww9fxRi3Dvtxb4JKRff7f+hS8XjHiSpJrnHgloKx5barpVun50yXynHHfgzXVKTB/nXbDKtvpUEiRVg==",
+        "contentHash": "T6zbm2WVc5ONv/jOUzPEp8kdM/Ve//HpSOs6ow4EbSNhoXB9PBV8+YEafngJe6IXKQPzjYEceBJdNg6ZucUx1A==",
         "dependencies": {
           "NGB.Platform.Runtime": "3.4.0",
           "NGB.Platform.Tools": "3.4.0"
@@ -246,24 +246,24 @@
       },
       "Microsoft.AspNetCore.Authentication.JwtBearer": {
         "type": "Transitive",
-        "resolved": "10.0.13",
-        "contentHash": "cEPhQWsaUKymSdQ+NB2rF4GnWtjofAcRrzr2aGPzbjSFyeDtIlBzrbX1Qeh/OAHjvdwBe05SbsukoSbz27AD6g==",
+        "resolved": "10.0.14",
+        "contentHash": "DaTs32NtRkTabidrvhLhcXpa+Uguw0rN5FaX8Q1HmzbYtcI72iSauYlN4WmqbrXp6QQoB8fmZlHk5/bjiMTY7A==",
         "dependencies": {
           "Microsoft.IdentityModel.Protocols.OpenIdConnect": "8.19.2"
         }
       },
       "Microsoft.AspNetCore.Authentication.OpenIdConnect": {
         "type": "Transitive",
-        "resolved": "10.0.13",
-        "contentHash": "dlyqhtVS6t6IeVvpxV8RuTQzrAFedkKbDoIbKbwjSmTimR4X/OxKvt+jwKLk8Qw/lqvoSQUl8iHLCO9CUCCH8A==",
+        "resolved": "10.0.14",
+        "contentHash": "W5g9xaWjPudw7GNwxCqP9uLxpwE1+LkRf4f8i0aF6Ga1AY3qU2UvBa4+41Opz15sO5oTCLwYYXcvb477Ry8NZQ==",
         "dependencies": {
           "Microsoft.IdentityModel.Protocols.OpenIdConnect": "8.19.2"
         }
       },
       "Microsoft.AspNetCore.OpenApi": {
         "type": "Transitive",
-        "resolved": "10.0.13",
-        "contentHash": "XVuqUBGjVUVyb4DXR5BrSkrW0Br7sYKq39f723ILhQLlFHCyhAgWe1PkJBc42R/5mKBIgHiKVSY+PN5/4XtcQw==",
+        "resolved": "10.0.14",
+        "contentHash": "3M6yO4nv8fmvM/1X7DqQcMxw/ptNLBcUzZt19SBEyfZF32gqZuwoPNnYd1xlDnFvQOGOkZDncf7p9E24blcTkQ==",
         "dependencies": {
           "Microsoft.OpenApi": "[2.12.2, 3.0.0)"
         }
@@ -422,32 +422,32 @@
       },
       "ModelContextProtocol": {
         "type": "Transitive",
-        "resolved": "2.2.0",
-        "contentHash": "4Pb9u02Nwsp0poueDsqNdyGRojFxOYpljB7zDBsq+aHL+Afou3OgxlBc3GWFVnsRMRJrUtWqDh3s6k2JgPzmrQ==",
+        "resolved": "2.3.1",
+        "contentHash": "r93TE8VAvPIJrvoMPpWhKWcMLvKIPB72JozRye3hHeY7gCsMXYo/3fLVnzNEnjBcXmV8+EXcNMYzC/+0wRkidA==",
         "dependencies": {
-          "ModelContextProtocol.Core": "[2.2.0]"
+          "ModelContextProtocol.Core": "[2.3.1]"
         }
       },
       "ModelContextProtocol.AspNetCore": {
         "type": "Transitive",
-        "resolved": "2.2.0",
-        "contentHash": "3JelDMuFIwFzXybsh6K30G6wXu5gmqKnuRnieqgBMuR0FkqqXRv4B+NYZuPgthSyNq5UwRyvv2U2VJBE3RD3PQ==",
+        "resolved": "2.3.1",
+        "contentHash": "qlX2AkOg9QJ8iap9NXyOfkNW7abMrf6HU3o7kImIgsNjkPpZQd6ewGxkwRuI5GQNXdONCaROfKMlhPVcYoWQfw==",
         "dependencies": {
-          "ModelContextProtocol": "[2.2.0]"
+          "ModelContextProtocol": "[2.3.1]"
         }
       },
       "ModelContextProtocol.Core": {
         "type": "Transitive",
-        "resolved": "2.2.0",
-        "contentHash": "FeBfXU6T8k+jw4afg4sfxdEX2rL/e5oKOk9ROOGztu9k47+7Bz08sdaToYt2XvMY1opNbwxYQOFMj6wH9TInhA==",
+        "resolved": "2.3.1",
+        "contentHash": "cuYIbAWWhVSY0PRaz0LiDoxxnpLdps1tKXjo2LN91CObgWBFcKg3Ebz4kF95O++2Do7GXI2Tl5KQOYM8UoAyZA==",
         "dependencies": {
-          "Microsoft.Extensions.AI.Abstractions": "10.8.3"
+          "Microsoft.Extensions.AI.Abstractions": "10.11.0"
         }
       },
       "NGB.Platform.Accounting": {
         "type": "Transitive",
         "resolved": "3.4.0",
-        "contentHash": "GwDAyg4L+dK9knf4H2Dt/L8iYUpHL964+uqBebDp4/6h/YiG7QCUJTcmGt9O0expIEE1HkrLQLHVRwjjllJ0Yw==",
+        "contentHash": "KJNulNxoQRYWzqP9TNcVguSkvqLNRCxeFsErLwJArsjX8KKIPvtKIGUBOu9o7Ad265BB2+qANaFdeBluDgT0CA==",
         "dependencies": {
           "NGB.Platform.Core": "3.4.0",
           "NGB.Platform.Tools": "3.4.0"
@@ -456,7 +456,7 @@
       "NGB.Platform.AiAssistant": {
         "type": "Transitive",
         "resolved": "3.4.0",
-        "contentHash": "yGEDb5zKelYLveEWYJJbmAfEz4pzBxYDgk2V4nu0h06V67aQwP4FBC5MNCsQvHqeQxIEO9k9hceDQl4jRjlx3g==",
+        "contentHash": "iGs8REfvd9dpkeq0rZlS4Big/gt9YnC9G0ddtPDcO29ZWyJL87kRRYlpAtQPr6gWFtgq69F7UDRI1pvpFPQS3w==",
         "dependencies": {
           "Microsoft.Extensions.AI": "10.11.0",
           "NGB.Platform.Contracts": "3.4.0"
@@ -465,7 +465,7 @@
       "NGB.Platform.Attachments": {
         "type": "Transitive",
         "resolved": "3.4.0",
-        "contentHash": "La1Ka3lAa3zt/YvPN1BQUcmkJKLjOP12414VYpS2MrCrU4yECr6ddpuhuo+48HvLb6ljBiI33opbPRfXx1gUMg==",
+        "contentHash": "2rnSGLlo4AGdxzUk0Rmc4VuG6NSdpXYvIJvqhRTH6tvDZCZSG+420GmbHAlX/o8B0rdB4dRk2qPiAzWMldd/fQ==",
         "dependencies": {
           "NGB.Platform.Contracts": "3.4.0",
           "NGB.Platform.Tools": "3.4.0"
@@ -474,7 +474,7 @@
       "NGB.Platform.Definitions": {
         "type": "Transitive",
         "resolved": "3.4.0",
-        "contentHash": "G/oDEWiiLaNLOQwpAAblC9iZYsA6v9PmY7SNWnS4ImzbSSjo3PjGwSraa/YVZbynqVR7A/Hahi4fXPmbWgj5xg==",
+        "contentHash": "kfyJA09CQy6wFN1Y3YxxGcuOpINAnakvlzDL2bcbo6COQqCAGZu7es9wqxX+2xBxWnxkkOdVS/ZdZuBew0lx9Q==",
         "dependencies": {
           "NGB.Platform.Accounting": "3.4.0",
           "NGB.Platform.Core": "3.4.0",
@@ -487,7 +487,7 @@
       "NGB.Platform.Mcp": {
         "type": "Transitive",
         "resolved": "3.4.0",
-        "contentHash": "lDt/LKzt/lHQSFxDOyNtMm7lJukv0arosIgvpf1Ea19lTfNM/NCsPLIAeY+1Rgjtr6uiWnQzT+HaGgjFIXOEEQ==",
+        "contentHash": "sGrV3wxGmVtjOFfjHOZP/AqKdzp/PsFSzYDW5OWPTh82bukdeI3vkZqC9zviSaJRldB5h9X0KPvB1cLyiasiaQ==",
         "dependencies": {
           "NGB.Platform.Accounting": "3.4.0",
           "NGB.Platform.Application.Abstractions": "3.4.0",
@@ -502,7 +502,7 @@
       "NGB.Platform.Metadata": {
         "type": "Transitive",
         "resolved": "3.4.0",
-        "contentHash": "EbW+FclJK6PoHgrtf0OFoKy29jSQ2LHfBy8Qh1Ih0RhtJda+q2DhL4zUXeZTbspvNxVV5/+2BhPpRNrDF4H1KQ==",
+        "contentHash": "Clz0BZxe99aQuIMGZlvO01aM/0zxEJasT/5iqupXz6UNaK8m82fOnkxp6Z5cHn3geqFLNHaYOa6ill9GOiLQhg==",
         "dependencies": {
           "NGB.Platform.Core": "3.4.0",
           "NGB.Platform.Tools": "3.4.0"
@@ -511,7 +511,7 @@
       "NGB.Platform.Notes": {
         "type": "Transitive",
         "resolved": "3.4.0",
-        "contentHash": "9NZsExo17gEY45ruuNrbx4abf5PFpApGY3o9YcsprSbaTNBmdRc3I/7DasXc0+wlNk27Big8RCIKqt5/0e7VSQ==",
+        "contentHash": "Gz8wvvCxoL8AKQMrm4XWrvNYhZZ/7AWYo0hugoj3hzPs7MY+Doq0l1/BjGHcLwNmaPWAHDyGKcmYbnVFgsDVSg==",
         "dependencies": {
           "NGB.Platform.Contracts": "3.4.0",
           "NGB.Platform.Tools": "3.4.0"
@@ -520,7 +520,7 @@
       "NGB.Platform.OperationalRegisters": {
         "type": "Transitive",
         "resolved": "3.4.0",
-        "contentHash": "3JT+JaEay2G+3Tm4Ue2bsdRqmB9WDUdyKtbL3kAoa43nbHh3habj7i6pBvb+jCF6NSLGj2cb9/jb3UQ0kQoHUg==",
+        "contentHash": "SlOGoT453PksM5eSwjFDWj3WQUIUr8iOzBCizc1AfjZeAtbJZzRjWjWufCHgo7n0lESVeMvuHEF8XEGWGkg2NQ==",
         "dependencies": {
           "NGB.Platform.Core": "3.4.0",
           "NGB.Platform.Tools": "3.4.0"
@@ -529,7 +529,7 @@
       "NGB.Platform.Persistence": {
         "type": "Transitive",
         "resolved": "3.4.0",
-        "contentHash": "gCrlh5vSHFxgjpdUsq4ChC3UzkQJ5FxiRKjnVV4NIagaIkgH8QV53VqVh4/nEMlAACMuclW6kk8b6HurDuYP4Q==",
+        "contentHash": "AAA+RMthgxsCw0rHWNqJL1NvLZyyVLxJwd08qq4yK8ZINKR91lI1R+5aaGrX7PWxPgaTlsWTDzvE7jxUPl9HVQ==",
         "dependencies": {
           "NGB.Platform.Accounting": "3.4.0",
           "NGB.Platform.Attachments": "3.4.0",
@@ -545,7 +545,7 @@
       "NGB.Platform.ReferenceRegisters": {
         "type": "Transitive",
         "resolved": "3.4.0",
-        "contentHash": "q5AybJIEbsr/Y9WDmUczafI5o1dZ0hzPCM3PQlke7IN464342EtXsEnUtci8wQgATj8nDPPF0HPSHcKtUYvQKQ==",
+        "contentHash": "OKHJiIvs6++U7UkE3zq3NnoZGWf1N3089aaLFOWFViC6/FIIpNEwrgq7Emr/Iw34mwTX4I0WnEnwWsylYSoIaA==",
         "dependencies": {
           "NGB.Platform.Core": "3.4.0",
           "NGB.Platform.Metadata": "3.4.0",
@@ -555,7 +555,7 @@
       "NGB.Platform.Tools": {
         "type": "Transitive",
         "resolved": "3.4.0",
-        "contentHash": "snyTbyxkAdvXZGBBtuK/4g3cCkWr0p//appsNnPC5SoEBo5y95cwSTOxj7wcmHuf7T23VUgZBYsOjM+X/JhbUg==",
+        "contentHash": "5CsSra1qzxRfxOLKD/+B2ZtcLEb47tzJEx5fQNAuCgSFukWhe8R/+Mic9inxJtQtgzX8rf7PKAIm2csFeun7Cg==",
         "dependencies": {
           "FastEnum": "2.0.8"
         }
@@ -567,8 +567,8 @@
       },
       "OllamaSharp": {
         "type": "Transitive",
-        "resolved": "5.5.0",
-        "contentHash": "CpACG21U4KBZ5YcPUH/Pf8VMP0CCO7NsEkYJLLVf06YzVwcixRPy2bub71mbMlWCfzdADd8YfKx8kGWD5ai4Kg==",
+        "resolved": "5.5.2",
+        "contentHash": "oI/dJ5xk9X2eAUSv0kvN26LtN900muLdmyFAIQLUkzOJZi4blIfQzPdkHWH8i5/Tf9SQVoc2pxTz3Tjfrp7qlQ==",
         "dependencies": {
           "Microsoft.Extensions.AI": "10.8.0",
           "Microsoft.Extensions.AI.Abstractions": "10.8.0"

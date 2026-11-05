@@ -5,7 +5,7 @@
 
     <ItemGroup>
         <ProjectReference Include="../EquipmentInspection.Runtime/EquipmentInspection.Runtime.csproj" />
-        <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.13" />
+        <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.14" />
         <PackageReference Include="NGB.Platform.PostgreSql" Version="[$(NgbPlatformVersion)]" />
         <PackageReference Include="NGB.Platform.Runtime" Version="[$(NgbPlatformVersion)]" />
     </ItemGroup>

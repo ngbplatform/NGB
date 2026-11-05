@@ -2,11 +2,11 @@
   "schemaVersion": 1,
   "package": "NGB.Platform.PostgreSql",
   "version": "3.4.0",
-  "packageSha256": "c8a5b835f128301930f925d4d8cbab76f172998f54c982230765ffbbcae65a10",
+  "packageSha256": "823742edefc107338c85f4871b137640db486a0d721ded5a22159159e11c4544",
   "assembly": {
     "name": "NGB.PostgreSql",
     "version": "3.0.0.0",
-    "sha256": "0ee2e9d6295e02dc78ac29b75441202ff856d68d952b741e3b9f04e633a67cf8"
+    "sha256": "3c3c2a5f0af072ff9477b9c24df98ce1840daf341492c6d1b4dac0946a50e1c7"
   },
   "contractSha256": "214f2582742497d4a236b42d7458cf193c60ce80b7388f9175f75f16be48461c",
   "types": [
