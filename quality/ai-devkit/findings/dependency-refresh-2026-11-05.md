@@ -55,3 +55,26 @@ Evidence: `artifacts/ai-devkit/dependency-refresh-2026-11-05/summary.json`.
 
 These are targeted dependency checks. The full Backend/Frontend suites were not
 rerun, and these results do not represent a new full release certificate.
+
+## Follow-up: provider authentication and MCP deadline tests
+
+The two failures reported after the dependency update were reproduced before
+changing the tests. Neither required a production-code change.
+
+- Anthropic 13.5.0 sends the configured API key as `Authorization: Bearer`, as
+  documented in the installed package's `ClientOptions.ApiKey` XML documentation.
+  The old test still expected `x-api-key`. The contract test now checks the exact
+  provider credential and endpoint on both requests in the tool-call cycle;
+  authentication assertions for OpenAI and Ollama also cover both requests.
+- With MCP 2.3.1, a waiting handler that has not emitted an event leaves response
+  headers uncommitted. The existing endpoint filter correctly returns HTTP 504
+  on deadline. The test now covers that path and a second path that sends a real
+  SDK progress notification before waiting, opens SSE with HTTP 200, and verifies
+  that the deadline aborts the stream. Both cases verify handler cancellation,
+  request completion and successful admission of the next request.
+
+Evidence: `artifacts/ai-devkit/sdk-upgrade-regressions-2026-11-05/`.
+The complete `NGB.AiAssistant.Providers.Tests` project passed **66/66** tests and
+`NGB.Mcp.AspNetCore.IntegrationTests` passed **80/80**, with no skipped tests.
+Only tests and this report changed; runtime packages do not need repacking for
+this follow-up. The full Backend/Frontend suites remain outside this targeted run.

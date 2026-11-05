@@ -399,8 +399,10 @@ public sealed partial class McpHttpTests
         return http;
     }
 
-    [Fact]
-    public async Task RequestDeadlineCancelsTheHandlerAndReleasesAdmission()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RequestDeadlineCancelsTheHandlerAndReleasesAdmission(bool sendProgress)
     {
         var state = new WaitState();
         await using var host = await TestHost.StartAsync(settings: new Dictionary<string, string?>
@@ -413,20 +415,46 @@ public sealed partial class McpHttpTests
             services.AddScoped<FaultHandler>();
             services.AddScoped<WaitHandler>();
             services.AddSingleton(state);
+            services.AddMcpServer().WithRequestFilters(filters => filters.AddCallToolFilter(next => async (context, ct) =>
+            {
+                if (context.Params.Name == "custom_wait" && context.Params.ProgressToken is { } progressToken)
+                {
+                    // Start SSE through the SDK so both deadline response paths are exercised.
+                    await context.Server.SendNotificationAsync(NotificationMethods.ProgressNotification,
+                        new ProgressNotificationParams
+                        {
+                            ProgressToken = progressToken,
+                            Progress = new ProgressNotificationValue { Progress = 0 }
+                        }, cancellationToken: ct);
+                }
+
+                return await next(context, ct);
+            }));
         });
         using var http = ProtocolHttp(host);
-        using var request = ToolRequest(host, "custom_wait");
+        using var request = ToolRequest(host, "custom_wait", sendProgress ? "deadline-progress" : null);
         using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead)
             .WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Equal("text/event-stream", response.Content.Headers.ContentType!.MediaType);
-        // The SDK has already started SSE. A deadline must abort that stream instead of
-        // appending a second HTTP response or leaving the read running indefinitely.
-        await Assert.ThrowsAsync<HttpRequestException>(() => response.Content.ReadAsStringAsync()
-            .WaitAsync(TimeSpan.FromSeconds(5)));
-        Assert.True(state.Started.Task.IsCompletedSuccessfully);
-        Assert.True(state.Cancelled.Task.IsCompletedSuccessfully);
+
+        if (sendProgress)
+        {
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            Assert.Equal("text/event-stream", response.Content.Headers.ContentType!.MediaType);
+            // Once SSE has started, the deadline must abort the stream instead of appending
+            // a second HTTP response or leaving the read running indefinitely.
+            await Assert.ThrowsAsync<HttpRequestException>(() => response.Content.ReadAsStringAsync()
+                .WaitAsync(TimeSpan.FromSeconds(5)));
+        }
+        else
+        {
+            // With no event sent, headers are still writable and the timeout is an HTTP error.
+            Assert.Equal(HttpStatusCode.GatewayTimeout, response.StatusCode);
+            Assert.Empty(await response.Content.ReadAsStringAsync().WaitAsync(TimeSpan.FromSeconds(5)));
+        }
+
+        await state.Cancelled.Task.WaitAsync(TimeSpan.FromSeconds(5));
         await state.Completed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.True(state.Started.Task.IsCompletedSuccessfully);
         using var nextRequest = ToolRequest(host, "ngb_get_capabilities");
         using var next = await http.SendAsync(nextRequest);
         Assert.Equal(HttpStatusCode.OK, next.StatusCode);
@@ -699,8 +727,16 @@ public sealed partial class McpHttpTests
         Assert.Equal("no-store", rejectedJson.Headers.CacheControl!.ToString());
     }
 
-    private static HttpRequestMessage ToolRequest(TestHost host, string name)
+    private static HttpRequestMessage ToolRequest(TestHost host, string name, string? progressToken = null)
     {
+        var metadata = new Dictionary<string, object>
+        {
+            ["io.modelcontextprotocol/protocolVersion"] = "2026-07-28",
+            ["io.modelcontextprotocol/clientCapabilities"] = new { }
+        };
+        if (progressToken is not null)
+            metadata["progressToken"] = progressToken;
+
         var request = new HttpRequestMessage(HttpMethod.Post, host.Resource);
         request.Headers.Add("Mcp-Method", "tools/call");
         request.Headers.Add("Mcp-Name", name);
@@ -713,11 +749,7 @@ public sealed partial class McpHttpTests
             {
                 name,
                 arguments = new { },
-                _meta = new Dictionary<string, object>
-                {
-                    ["io.modelcontextprotocol/protocolVersion"] = "2026-07-28",
-                    ["io.modelcontextprotocol/clientCapabilities"] = new { }
-                }
+                _meta = metadata
             }
         }), Encoding.UTF8, "application/json");
         return request;

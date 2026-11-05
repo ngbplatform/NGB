@@ -193,20 +193,33 @@ public sealed partial class ProviderContractTests
         Assert.DoesNotContain("Bearer user-token", string.Join(' ', handler.Requests.Select(request => request.Authorization)));
         if (provider == "Ollama")
         {
-            Assert.Null(handler.Requests[0].Authorization);
+            Assert.All(handler.Requests, request =>
+            {
+                Assert.Null(request.Authorization);
+                Assert.Null(request.ApiKey);
+            });
             Assert.False(firstBody.RootElement.TryGetProperty("think", out _));
             Assert.Equal(0, firstBody.RootElement.GetProperty("options").GetProperty("temperature").GetSingle());
             Assert.Equal(32768, firstBody.RootElement.GetProperty("options").GetProperty("num_ctx").GetInt32());
         }
         else if (provider == "OpenAI")
         {
-            Assert.Equal("Bearer provider-key", handler.Requests[0].Authorization);
-            Assert.Equal("/v1/chat/completions", handler.Requests[0].Uri.AbsolutePath);
+            Assert.All(handler.Requests, request =>
+            {
+                Assert.Equal("Bearer provider-key", request.Authorization);
+                Assert.Null(request.ApiKey);
+                Assert.Equal("/v1/chat/completions", request.Uri.AbsolutePath);
+            });
         }
         else
         {
-            Assert.Equal("provider-key", handler.Requests[0].ApiKey);
-            Assert.Equal("/v1/messages", handler.Requests[0].Uri.AbsolutePath);
+            // Anthropic 13.5 sends the configured API key as a bearer credential.
+            Assert.All(handler.Requests, request =>
+            {
+                Assert.Equal("Bearer provider-key", request.Authorization);
+                Assert.Null(request.ApiKey);
+                Assert.Equal("/v1/messages", request.Uri.AbsolutePath);
+            });
         }
     }
 
