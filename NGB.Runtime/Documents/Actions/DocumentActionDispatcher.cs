@@ -16,6 +16,7 @@ using NGB.Core.Security;
 using NGB.Definitions.Documents.Actions;
 using NGB.Persistence.Documents;
 using NGB.Persistence.Documents.Actions;
+using NGB.Persistence.Locks;
 using NGB.Persistence.Outbox;
 using NGB.Persistence.UnitOfWork;
 using NGB.Runtime.AuditLog;
@@ -44,7 +45,8 @@ internal sealed class DocumentActionDispatcher(
     IPermissionSnapshotProvider permissions,
     IAuditLogService audit,
     IDocumentActionComponentResolver components,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    IAdvisoryLockManager locks)
     : IDocumentActionDispatcher
 {
     private const string WorkCenterConsumer = "work-center";
@@ -158,8 +160,10 @@ internal sealed class DocumentActionDispatcher(
 
         return await uow.ExecuteInUowTransactionAsync(async innerCt =>
         {
-            // Resolve idempotency before taking the document write lock. Completed results
-            // still require current authorization, without executing the action again.
+            // Acquire the advisory lock before any row locks, including the foreign-key
+            // lock taken by the execution INSERT. Completed results still reauthorize.
+            await locks.LockDocumentAsync(documentId, innerCt);
+
             var begin = await executions.TryBeginAsync(
                 normalizedKey,
                 fingerprint,

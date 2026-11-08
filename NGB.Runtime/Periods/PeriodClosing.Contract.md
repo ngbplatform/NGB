@@ -5,6 +5,7 @@
 - Input period is normalized to the first day of the month.
 - The operation is atomic: balances, the closed-period marker, and business audit are committed together.
 - The period advisory lock serializes close-vs-close and close-vs-posting races for the same month.
+- Close/reopen operations for months and fiscal years share a chain guard, acquired before month locks, so prerequisite checks and chain changes are atomic across different months. Posting and rebuild operations do not acquire this guard.
 - Month closing is sequential once accounting activity exists: the service closes only the next valid month in the chain and rejects gaps.
 - If legacy out-of-sequence closed months exist, new closes are blocked until the chain is repaired from the latest closed month backward.
 - A closed month is immutable for subsequent posting/unposting/reposting writes through runtime and DB guards.

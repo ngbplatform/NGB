@@ -52,7 +52,6 @@ internal sealed class DocumentPostingService(
     IAdvisoryLockManager advisoryLocks,
     IDocumentRepository documents,
     PostingEngine postingEngine,
-    IAccountingPostingContextFactory accountingContextFactory,
     IAccountingEntryReader entryReader,
     DocumentPostingLifecycleCoordinator lifecycleCoordinator,
     IDocumentPostingActionResolver postingActionResolver,
@@ -358,11 +357,7 @@ internal sealed class DocumentPostingService(
 
                 if (oldEntries.Count > 0)
                 {
-                    var entriesToReverse = await GetAccountingEntriesToReverseAsync(
-                        doc,
-                        oldEntries,
-                        operation: "Document.Unpost",
-                        ct: innerCt);
+                    var entriesToReverse = StoredAccountingEffect.GetEntriesToReverse(oldEntries);
                     var stornoEntries = AccountingStornoFactory.Create(entriesToReverse);
 
                     async Task<PostingResult> ExecuteAccountingUnpostAsync()
@@ -526,11 +521,7 @@ internal sealed class DocumentPostingService(
 
                 if (oldEntries.Count > 0)
                 {
-                    var entriesToReverse = await GetAccountingEntriesToReverseAsync(
-                        doc,
-                        oldEntries,
-                        operation: "Document.Repost",
-                        ct: innerCt);
+                    var entriesToReverse = StoredAccountingEffect.GetEntriesToReverse(oldEntries);
                     var stornoEntries = AccountingStornoFactory.Create(entriesToReverse);
 
                     async Task<PostingResult> ExecuteAccountingRepostAsync()
@@ -1211,37 +1202,6 @@ internal sealed class DocumentPostingService(
         return list;
     }
 
-    internal async Task<IReadOnlyList<AccountingEntry>> GetAccountingEntriesToReverseAsync(
-        DocumentRecord doc,
-        IReadOnlyList<AccountingEntry> historicalEntries,
-        string operation,
-        CancellationToken ct)
-    {
-        if (historicalEntries.Count == 0)
-            return [];
-
-        var accountingPostingAction = postingActionResolver.TryResolve(doc);
-        if (accountingPostingAction is null)
-            return historicalEntries;
-
-        var context = await accountingContextFactory.CreateAsync(ct);
-        await accountingPostingAction(context, ct);
-
-        if (context.Entries.Count == 0)
-        {
-            throw new NgbInvariantViolationException(
-                "Posted document has persisted accounting history, but its current accounting snapshot is empty.",
-                new Dictionary<string, object?>
-                {
-                    ["documentId"] = doc.Id,
-                    ["typeCode"] = doc.TypeCode,
-                    ["operation"] = operation
-                });
-        }
-
-        return context.Entries.ToList();
-    }
-    
     internal static DocumentRecord RequireDocument(DocumentRecord? document, Guid documentId)
         => document ?? throw new DocumentNotFoundException(documentId);
 

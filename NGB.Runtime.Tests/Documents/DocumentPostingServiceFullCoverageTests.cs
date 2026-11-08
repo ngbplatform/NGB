@@ -256,49 +256,6 @@ public sealed class DocumentPostingServiceFullCoverageTests
     }
 
     [Fact]
-    public async Task Accounting_entries_to_reverse_cover_empty_history_absent_empty_and_nonempty_handlers()
-    {
-        var document = new DocumentRecord
-        {
-            Id = Guid.NewGuid(),
-            TypeCode = "test.document",
-            DateUtc = DateTime.UnixEpoch,
-            Status = DocumentStatus.Posted
-        };
-        var historical = new[] { Entry(document.Id, 1m) };
-        var replacement = new[] { Entry(document.Id, 2m) };
-        var resolver = new Mock<IDocumentPostingActionResolver>(MockBehavior.Strict);
-        var factory = new Mock<IAccountingPostingContextFactory>(MockBehavior.Strict);
-
-        var noHistory = await CreateSut(postingActionResolver: resolver.Object, accountingContextFactory: factory.Object)
-            .GetAccountingEntriesToReverseAsync(document, [], "Document.Unpost", CancellationToken.None);
-        noHistory.Should().BeEmpty();
-
-        resolver.Setup(x => x.TryResolve(document)).Returns((Func<IAccountingPostingContext, CancellationToken, Task>?)null);
-        var withoutHandler = await CreateSut(postingActionResolver: resolver.Object, accountingContextFactory: factory.Object)
-            .GetAccountingEntriesToReverseAsync(document, historical, "Document.Unpost", CancellationToken.None);
-        withoutHandler.Should().BeSameAs(historical);
-
-        var emptyContext = new Mock<IAccountingPostingContext>(MockBehavior.Strict);
-        emptyContext.SetupGet(x => x.Entries).Returns([]);
-        resolver.Setup(x => x.TryResolve(document)).Returns((_, _) => Task.CompletedTask);
-        factory.Setup(x => x.CreateAsync(It.IsAny<CancellationToken>())).ReturnsAsync(emptyContext.Object);
-        Func<Task> emptySnapshot = () => CreateSut(postingActionResolver: resolver.Object, accountingContextFactory: factory.Object)
-            .GetAccountingEntriesToReverseAsync(document, historical, "Document.Repost", CancellationToken.None);
-        var exception = await emptySnapshot.Should().ThrowAsync<NgbInvariantViolationException>();
-        exception.Which.Context.Should().Contain("documentId", document.Id)
-            .And.Contain("typeCode", document.TypeCode)
-            .And.Contain("operation", "Document.Repost");
-
-        var replacementContext = new Mock<IAccountingPostingContext>(MockBehavior.Strict);
-        replacementContext.SetupGet(x => x.Entries).Returns(replacement);
-        factory.Setup(x => x.CreateAsync(It.IsAny<CancellationToken>())).ReturnsAsync(replacementContext.Object);
-        var withHandler = await CreateSut(postingActionResolver: resolver.Object, accountingContextFactory: factory.Object)
-            .GetAccountingEntriesToReverseAsync(document, historical, "Document.Unpost", CancellationToken.None);
-        withHandler.Should().Equal(replacement);
-    }
-
-    [Fact]
     public async Task Public_workflow_guards_reject_accounting_history_mismatches_and_unknown_statuses()
     {
         var documentId = Guid.NewGuid();
@@ -961,7 +918,6 @@ public sealed class DocumentPostingServiceFullCoverageTests
     private static DocumentPostingService CreateSut(
         IReferenceRegisterRecordsReader? referenceRegisterRecordsReader = null,
         IDocumentPostingActionResolver? postingActionResolver = null,
-        IAccountingPostingContextFactory? accountingContextFactory = null,
         IUnitOfWork? uow = null,
         IAdvisoryLockManager? advisoryLocks = null,
         IDocumentRepository? documents = null,
@@ -983,7 +939,6 @@ public sealed class DocumentPostingServiceFullCoverageTests
             advisoryLocks: advisoryLocks ?? Mock.Of<IAdvisoryLockManager>(),
             documents: documents ?? Mock.Of<IDocumentRepository>(),
             postingEngine: null!,
-            accountingContextFactory: accountingContextFactory ?? Mock.Of<IAccountingPostingContextFactory>(),
             entryReader: entryReader ?? Mock.Of<IAccountingEntryReader>(),
             lifecycleCoordinator: lifecycleCoordinator!,
             postingActionResolver: postingActionResolver ?? Mock.Of<IDocumentPostingActionResolver>(),

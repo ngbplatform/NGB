@@ -1,12 +1,12 @@
 using System.Data;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using NGB.Core.Locks;
 using NGB.OperationalRegisters.Exceptions;
 using NGB.Persistence.Locks;
 using NGB.Persistence.OperationalRegisters;
 using NGB.OperationalRegisters.Contracts;
 using NGB.Persistence.UnitOfWork;
+using NGB.Runtime.Locks;
 using NGB.Runtime.OperationalRegisters.Projections;
 using NGB.Tools.Exceptions;
 
@@ -260,10 +260,10 @@ public sealed class OperationalRegisterFinalizationRunner : IOperationalRegister
             if (!prepare)
                 await _locks.LockOperationalRegisterAsync(registerId, ct);
 
-            // Month lock prevents concurrent finalization and movement writes to the same month.
-            // Namespace this lock to Operational Registers so accounting posting/closing can proceed concurrently.
+            // The register lock serializes its writers and finalizers. Shared month guards
+            // also respect exclusive maintenance locks without coupling unrelated registers.
             if (!prepare)
-                await _locks.LockPeriodAsync(periodMonth, AdvisoryLockPeriodScope.OperationalRegister, ct);
+                await _locks.LockOperationalRegisterWritePeriodsAsync([periodMonth], ct);
 
             // Under concurrency, the dirty list may contain stale items.
             // Re-check under finalizer serialization; prepared results catch up before publication.

@@ -441,11 +441,13 @@ public sealed class DocumentService(
 
         await uow.ExecuteInUowTransactionAsync(async innerCt =>
         {
-            var locked = await documents.GetForUpdateAsync(id, innerCt);
-            if (locked is null)
+            // Check the immutable route identity without taking a row lock first.
+            // Draft deletion acquires the advisory lock, then reloads and locks the row.
+            var document = await documents.GetAsync(id, innerCt);
+            if (document is null)
                 return;
 
-            EnsureRouteOwnsDocument(documentType, model.Meta.TypeCode, locked);
+            EnsureRouteOwnsDocument(documentType, model.Meta.TypeCode, document);
 
             await drafts.DeleteDraftAsync(id, manageTransaction: false, ct: innerCt);
         }, ct);

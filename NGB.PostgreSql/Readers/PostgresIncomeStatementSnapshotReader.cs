@@ -51,12 +51,19 @@ public sealed class PostgresIncomeStatementSnapshotReader(IUnitOfWork uow) : IIn
         var sql = $"""
                    WITH
                    {BuildScopeCtes()}
+                   report_turnovers AS (
+                       SELECT period, account_id, dimension_set_id, debit_amount, credit_amount
+                       FROM accounting_turnovers
+                       WHERE period >= @FromInclusive::date AND period <= @ToInclusive::date
+                       UNION ALL
+                       {PostgresFiscalYearClosingActivitySql.Corrections}
+                   ),
                    activity_rows AS (
                        SELECT
                            t.account_id AS AccountId,
                            SUM(t.debit_amount) AS DebitAmount,
                            SUM(t.credit_amount) AS CreditAmount
-                       FROM accounting_turnovers t
+                       FROM report_turnovers t
                        JOIN accounting_accounts a
                          ON a.account_id = t.account_id
                         AND a.is_deleted = FALSE

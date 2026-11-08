@@ -96,7 +96,11 @@ public sealed class PostgresAccountingSummaryPageReader(IUnitOfWork uow) : IAcco
             _ => throw new ArgumentOutOfRangeException(nameof(kind))
         };
 
-        return "WITH account_source(id,code,name,grp,opening,debit,credit,closing) AS (" + PostgresAccountingStatementAccountReader.Sql
+        var statementSql = kind == AccountingSummaryKind.IncomeStatement
+            ? PostgresAccountingStatementAccountReader.IncomeStatementSql
+            : PostgresAccountingStatementAccountReader.Sql;
+
+        return "WITH account_source(id,code,name,grp,opening,debit,credit,closing) AS (" + statementSql
             + "), report_accounts AS (SELECT * FROM account_source WHERE " + filter + ") ";
     }
 }

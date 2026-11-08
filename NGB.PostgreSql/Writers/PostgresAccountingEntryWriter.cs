@@ -1,4 +1,5 @@
 using Dapper;
+using NGB.Accounting.Accounts;
 using NGB.Accounting.Registers;
 using NGB.Persistence.UnitOfWork;
 using NGB.Persistence.Writers;
@@ -21,11 +22,48 @@ public sealed class PostgresAccountingEntryWriter(IUnitOfWork uow) : IAccounting
         // Otherwise, Dapper will execute commands in autocommit mode, violating platform atomicity.
         await uow.EnsureOpenForTransactionAsync(ct);
 
+        await LockAccountsAsync(entries, ct);
+
         for (var offset = 0; offset < entries.Count; offset += MaxBatchSize)
         {
             var count = Math.Min(MaxBatchSize, entries.Count - offset);
             await WriteBatchAsync(entries, offset, count, ct);
         }
+    }
+
+    private async Task LockAccountsAsync(IReadOnlyList<AccountingEntry> entries, CancellationToken ct)
+    {
+        // SHARE locks allow concurrent postings but conflict with account deletion.
+        // Lock the whole posting before batching, in one stable database order.
+        const string sql = """
+                           WITH locked_accounts AS MATERIALIZED (
+                               SELECT account_id, is_deleted
+                               FROM accounting_accounts
+                               WHERE account_id = ANY(@AccountIds)
+                               ORDER BY account_id
+                               FOR SHARE
+                           )
+                           SELECT account_id
+                           FROM locked_accounts
+                           WHERE is_deleted;
+                           """;
+
+        var accountIds = new HashSet<Guid>();
+        foreach (var entry in entries)
+        {
+            accountIds.Add(entry.Debit.Id);
+            accountIds.Add(entry.Credit.Id);
+        }
+
+        var cmd = new CommandDefinition(
+            sql,
+            new { AccountIds = accountIds.ToArray() },
+            transaction: uow.Transaction,
+            cancellationToken: ct);
+
+        var deleted = (await uow.Connection.QueryAsync<Guid>(cmd)).ToArray();
+        if (deleted.Length > 0)
+            throw new AccountNotFoundException(deleted[0]);
     }
 
     private static readonly string InsertSql = """

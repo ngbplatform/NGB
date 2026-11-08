@@ -5,6 +5,7 @@ using NGB.Core.Locks;
 using NGB.PostgreSql.DependencyInjection;
 using NGB.PostgreSql.Locks;
 using NGB.PostgreSql.Tests.TestDoubles;
+using NGB.PostgreSql.UnitOfWork;
 using NGB.Tools.Exceptions;
 using Xunit;
 
@@ -103,16 +104,23 @@ public sealed class PostgresAdvisoryLockManagerFullCoverageTests
     [Fact]
     public async Task Document_batch_lock_uses_one_roundtrip_and_cached_single_lock_is_a_no_op()
     {
-        var fixture = ActiveManager(new RecordingDbConnection(scalar: _ => true));
+        var connection = new RecordingDbConnection(scalar: _ => true);
+        await using var uow = new PostgresUnitOfWork(connection, NullLogger<PostgresUnitOfWork>.Instance);
+        await uow.BeginTransactionAsync();
+        var manager = new PostgresAdvisoryLockManager(
+            uow,
+            Options.Create(new PostgresOptions()),
+            NullLogger<PostgresAdvisoryLockManager>.Instance,
+            new FixedTimeProvider());
         var first = Guid.Parse("00000000-0000-0000-0000-000000000010");
         var second = Guid.Parse("00000000-0000-0000-0000-000000000020");
 
-        await fixture.Manager.LockDocumentsAsync([]);
-        await fixture.Manager.LockDocumentsAsync([second, Guid.Empty, first, second]);
-        await fixture.Manager.LockDocumentAsync(first);
+        await manager.LockDocumentsAsync([]);
+        await manager.LockDocumentsAsync([second, Guid.Empty, first, second]);
+        await manager.LockDocumentAsync(first);
 
-        fixture.Connection.Commands.Should().ContainSingle();
-        fixture.Connection.Commands[0].CommandText.Should()
+        connection.Commands.Should().ContainSingle();
+        connection.Commands[0].CommandText.Should()
             .Contain("UNNEST").And.Contain("pg_try_advisory_xact_lock");
     }
 
@@ -136,6 +144,25 @@ public sealed class PostgresAdvisoryLockManagerFullCoverageTests
             [new DateOnly(2026, 8, 1)],
             (AdvisoryLockPeriodScope)999);
         await invalidScope.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+    }
+
+    [Fact]
+    public async Task Shared_operational_month_locks_require_transaction_and_keep_exclusive_api_distinct()
+    {
+        var inactive = Manager(new RecordingDbConnection(), false, null);
+        await ((Func<Task>)(() => inactive.LockOperationalRegisterSharedPeriodsAsync(null!)))
+            .Should().ThrowAsync<ArgumentNullException>();
+        await ((Func<Task>)(() => inactive.LockOperationalRegisterSharedPeriodsAsync([])))
+            .Should().ThrowAsync<InvalidOperationException>();
+
+        var fixture = ActiveManager(new RecordingDbConnection(scalar: _ => true));
+        var month = new DateOnly(2026, 8, 1);
+        await fixture.Manager.LockOperationalRegisterSharedPeriodsAsync([]);
+        await fixture.Manager.LockOperationalRegisterSharedPeriodsAsync([month, month.AddDays(1)]);
+        await fixture.Manager.LockPeriodAsync(month, AdvisoryLockPeriodScope.OperationalRegister);
+        fixture.Connection.Commands.Should().HaveCount(2);
+        fixture.Connection.Commands[0].CommandText.Should().Contain("pg_try_advisory_xact_lock_shared");
+        fixture.Connection.Commands[1].CommandText.Should().NotContain("_shared");
     }
 
     [Fact]

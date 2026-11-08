@@ -136,26 +136,29 @@ public sealed class ChartOfAccountsManagementService(
 
     public async Task MarkForDeletionAsync(Guid accountId, CancellationToken ct = default)
     {
-        var current = await repository.GetAdminByIdAsync(accountId, ct)
-                      ?? throw new AccountNotFoundException(accountId);
-
-        if (current.IsDeleted)
-            return; // strict no-op (do not log)
-
-        var hasMovements = await repository.HasMovementsAsync(accountId, ct);
-        if (hasMovements)
-            throw new AccountHasMovementsCannotDeleteException(accountId);
-
-        var changes = new List<AuditFieldChange>
+        var changed = await uow.ExecuteInUowTransactionAsync(async innerCt =>
         {
-            AuditLogService.Change("is_deleted", false, true)
-        };
+            if (repository is IChartOfAccountsLockingRepository lockingRepository)
+                await lockingRepository.LockForUpdateAsync(accountId, innerCt);
 
-        if (current.IsActive)
-            changes.Add(AuditLogService.Change("is_active", true, false));
+            var current = await repository.GetAdminByIdAsync(accountId, innerCt)
+                ?? throw new AccountNotFoundException(accountId);
 
-        await uow.ExecuteInUowTransactionAsync(async innerCt =>
-        {
+            if (current.IsDeleted)
+                return false; // strict no-op (do not log)
+
+            var hasMovements = await repository.HasMovementsAsync(accountId, innerCt);
+            if (hasMovements)
+                throw new AccountHasMovementsCannotDeleteException(accountId);
+
+            var changes = new List<AuditFieldChange>
+            {
+                AuditLogService.Change("is_deleted", false, true)
+            };
+
+            if (current.IsActive)
+                changes.Add(AuditLogService.Change("is_active", true, false));
+
             await repository.MarkForDeletionAsync(accountId, innerCt);
 
             await audit.WriteAsync(
@@ -165,7 +168,12 @@ public sealed class ChartOfAccountsManagementService(
                 changes: changes,
                 metadata: new { code = current.Account.Code, name = current.Account.Name },
                 ct: innerCt);
+
+            return true;
         }, ct);
+
+        if (!changed)
+            return;
 
         snapshotCache.Invalidate();
         logger.LogInformation("Marked for deletion account {AccountId}", accountId);

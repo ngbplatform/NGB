@@ -1,7 +1,6 @@
 using Microsoft.Extensions.Logging;
 using NGB.Accounting.PostingState;
 using NGB.Core.Documents.Exceptions;
-using NGB.Core.Locks;
 using NGB.OperationalRegisters;
 using NGB.OperationalRegisters.Contracts;
 using NGB.OperationalRegisters.Exceptions;
@@ -77,10 +76,7 @@ public sealed class OperationalRegisterWriteEngine(
                     await locks.LockOperationalRegisterAsync(registerId, innerCt);
 
                     periodsToInvalidate = await BuildInvalidatePeriodsAsync(registerId, months, innerCt);
-                    await locks.LockPeriodsDeterministicallyAsync(
-                        periodsToInvalidate,
-                        AdvisoryLockPeriodScope.OperationalRegister,
-                        innerCt);
+                    await locks.LockOperationalRegisterWritePeriodsAsync(periodsToInvalidate, innerCt);
                 }
 
                 var startedAtUtc = timeProvider.GetUtcNow().UtcDateTime;

@@ -1,14 +1,20 @@
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using NGB.Accounting.Accounts;
 using NGB.Accounting.PostingState;
 using NGB.Accounting.PostingState.Readers;
 using NGB.Core.Documents;
 using NGB.Persistence.Documents;
+using NGB.Persistence.Locks;
 using NGB.Persistence.Readers;
 using NGB.Persistence.Readers.PostingState;
 using NGB.Persistence.Readers.Reports;
+using NGB.Persistence.UnitOfWork;
+using NGB.PostgreSql.DependencyInjection;
+using NGB.PostgreSql.Locks;
 using NGB.Runtime.Accounts;
 using NGB.Runtime.Documents;
 using NGB.Runtime.Documents.Workflow;
@@ -20,8 +26,10 @@ namespace NGB.Runtime.IntegrationTests.Posting;
 [Collection(PlatformPostgresCollection.Name)]
 public sealed class UnpostVsRepostRaceTests(PostgresTestFixture fixture)
 {
-    [Fact]
-    public async Task UnpostVsRepost_ConcurrentOperations_AreSerialized_NoDoubleStorno_NoDuplicatePostingLog()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task UnpostVsRepost_ConcurrentOperations_AreSerialized_NoDoubleStorno_NoDuplicatePostingLog(bool repostFirst)
     {
         await fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(fixture.ConnectionString);
@@ -50,23 +58,61 @@ public sealed class UnpostVsRepostRaceTests(PostgresTestFixture fixture)
                 ct: CancellationToken.None);
         }
 
-        var gate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        // Act: run Unpost and Repost concurrently (same documentId).
-        var tasks = new[]
+        var firstLocked = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var resumeFirst = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var secondAttempted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        async Task PauseAfterLockAsync(Task acquisition)
         {
-            RunUnpostAsync(host, documentId, gate),
-            RunRepostAsync(host, documentId, periodUtc, gate, newAmount: 200m)
-        };
+            await acquisition;
+            firstLocked.TrySetResult();
+            await resumeFirst.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        }
 
+        using var firstHost = IntegrationHostFactory.Create(fixture.ConnectionString, services =>
+            services.AddScoped<IAdvisoryLockManager>(sp => ObservingProxy<IAdvisoryLockManager>.Wrap(
+                CreateLockManager(sp),
+                (method, _, result) => method.Name == nameof(IAdvisoryLockManager.LockDocumentAsync)
+                    ? PauseAfterLockAsync((Task)result!)
+                    : result)));
+        using var secondHost = IntegrationHostFactory.Create(fixture.ConnectionString, services =>
+            services.AddScoped<IAdvisoryLockManager>(sp => ObservingProxy<IAdvisoryLockManager>.Wrap(
+                CreateLockManager(sp),
+                (method, _, result) =>
+                {
+                    if (method.Name == nameof(IAdvisoryLockManager.LockDocumentAsync))
+                        secondAttempted.TrySetResult();
+
+                    return result;
+                })));
+
+        var gate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         gate.SetResult(true);
+        var first = repostFirst
+            ? RunRepostAsync(firstHost, documentId, periodUtc, gate, newAmount: 200m)
+            : RunUnpostAsync(firstHost, documentId, gate);
+        Task<Outcome>? second = null;
+        try
+        {
+            await firstLocked.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            second = repostFirst
+                ? RunUnpostAsync(secondHost, documentId, gate)
+                : RunRepostAsync(secondHost, documentId, periodUtc, gate, newAmount: 200m);
+            await secondAttempted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        }
+        finally
+        {
+            resumeFirst.TrySetResult();
+        }
 
-        var outcomes = await Task.WhenAll(tasks).WaitAsync(TimeSpan.FromSeconds(30));
+        var outcomes = await Task.WhenAll(first, second!).WaitAsync(TimeSpan.FromSeconds(30));
 
-        // Repost may legitimately fail if Unpost wins the race first (document becomes Draft).
+        // Both serialization orders are exercised explicitly, rather than left to scheduling.
         outcomes.Should().HaveCount(2);
-        outcomes.All(o => o.Error is null || o.Error is DocumentWorkflowStateMismatchException).Should().BeTrue(
-            $"unexpected exception types: {string.Join(", ", outcomes.Where(o => o.Error is not null).Select(o => o.Error!.GetType().Name))}");
+        outcomes[0].Error.Should().BeNull();
+        if (repostFirst)
+            outcomes[1].Error.Should().BeNull();
+        else
+            outcomes[1].Error.Should().BeOfType<DocumentWorkflowStateMismatchException>();
 
         await using var verifyScope = host.Services.CreateAsyncScope();
         var sp = verifyScope.ServiceProvider;
@@ -106,20 +152,19 @@ public sealed class UnpostVsRepostRaceTests(PostgresTestFixture fixture)
             PageSize = 20
         }, CancellationToken.None);
 
-        repostLog.Records.Should().HaveCountLessThanOrEqualTo(1);
-        if (repostLog.Records.Count == 1)
-            repostLog.Records.Single().CompletedAtUtc.Should().NotBeNull();
+        // Unpost clears completed Post/Repost state to allow the next posting cycle.
+        repostLog.Records.Should().BeEmpty();
 
-        // 3) Entries must match one of two valid serializations:
-        //    A) Unpost first => total=2, storno=1
-        //    B) Repost first then Unpost => total=6, storno=4
+        // 3) Reverse only the remaining stored effect. The original +100/-100 pair
+        // must not be reversed again when Unpost follows a successful Repost to 200.
         var entries = await entryReader.GetByDocumentAsync(documentId, CancellationToken.None);
 
-        var stornoCount = entries.Count(e => e.IsStorno);
-        var isCaseA = entries.Count == 2 && stornoCount == 1;
-        var isCaseB = entries.Count == 6 && stornoCount == 4;
-
-        (isCaseA || isCaseB).Should().BeTrue($"unexpected entry shape: total={entries.Count}, storno={stornoCount}");
+        entries.Should().HaveCount(repostFirst ? 4 : 2);
+        entries.Count(e => e.IsStorno).Should().Be(repostFirst ? 2 : 1);
+        var expectedCashAmounts = repostFirst ? new[] { 100m, -100m, 200m, -200m } : [100m, -100m];
+        entries.OrderBy(entry => entry.EntryId)
+            .Select(entry => entry.Debit.Code == "50" ? entry.Amount : -entry.Amount)
+            .Should().Equal(expectedCashAmounts);
 
         // 4) Trial balance ends net-zero for the period in both cases.
         var tb = await trialBalance.GetAsync(period, period, CancellationToken.None);
@@ -127,6 +172,13 @@ public sealed class UnpostVsRepostRaceTests(PostgresTestFixture fixture)
         tb.Should().ContainSingle(r => r.AccountCode == "50" && r.ClosingBalance == 0m);
         tb.Should().ContainSingle(r => r.AccountCode == "90.1" && r.ClosingBalance == 0m);
     }
+
+    private static PostgresAdvisoryLockManager CreateLockManager(IServiceProvider services)
+        => new(
+            services.GetRequiredService<IUnitOfWork>(),
+            services.GetRequiredService<IOptions<PostgresOptions>>(),
+            services.GetRequiredService<ILogger<PostgresAdvisoryLockManager>>(),
+            TimeProvider.System);
 
     private static async Task SeedMinimalCoaAsync(IHost host)
     {

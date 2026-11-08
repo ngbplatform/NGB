@@ -762,7 +762,7 @@ public sealed class DocumentService_UpdateDraft_And_Reads_P0Tests
         var opregPostingActionResolver = new Mock<IDocumentOperationalRegisterPostingActionResolver>(MockBehavior.Strict);
         var refregPostingActionResolver = new Mock<IDocumentReferenceRegisterPostingActionResolver>(MockBehavior.Strict);
         var relationshipGraph = new Mock<IDocumentRelationshipGraphReadService>(MockBehavior.Strict);
-        docs.Setup(x => x.GetForUpdateAsync(id, It.IsAny<CancellationToken>()))
+        docs.Setup(x => x.GetAsync(id, It.IsAny<CancellationToken>()))
             .ReturnsAsync((DocumentRecord?)null);
 
         var svc = new DocumentService(
@@ -808,6 +808,9 @@ public sealed class DocumentService_UpdateDraft_And_Reads_P0Tests
         var relationshipGraph = new Mock<IDocumentRelationshipGraphReadService>(MockBehavior.Strict);
         if (lockedDoc is not null)
         {
+            docs.Setup(x => x.GetAsync(lockedDoc.Id, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(lockedDoc);
+
             docs.Setup(x => x.GetForUpdateAsync(lockedDoc.Id, It.IsAny<CancellationToken>()))
                 .ReturnsAsync(lockedDoc);
 

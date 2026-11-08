@@ -107,7 +107,7 @@ SELECT COALESCE((SELECT seqcache = 1 AND seqincrement = 1 AND NOT seqcycle
 
             try
             {
-                await publicationLocks.LockOperationalRegisterPublicationAsync(registerId, periodMonth, deadline.Token);
+                await LockPublicationAsync(publicationLocks, registerId, periodMonth, deadline.Token);
 
                 boundary = await uow.Connection.ExecuteScalarAsync<long>(new CommandDefinition(
                     $"SELECT COALESCE(MAX(movement_id), 0) FROM {source.Movements};",
@@ -189,7 +189,7 @@ SELECT COALESCE((SELECT seqcache = 1 AND seqincrement = 1 AND NOT seqcycle
             deadline.CancelAfter(TimeSpan.FromSeconds(timeout));
             try
             {
-                await publicationLocks.LockOperationalRegisterPublicationAsync(registerId, month, deadline.Token);
+                await LockPublicationAsync(publicationLocks, registerId, month, deadline.Token);
                 var sql = ApplyTail(source, source.Turnovers, cumulative: false)
                     + ApplyTail(source, source.Balances, cumulative: true);
                 await owner.ExecuteTailAsync(sql, month, boundary, deadline.Token);
@@ -200,6 +200,15 @@ SELECT COALESCE((SELECT seqcache = 1 AND seqincrement = 1 AND NOT seqcycle
             }
         }
     }
+
+    private static Task LockPublicationAsync(
+        IOperationalRegisterFinalizationLockManager locks,
+        Guid registerId,
+        DateOnly month,
+        CancellationToken ct)
+        => locks is IOperationalRegisterSharedPeriodLockManager sharedLocks
+            ? sharedLocks.LockOperationalRegisterSharedPublicationAsync(registerId, month, ct)
+            : locks.LockOperationalRegisterPublicationAsync(registerId, month, ct);
 
     private System.Data.Common.DbTransaction? CurrentTransaction => uow.Transaction;
     private Task ExecuteTailAsync(string sql, DateOnly month, long boundary, CancellationToken ct)

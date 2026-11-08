@@ -12,6 +12,7 @@ using NGB.Definitions.Documents.Approval;
 using NGB.Definitions.Documents.Numbering;
 using NGB.Metadata.Catalogs.Storage;
 using NGB.Metadata.Documents.Storage;
+using NGB.Persistence.Accounts;
 using NGB.Persistence.Readers.Reports;
 using NGB.Persistence.Catalogs;
 using NGB.Persistence.Catalogs.Storage;
@@ -167,7 +168,11 @@ public static class RuntimeServiceCollectionExtensions
 
         // Chart of Accounts (loaded from persistence)
         services.TryAddSingleton<ChartOfAccountsSnapshotCache>();
-        services.TryAddScoped<IChartOfAccountsProvider, ChartOfAccountsProvider>();
+        // Other hosts cannot invalidate a process-wide snapshot. The default provider
+        // pins its own cache for one request; the shared cache remains available to explicit consumers.
+        services.TryAddScoped<IChartOfAccountsProvider>(sp => new ChartOfAccountsProvider(
+            sp.GetRequiredService<IChartOfAccountsRepository>(),
+            new ChartOfAccountsSnapshotCache()));
         services.TryAddScoped<IChartOfAccountsAdminService, ChartOfAccountsAdminService>();
         services.TryAddScoped<IChartOfAccountsManagementService, ChartOfAccountsManagementService>();
 

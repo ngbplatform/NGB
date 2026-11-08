@@ -10,8 +10,28 @@ using NGB.Tools.Exceptions;
 
 namespace NGB.PostgreSql.Accounts;
 
-public sealed class PostgresChartOfAccountsRepository(IUnitOfWork uow) : IChartOfAccountsRepository
+public sealed class PostgresChartOfAccountsRepository(IUnitOfWork uow) : IChartOfAccountsLockingRepository
 {
+    public async Task LockForUpdateAsync(Guid accountId, CancellationToken ct = default)
+    {
+        await uow.EnsureOpenForTransactionAsync(ct);
+
+        const string sql = """
+                           SELECT account_id
+                           FROM accounting_accounts
+                           WHERE account_id = @AccountId
+                           FOR UPDATE;
+                           """;
+
+        var cmd = new CommandDefinition(
+            sql,
+            new { AccountId = accountId },
+            transaction: uow.Transaction,
+            cancellationToken: ct);
+
+        await uow.Connection.ExecuteScalarAsync<Guid?>(cmd);
+    }
+
     public async Task<IReadOnlyList<Account>> GetAllAsync(CancellationToken ct)
     {
         await uow.EnsureConnectionOpenAsync(ct);

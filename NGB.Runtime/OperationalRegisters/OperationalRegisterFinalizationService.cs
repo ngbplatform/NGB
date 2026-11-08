@@ -1,5 +1,4 @@
 using Microsoft.Extensions.Logging;
-using NGB.Core.Locks;
 using NGB.OperationalRegisters;
 using NGB.OperationalRegisters.Contracts;
 using NGB.OperationalRegisters.Exceptions;
@@ -42,10 +41,7 @@ public sealed class OperationalRegisterFinalizationService(
                 await locks.LockOperationalRegisterAsync(registerId, innerCt);
 
                 var periods = await BuildInvalidatePeriodsAsync(registerId, month, innerCt);
-                await locks.LockPeriodsDeterministicallyAsync(
-                    periods,
-                    AdvisoryLockPeriodScope.OperationalRegister,
-                    innerCt);
+                await locks.LockOperationalRegisterWritePeriodsAsync(periods, innerCt);
 
                 var nowUtc = timeProvider.GetUtcNow().UtcDateTime;
                 await finalizations.MarkDirtyPeriodsAsync(
@@ -77,7 +73,7 @@ public sealed class OperationalRegisterFinalizationService(
                     throw new OperationalRegisterNotFoundException(registerId);
 
                 await locks.LockOperationalRegisterAsync(registerId, innerCt);
-                await locks.LockPeriodAsync(month, AdvisoryLockPeriodScope.OperationalRegister, innerCt);
+                await locks.LockOperationalRegisterWritePeriodsAsync([month], innerCt);
 
                 var nowUtc = timeProvider.GetUtcNow().UtcDateTime;
                 await finalizations.MarkFinalizedAsync(registerId, month, finalizedAtUtc: nowUtc, nowUtc: nowUtc, innerCt);

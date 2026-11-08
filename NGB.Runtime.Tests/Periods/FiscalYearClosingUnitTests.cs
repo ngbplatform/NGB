@@ -70,6 +70,8 @@ public sealed class FiscalYearClosingUnitTests
         uow.Setup(x => x.CommitAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
 
         var locks = new Mock<IAdvisoryLockManager>(MockBehavior.Strict);
+        locks.Setup(x => x.LockDocumentAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
         locks.Setup(x => x.LockPeriodAsync(It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
@@ -217,6 +219,8 @@ public sealed class FiscalYearClosingUnitTests
         uow.Setup(x => x.BeginTransactionAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
         uow.Setup(x => x.RollbackAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
         var locks = new Mock<IAdvisoryLockManager>(MockBehavior.Strict);
+        locks.Setup(x => x.LockDocumentAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
         var turnoverReader = new Mock<IAccountingTurnoverReader>(MockBehavior.Strict);
         var balanceReader = new Mock<IAccountingBalanceReader>(MockBehavior.Strict);
         var balanceWriter = new Mock<IAccountingBalanceWriter>(MockBehavior.Strict);
@@ -341,6 +345,8 @@ public sealed class FiscalYearClosingUnitTests
         uow.Setup(x => x.RollbackAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
 
         var locks = new Mock<IAdvisoryLockManager>(MockBehavior.Strict);
+        locks.Setup(x => x.LockDocumentAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
         locks.Setup(x => x.LockPeriodAsync(fiscalYearEndPeriod, It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 

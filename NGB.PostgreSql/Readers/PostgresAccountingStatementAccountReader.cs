@@ -9,12 +9,32 @@ using NGB.Tools.Extensions;
 
 namespace NGB.PostgreSql.Readers;
 
-public sealed class PostgresAccountingStatementAccountReader(IUnitOfWork uow) : IAccountingStatementAccountReader
+public sealed class PostgresAccountingStatementAccountReader(IUnitOfWork uow) : IIncomeStatementAccountReader
 {
     public async IAsyncEnumerable<AccountingStatementAccount> ReadAsync(
         DateOnly from,
         DateOnly to,
         DimensionScopeBag? scopes,
+        [EnumeratorCancellation] CancellationToken ct)
+    {
+        await foreach (var account in ReadCoreAsync(from, to, scopes, Sql, ct))
+        {
+            yield return account;
+        }
+    }
+
+    public IAsyncEnumerable<AccountingStatementAccount> ReadIncomeStatementAsync(
+        DateOnly from,
+        DateOnly to,
+        DimensionScopeBag? scopes,
+        CancellationToken ct)
+        => ReadCoreAsync(from, to, scopes, IncomeStatementSql, ct);
+
+    private async IAsyncEnumerable<AccountingStatementAccount> ReadCoreAsync(
+        DateOnly from,
+        DateOnly to,
+        DimensionScopeBag? scopes,
+        string sql,
         [EnumeratorCancellation] CancellationToken ct)
     {
         from.EnsureMonthStart(nameof(from));
@@ -27,7 +47,7 @@ public sealed class PostgresAccountingStatementAccountReader(IUnitOfWork uow) : 
 
         await uow.EnsureConnectionOpenAsync(ct);
         await using var reader = await uow.Connection.ExecuteReaderAsync(new CommandDefinition(
-            Sql + " ORDER BY a.statement_section,a.code COLLATE \"C\",a.account_id",
+            sql + " ORDER BY a.statement_section,a.code COLLATE \"C\",a.account_id",
             new { FromInclusive = from, ToInclusive = to, DimensionIds = ids, ValueIds = values, DimensionCount = count },
             uow.Transaction, commandTimeout: 300, cancellationToken: ct));
 
@@ -47,7 +67,7 @@ public sealed class PostgresAccountingStatementAccountReader(IUnitOfWork uow) : 
 
     // Statements use two authoritative month-end endpoints. Range turnovers remain separate for P&L.
     // In particular a closed To month uses its closing snapshot, not a reconstruction from its opening.
-    internal const string Sql = """
+    private const string AmountsSql = """
         WITH latest AS (
             SELECT MAX(period) FILTER (WHERE period < @FromInclusive) AS opening,
                    MAX(period) FILTER (WHERE period <= @ToInclusive) AS closing FROM accounting_closed_periods
@@ -73,9 +93,20 @@ public sealed class PostgresAccountingStatementAccountReader(IUnitOfWork uow) : 
             WHERE t.period<=@ToInclusive
               AND (t.period>=@FromInclusive OR l.opening IS NULL OR t.period>l.opening OR l.closing IS NULL OR t.period>l.closing)
               AND (@DimensionCount=0 OR t.dimension_set_id IN (SELECT dimension_set_id FROM matching))
+        """;
+
+    private const string GroupSql = """
         )
         SELECT a.account_id,a.code,a.name,a.statement_section,SUM(v.opening),SUM(v.debit),SUM(v.credit),SUM(v.closing)
         FROM amounts v JOIN accounting_accounts a ON a.account_id=v.account_id AND a.is_deleted=FALSE
         GROUP BY a.account_id,a.code,a.name,a.statement_section
         """;
+
+    internal const string Sql = AmountsSql + "\n" + GroupSql;
+
+    internal const string IncomeStatementSql = AmountsSql + "\nUNION ALL\n"
+        + "SELECT c.account_id, 0, c.debit_amount, c.credit_amount, 0 FROM (\n"
+        + PostgresFiscalYearClosingActivitySql.Corrections
+        + "\n) c WHERE @DimensionCount=0 OR c.dimension_set_id IN (SELECT dimension_set_id FROM matching)\n"
+        + GroupSql;
 }

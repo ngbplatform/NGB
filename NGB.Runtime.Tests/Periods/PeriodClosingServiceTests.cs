@@ -74,6 +74,8 @@ public sealed class PeriodClosingServiceTests
         uow.Setup(x => x.RollbackAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
 
         var locks = new Mock<IAdvisoryLockManager>(MockBehavior.Strict);
+        locks.Setup(x => x.LockDocumentAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
         locks.Setup(x => x.LockPeriodAsync(It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
@@ -166,6 +168,8 @@ public sealed class PeriodClosingServiceTests
         uow.Setup(x => x.RollbackAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
 
         var locks = new Mock<IAdvisoryLockManager>(MockBehavior.Strict);
+        locks.Setup(x => x.LockDocumentAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
         locks.Setup(x => x.LockPeriodAsync(It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
@@ -272,6 +276,8 @@ public sealed class PeriodClosingServiceTests
         uow.Setup(x => x.RollbackAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
 
         var locks = new Mock<IAdvisoryLockManager>(MockBehavior.Strict);
+        locks.Setup(x => x.LockDocumentAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
         locks.Setup(x => x.LockPeriodAsync(period, It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
@@ -334,6 +340,8 @@ public sealed class PeriodClosingServiceTests
         uow.Setup(x => x.RollbackAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
 
         var locks = new Mock<IAdvisoryLockManager>(MockBehavior.Strict);
+        locks.Setup(x => x.LockDocumentAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
         locks.Setup(x => x.LockPeriodAsync(requestedPeriod, It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 

@@ -72,10 +72,11 @@ public abstract class FinancialStatementStreamingExecutor(IAccountingStatementAc
         [EnumeratorCancellation] CancellationToken ct)
     {
         var input = JsonSerializer.Deserialize<Input>(preparedJson)!;
-        var accounts = reader.ReadAsync(
-            input.From,
-            input.To,
-            CanonicalReportExecutionHelper.BuildDimensionScopes(input.Definition, input.Request), ct);
+        var scopes = CanonicalReportExecutionHelper.BuildDimensionScopes(input.Definition, input.Request);
+
+        var accounts = ReportCode == AccountingReportCodes.IncomeStatement && reader is IIncomeStatementAccountReader incomeReader
+            ? incomeReader.ReadIncomeStatementAsync(input.From, input.To, scopes, ct)
+            : reader.ReadAsync(input.From, input.To, scopes, ct);
 
         var ordinal = 0;
         await foreach (var row in RenderAsync(input, accounts, ct))

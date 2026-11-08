@@ -30,6 +30,9 @@ namespace NGB.PostgreSql.ReferenceRegisters;
 /// - recorded_at_utc TIMESTAMPTZ NOT NULL DEFAULT NOW()
 /// - is_deleted BOOLEAN NOT NULL DEFAULT false
 ///
+/// Writes explicitly use statement time, so an older transaction cannot backdate a later version.
+/// This also applies to existing tables whose recorded_at_utc default is NOW().
+///
 /// All per-register record tables are append-only (UPDATE/DELETE forbidden via shared guard function).
 /// </summary>
 public sealed class PostgresReferenceRegisterRecordsStore(
@@ -339,6 +342,7 @@ public sealed class PostgresReferenceRegisterRecordsStore(
                              period_utc,
                              period_bucket_utc,
                              recorder_document_id,
+                             recorded_at_utc,
                              is_deleted{insertCols}
                          )
                          SELECT
@@ -346,6 +350,7 @@ public sealed class PostgresReferenceRegisterRecordsStore(
                              period_utc,
                              period_bucket_utc,
                              recorder_document_id,
+                             statement_timestamp(),
                              TRUE{(fields.Count == 0 ? string.Empty : ", " + string.Join(", ", fields.Select(f => f.ColumnCode)))}
                          FROM last_rows
                          WHERE is_deleted = FALSE
@@ -829,12 +834,13 @@ public sealed class PostgresReferenceRegisterRecordsStore(
 
     private static string BuildInsertPrefix(string table, IReadOnlyList<ReferenceRegisterField> fields)
     {
-        var cols = new List<string>(capacity: 5 + fields.Count)
+        var cols = new List<string>(capacity: 6 + fields.Count)
         {
             "dimension_set_id",
             "period_utc",
             "period_bucket_utc",
             "recorder_document_id",
+            "recorded_at_utc",
             "is_deleted"
         };
 
@@ -845,12 +851,13 @@ public sealed class PostgresReferenceRegisterRecordsStore(
 
     private static string BuildValuesRow(IReadOnlyList<ReferenceRegisterField> fields, int i)
     {
-        var values = new List<string>(capacity: 5 + fields.Count)
+        var values = new List<string>(capacity: 6 + fields.Count)
         {
             "@" + P("DimensionSetId", i),
             "@" + P("PeriodUtc", i),
             "@" + P("PeriodBucketUtc", i),
             "@" + P("RecorderDocumentId", i),
+            "statement_timestamp()",
             "@" + P("IsDeleted", i)
         };
 

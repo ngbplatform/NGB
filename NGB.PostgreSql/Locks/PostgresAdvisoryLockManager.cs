@@ -5,6 +5,7 @@ using NGB.Core.Locks;
 using NGB.Persistence.Locks;
 using NGB.Persistence.UnitOfWork;
 using NGB.PostgreSql.DependencyInjection;
+using NGB.PostgreSql.UnitOfWork;
 using NGB.Tools.Exceptions;
 using NGB.Tools.Extensions;
 
@@ -15,7 +16,7 @@ public sealed class PostgresAdvisoryLockManager(
     IOptions<PostgresOptions> options,
     ILogger<PostgresAdvisoryLockManager> logger,
     TimeProvider timeProvider)
-    : IAdvisoryLockBatchManager, IOperationalRegisterFinalizationLockManager
+    : IAdvisoryLockBatchManager, IOperationalRegisterSharedPeriodLockManager
 {
     private const uint FnvOffset = 2166136261u;
     private const uint FnvPrime = 16777619u;
@@ -280,7 +281,21 @@ public sealed class PostgresAdvisoryLockManager(
             .Select(static period => checked(period.Year * 100 + period.Month))
             .ToArray();
 
-    private async Task LockKeySetAsync(int key1, int[] keys, CancellationToken ct)
+    public Task LockOperationalRegisterSharedPeriodsAsync(
+        IReadOnlyCollection<DateOnly> periods,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(periods);
+        uow.EnsureActiveTransaction();
+
+        return LockKeySetAsync(
+            AdvisoryLockNamespaces.OperationalRegisterPeriod,
+            NormalizePeriodLockKeys(periods),
+            ct,
+            shared: true);
+    }
+
+    private async Task LockKeySetAsync(int key1, int[] keys, CancellationToken ct, bool shared = false)
     {
         if (keys.Length == 0)
             return;
@@ -299,20 +314,24 @@ public sealed class PostgresAdvisoryLockManager(
         var backoff = TimeSpan.FromMilliseconds(20);
         var backoffMax = TimeSpan.FromMilliseconds(250);
 
-        const string sql = """
+        var lockFunction = shared
+            ? "pg_try_advisory_xact_lock_shared"
+            : "pg_try_advisory_xact_lock";
+
+        var sql = $"""
 WITH RECURSIVE requested AS MATERIALIZED (
     SELECT key2, ordinal
     FROM UNNEST(@Key2Values::integer[]) WITH ORDINALITY AS requested(key2, ordinal)
     ORDER BY ordinal
 ), attempts(ordinal, acquired) AS (
     SELECT requested.ordinal,
-           pg_try_advisory_xact_lock(@Key1, requested.key2)
+           {lockFunction}(@Key1, requested.key2)
     FROM requested
     WHERE requested.ordinal = 1
     UNION ALL
     SELECT requested.ordinal,
            CASE WHEN attempts.acquired
-               THEN pg_try_advisory_xact_lock(@Key1, requested.key2)
+               THEN {lockFunction}(@Key1, requested.key2)
                ELSE FALSE
            END
     FROM attempts
@@ -357,8 +376,10 @@ FROM attempts;
 
     private void ResetDocumentLockCacheWhenTransactionChanges()
     {
-        var transaction = uow.Transaction;
-        if (ReferenceEquals(_trackedTransaction, transaction))
+        // Npgsql can reuse its transaction object after commit/rollback. Only the UoW's
+        // per-BEGIN identity is safe to cache. Unknown UoW implementations reacquire locks.
+        var transaction = (uow as PostgresUnitOfWork)?.TransactionIdentity;
+        if (transaction is not null && ReferenceEquals(_trackedTransaction, transaction))
             return;
 
         _trackedTransaction = transaction;
@@ -406,9 +427,22 @@ SELECT pg_advisory_xact_lock(@Namespace, @Second);
             cancellationToken: deadline.Token));
     }
 
-    public async Task LockOperationalRegisterPublicationAsync(
+    public Task LockOperationalRegisterPublicationAsync(
         Guid registerId,
         DateOnly periodMonth,
+        CancellationToken ct)
+        => LockOperationalRegisterPublicationCoreAsync(registerId, periodMonth, shared: false, ct);
+
+    public Task LockOperationalRegisterSharedPublicationAsync(
+        Guid registerId,
+        DateOnly periodMonth,
+        CancellationToken ct)
+        => LockOperationalRegisterPublicationCoreAsync(registerId, periodMonth, shared: true, ct);
+
+    private async Task LockOperationalRegisterPublicationCoreAsync(
+        Guid registerId,
+        DateOnly periodMonth,
+        bool shared,
         CancellationToken ct)
     {
         uow.EnsureActiveTransaction();
@@ -418,10 +452,14 @@ SELECT pg_advisory_xact_lock(@Namespace, @Second);
 
         // Separate statements enforce lock ordering; blocking locks participate in the
         // server wait queue and deadlock detector. The caller supplies a bounded token.
-        const string sql = """
+        var monthLock = shared
+            ? "pg_advisory_xact_lock_shared"
+            : "pg_advisory_xact_lock";
+
+        var sql = $"""
 SELECT pg_advisory_xact_lock(@RegisterNamespace, @First);
 SELECT pg_advisory_xact_lock(@RegisterNamespace, @Second);
-SELECT pg_advisory_xact_lock(@MonthNamespace, @Month);
+SELECT {monthLock}(@MonthNamespace, @Month);
 """;
         await uow.Connection.ExecuteAsync(new CommandDefinition(
             sql,

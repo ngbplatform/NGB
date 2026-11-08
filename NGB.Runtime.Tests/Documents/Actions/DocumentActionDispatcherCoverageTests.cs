@@ -23,6 +23,7 @@ using NGB.Metadata.Documents.Storage;
 using NGB.Persistence.Documents;
 using NGB.Persistence.Documents.Actions;
 using NGB.Persistence.Documents.Universal;
+using NGB.Persistence.Locks;
 using NGB.Persistence.Outbox;
 using NGB.Persistence.UnitOfWork;
 using NGB.Runtime.AuditLog;
@@ -611,7 +612,8 @@ public sealed class DocumentActionDispatcherCoverageTests
                 Permissions.Object,
                 audit.Object,
                 components,
-                TimeProvider.System);
+                TimeProvider.System,
+                new Mock<IAdvisoryLockManager>(MockBehavior.Loose).Object);
         }
 
         public DocumentRecord Source { get; set; }

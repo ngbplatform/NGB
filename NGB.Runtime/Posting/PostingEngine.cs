@@ -256,7 +256,7 @@ public sealed class PostingEngine(
     private async Task EnsureNegativeBalancePolicyAsync(IReadOnlyList<PeriodEntryGroup> entriesByPeriod, CancellationToken ct)
     {
         // Operational enforcement:
-        // base = latest closed balance (<= month) + current month turnovers (to-date).
+        // base = latest closed balance + prior open-month changes + current month turnovers.
         // Then we add current posting deltas and ensure projected balance does not go negative
         // for accounts with NegativeBalancePolicy Warn/Forbid.
         // Posting validator currently enforces a single UTC day, but we keep this generic.
@@ -340,15 +340,16 @@ public sealed class PostingEngine(
                 // NOTE: balances table stores signed balance as (debit - credit).
                 // For credit-normal accounts (including contra assets), a normal balance is NEGATIVE.
                 // Here we operate in a *presented* sign convention: positive means "normal side".
-                // Therefore, we must convert PreviousClosingBalance into presented sign using account.NormalBalance.
+                // Convert the closed balance and prior open-month changes using account.NormalBalance.
                 var baseBalance = 0m;
                 if (snap is not null)
                 {
-                    var presentedPrevClosing = acc.NormalBalance == NormalBalance.Debit
-                        ? snap.PreviousClosingBalance
-                        : -snap.PreviousClosingBalance;
+                    var openingBalance = snap.PreviousClosingBalance + snap.PriorOpenPeriodDelta;
+                    var presentedOpening = acc.NormalBalance == NormalBalance.Debit
+                        ? openingBalance
+                        : -openingBalance;
 
-                    baseBalance = presentedPrevClosing + TurnoverDelta(acc, snap.DebitTurnover, snap.CreditTurnover);
+                    baseBalance = presentedOpening + TurnoverDelta(acc, snap.DebitTurnover, snap.CreditTurnover);
                 }
 
                 postingDelta.TryGetValue(key, out var delta);

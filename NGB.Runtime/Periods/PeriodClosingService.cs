@@ -57,7 +57,9 @@ public sealed class PeriodClosingService(
     IAccountingBalanceProjectionWriter? balanceProjectionWriter = null)
     : IPeriodClosingService
 {
+    private static readonly Guid ClosedPeriodChainLockId = DeterministicGuid.Create("AccountingClosedPeriodChain");
     private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
+
     public async Task CloseMonthAsync(DateOnly period, string closedBy, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(closedBy))
@@ -77,6 +79,10 @@ public sealed class PeriodClosingService(
         {
             try
             {
+                // Chain changes must serialize before taking month locks or reading prerequisites.
+                // Posting and rebuild operations retain their existing per-month concurrency.
+                await advisoryLocks.LockDocumentAsync(ClosedPeriodChainLockId, innerCt);
+
                 // CRITICAL CONCURRENCY GUARD:
                 // Lock the period for the duration of this transaction.
                 // Prevents races:
@@ -171,6 +177,7 @@ public sealed class PeriodClosingService(
         {
             try
             {
+                await advisoryLocks.LockDocumentAsync(ClosedPeriodChainLockId, innerCt);
                 await advisoryLocks.LockPeriodAsync(period, innerCt);
 
                 if (!await closedPeriodRepository.IsClosedAsync(period, innerCt))
@@ -250,6 +257,7 @@ public sealed class PeriodClosingService(
         {
             try
             {
+                await advisoryLocks.LockDocumentAsync(ClosedPeriodChainLockId, innerCt);
                 await advisoryLocks.LockPeriodAsync(fiscalYearEndPeriod, innerCt);
 
                 var postingRow = await TryGetFiscalYearPostingRowAsync(documentId, innerCt);
@@ -420,6 +428,8 @@ public sealed class PeriodClosingService(
         {
             try
             {
+                await advisoryLocks.LockDocumentAsync(ClosedPeriodChainLockId, innerCt);
+
                 // CRITICAL CONCURRENCY GUARD:
                 // Lock the full fiscal-year window [Jan..endPeriod] in ascending order.
                 // This keeps prerequisite reads stable while we evaluate them and serializes:

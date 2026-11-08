@@ -6,6 +6,7 @@ using NGB.Accounting.Balances;
 using NGB.Persistence.Readers;
 using NGB.Runtime.Accounts;
 using NGB.Runtime.IntegrationTests.Infrastructure;
+using NGB.Runtime.IntegrationTests.Reporting;
 using Npgsql;
 using Xunit;
 
@@ -21,6 +22,54 @@ public sealed class AccountingOperationalBalanceReader_Semantics_P0Tests(Postgre
 {
     private const string CashCode = "50";
     private const string RevenueCode = "90.1";
+
+    [Fact]
+    public async Task GetForKeysAsync_PriorOpenDelta_RespectsClosedBoundaryMonthAndDimensions()
+    {
+        using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
+        var (cashId, revenueId, _) = await ReportingTestHelpers.SeedMinimalCoAAsync(host);
+        var otherSet = Guid.NewGuid();
+        await using (var connection = new NpgsqlConnection(Fixture.ConnectionString))
+        {
+            await connection.OpenAsync();
+            await connection.ExecuteAsync(
+                """
+                INSERT INTO platform_dimension_sets(dimension_set_id) VALUES (@OtherSet);
+                INSERT INTO accounting_balances(period, account_id, dimension_set_id, opening_balance, closing_balance)
+                VALUES ('2026-01-01', @CashId, @EmptySet, 0, 100);
+                INSERT INTO accounting_turnovers(period, account_id, dimension_set_id, debit_amount, credit_amount)
+                VALUES
+                    ('2025-12-01', @CashId, @EmptySet, 999, 0),
+                    ('2026-01-01', @CashId, @EmptySet, 100, 0),
+                    ('2026-02-01', @CashId, @EmptySet, 30, 10),
+                    ('2026-03-01', @CashId, @EmptySet, 5, 2),
+                    ('2026-04-01', @CashId, @EmptySet, 7, 1),
+                    ('2026-05-01', @CashId, @EmptySet, 1000, 0),
+                    ('2026-02-01', @CashId, @OtherSet, 888, 0),
+                    ('2026-02-01', @RevenueId, @EmptySet, 777, 0);
+                INSERT INTO accounting_closed_periods(period, closed_at_utc, closed_by)
+                VALUES ('2026-01-01', '2026-02-01T00:00:00Z', 'test');
+                """,
+                new { CashId = cashId, RevenueId = revenueId, OtherSet = otherSet, EmptySet = Guid.Empty });
+        }
+
+        await using var scope = host.Services.CreateAsyncScope();
+        var reader = scope.ServiceProvider.GetRequiredService<IAccountingOperationalBalanceReader>();
+        var rows = await reader.GetForKeysAsync(
+            new DateOnly(2026, 4, 1),
+            [new AccountingBalanceKey(cashId, Guid.Empty), new AccountingBalanceKey(cashId, otherSet)]);
+
+        var empty = rows.Should().ContainSingle(row => row.DimensionSetId == Guid.Empty).Subject;
+        empty.PreviousClosingBalance.Should().Be(100m);
+        empty.PriorOpenPeriodDelta.Should().Be(23m);
+        empty.DebitTurnover.Should().Be(7m);
+        empty.CreditTurnover.Should().Be(1m);
+        var other = rows.Should().ContainSingle(row => row.DimensionSetId == otherSet).Subject;
+        other.PreviousClosingBalance.Should().Be(0m);
+        other.PriorOpenPeriodDelta.Should().Be(888m);
+        other.DebitTurnover.Should().Be(0m);
+        other.CreditTurnover.Should().Be(0m);
+    }
 
     [Fact]
     public async Task GetForKeysAsync_WhenNoClosedPeriods_ReturnsZeroPreviousClosing_AndMonthTurnovers()

@@ -35,6 +35,7 @@ public sealed class PostgresAccountingOperationalBalanceReader(IUnitOfWork uow) 
                                k.account_id AS AccountId,
                                k.dimension_set_id AS DimensionSetId,
                                COALESCE(pb.closing_balance, 0) AS PreviousClosingBalance,
+                               COALESCE(prior.delta, 0) AS PriorOpenPeriodDelta,
                                COALESCE(t.debit_amount, 0) AS DebitTurnover,
                                COALESCE(t.credit_amount, 0) AS CreditTurnover
                            FROM k
@@ -43,6 +44,14 @@ public sealed class PostgresAccountingOperationalBalanceReader(IUnitOfWork uow) 
                                ON pb.period = pp.period
                               AND pb.account_id = k.account_id
                               AND pb.dimension_set_id = k.dimension_set_id
+                           LEFT JOIN LATERAL (
+                               SELECT SUM(debit_amount - credit_amount) AS delta
+                               FROM accounting_turnovers
+                               WHERE account_id = k.account_id
+                                 AND dimension_set_id = k.dimension_set_id
+                                 AND period > COALESCE(pp.period, '-infinity'::date)
+                                 AND period < @Period
+                           ) prior ON TRUE
                            LEFT JOIN accounting_turnovers t
                                ON t.period = @Period
                               AND t.account_id = k.account_id

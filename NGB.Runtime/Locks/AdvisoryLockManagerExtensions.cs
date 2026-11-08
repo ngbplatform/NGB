@@ -5,6 +5,13 @@ namespace NGB.Runtime.Locks;
 
 public static class AdvisoryLockManagerExtensions
 {
+    internal static Task LockOperationalRegisterWritePeriodsAsync(this IAdvisoryLockManager locks,
+        IReadOnlyCollection<DateOnly> periods,
+        CancellationToken ct)
+        => locks is IOperationalRegisterSharedPeriodLockManager sharedLocks
+            ? sharedLocks.LockOperationalRegisterSharedPeriodsAsync(periods, ct)
+            : locks.LockPeriodsDeterministicallyAsync(periods, AdvisoryLockPeriodScope.OperationalRegister, ct);
+
     public static async Task LockDocumentsDeterministicallyAsync(
         this IAdvisoryLockManager locks,
         IReadOnlyCollection<Guid> documentIds,

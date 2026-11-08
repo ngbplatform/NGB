@@ -29,6 +29,8 @@ public sealed class PostgresUnitOfWork : IUnitOfWork
     public DbTransaction? Transaction { get; private set; }
     public bool HasActiveTransaction => Transaction is not null;
 
+    internal object? TransactionIdentity { get; private set; }
+
     public async Task EnsureConnectionOpenAsync(CancellationToken ct = default)
     {
         if (Connection.State == System.Data.ConnectionState.Open)
@@ -82,6 +84,7 @@ public sealed class PostgresUnitOfWork : IUnitOfWork
 
         await EnsureConnectionOpenAsync(ct);
         Transaction = await Connection.BeginTransactionAsync(ct);
+        TransactionIdentity = new object();
         _committedOrRolledBack = false;
     }
 
@@ -104,6 +107,7 @@ public sealed class PostgresUnitOfWork : IUnitOfWork
         finally
         {
             Transaction = null;
+            TransactionIdentity = null;
             await transaction.DisposeAsync();
         }
     }
@@ -125,6 +129,7 @@ public sealed class PostgresUnitOfWork : IUnitOfWork
         finally
         {
             Transaction = null;
+            TransactionIdentity = null;
             await transaction.DisposeAsync();
         }
     }
@@ -148,6 +153,7 @@ public sealed class PostgresUnitOfWork : IUnitOfWork
             finally
             {
                 Transaction = null;
+                TransactionIdentity = null;
                 await transaction.DisposeAsync();
             }
         }
