@@ -68,6 +68,8 @@ public sealed class PostingEngineOrchestrationTests
         closedPeriods.Setup(x => x.FindFirstClosedAsync(
                 It.IsAny<IReadOnlyCollection<DateOnly>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((DateOnly?)null);
+        closedPeriods.Setup(x => x.FindFirstClosedOnOrAfterAsync(It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((DateOnly?)null);
 
         var validator = new Mock<NGB.Accounting.Posting.Validators.IAccountingPostingValidator>(MockBehavior.Strict);
         validator.Setup(x => x.Validate(It.IsAny<IReadOnlyList<AccountingEntry>>()));

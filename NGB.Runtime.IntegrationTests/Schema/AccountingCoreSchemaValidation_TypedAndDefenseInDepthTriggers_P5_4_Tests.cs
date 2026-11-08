@@ -1,6 +1,7 @@
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using NGB.Persistence.Schema;
+using NGB.PostgreSql.Bootstrap;
 using NGB.Runtime.IntegrationTests.Infrastructure;
 using NGB.Tools.Exceptions;
 using Npgsql;
@@ -44,6 +45,23 @@ public sealed class AccountingCoreSchemaValidation_TypedAndDefenseInDepthTrigger
         var ex = await act.Should().ThrowAsync<NgbConfigurationViolationException>();
 
         ex.Which.Message.Should().Contain("trg_acc_turnovers_no_closed_period");
+    }
+
+    [Fact]
+    public async Task ValidateAsync_WhenAccountingHistoryGuardMissing_RepairRestoresProtection()
+    {
+        await DropTriggerAsync(Fixture.ConnectionString, "accounting_closed_periods", "trg_acc_closed_period_history");
+
+        using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
+        await using var scope = host.Services.CreateAsyncScope();
+        var validator = scope.ServiceProvider.GetRequiredService<IAccountingCoreSchemaValidationService>();
+        var act = () => validator.ValidateAsync(CancellationToken.None);
+
+        var ex = await act.Should().ThrowAsync<NgbConfigurationViolationException>();
+        ex.Which.Message.Should().Contain("trg_acc_closed_period_history");
+
+        await DatabaseBootstrapper.RepairAsync(Fixture.ConnectionString);
+        await act.Should().NotThrowAsync();
     }
 
     [Fact]

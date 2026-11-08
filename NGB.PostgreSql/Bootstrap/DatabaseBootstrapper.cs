@@ -55,6 +55,7 @@ public static class DatabaseBootstrapper
 
         // Accounting core (guards/triggers)
         new AccountingClosedPeriodsGuardMigration(),
+        new AccountingPostingBoundaryGuardMigration(),
 
         // Accounting core (indexes)
         new AccountingAccountsIndexesMigration(),
@@ -189,6 +190,7 @@ public static class DatabaseBootstrapper
         new AccountingAccountsCashFlowIndexesMigration(),
         new AccountingRegisterDimensionSetForeignKeysMigration(),
         new AccountingClosedPeriodsGuardMigration(),
+        new AccountingPostingBoundaryGuardMigration(),
         new AccountingRegisterIndexesMigration(),
         new AccountingRegisterCashFlowIndexesMigration(),
         new AccountingRegisterGeneralJournalPagingIndexesMigration(),

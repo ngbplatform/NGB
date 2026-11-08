@@ -18,6 +18,7 @@ using NGB.Persistence.Writers;
 using NGB.Runtime.Accounting;
 using NGB.Runtime.Dimensions;
 using NGB.Runtime.Locks;
+using NGB.Runtime.Periods;
 using NGB.Tools.Exceptions;
 using NGB.Tools.Extensions;
 
@@ -171,6 +172,9 @@ public sealed class PostingEngine(
             // makes large multi-period postings O(periods * entries).
             var entriesByPeriod = GroupEntriesByPeriod(context.Entries);
             var periods = entriesByPeriod.Select(static x => x.Period).ToArray();
+
+            // Acquire before month locks: closing may need the same month while protecting the chain.
+            await AccountingHistoryGuard.LockForPostingAsync(advisoryLocks, periods.Min(), ct);
 
             // 4.5 Concurrency guard: lock all affected accounting periods (prevents ClosePeriod vs Posting races)
             await LockPeriodsAsync(periods, ct);
@@ -401,6 +405,11 @@ public sealed class PostingEngine(
         var firstClosed = await closedPeriodRepository.FindFirstClosedAsync(periods, ct);
         if (firstClosed is not null)
             throw new PostingPeriodClosedException(operation.ToString(), firstClosed.Value);
+
+        var earliestPeriod = periods.Min();
+        var laterClosed = await closedPeriodRepository.FindFirstClosedOnOrAfterAsync(earliestPeriod, ct);
+        if (laterClosed is not null)
+            throw new PostingBeforeClosedPeriodException(operation.ToString(), earliestPeriod, laterClosed.Value);
     }
 
     private static IReadOnlyList<PeriodEntryGroup> GroupEntriesByPeriod(IReadOnlyList<AccountingEntry> entries)

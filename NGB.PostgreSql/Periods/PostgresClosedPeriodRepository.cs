@@ -54,6 +54,24 @@ public sealed class PostgresClosedPeriodRepository(IUnitOfWork uow) : IClosedPer
             cancellationToken: ct));
     }
 
+    public async Task<DateOnly?> FindFirstClosedOnOrAfterAsync(DateOnly period, CancellationToken ct = default)
+    {
+        await uow.EnsureConnectionOpenAsync(ct);
+        const string sql = """
+                           SELECT period
+                           FROM accounting_closed_periods
+                           WHERE period >= @Period
+                           ORDER BY period
+                           LIMIT 1;
+                           """;
+
+        return await uow.Connection.QuerySingleOrDefaultAsync<DateOnly?>(new CommandDefinition(
+            sql,
+            new { Period = new DateOnly(period.Year, period.Month, 1) },
+            transaction: uow.Transaction,
+            cancellationToken: ct));
+    }
+
     public async Task MarkClosedAsync(
         DateOnly period,
         string closedBy,

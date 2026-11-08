@@ -23,6 +23,9 @@ public static class AdvisoryLockNamespaces
     public static readonly int Catalog  = Pack("CAT", 1);
     public static readonly int Period   = Pack("PER", 1);
 
+    // Coordinate first/earlier accounting movements with closing snapshots.
+    public static readonly int AccountingHistory = Pack("ACH", 1);
+
     // Operational Registers: month-level period lock for movement writes + finalization.
     // Separate from accounting Period to avoid unnecessary cross-subsystem serialization.
     public static readonly int OperationalRegisterPeriod = Pack("ORP", 1);

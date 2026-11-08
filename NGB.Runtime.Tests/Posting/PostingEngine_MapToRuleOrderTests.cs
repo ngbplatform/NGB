@@ -66,12 +66,17 @@ public sealed class PostingEngine_DimensionBags_ResolvedToSets_Tests
         var locks = new Mock<IAdvisoryLockManager>(MockBehavior.Strict);
         locks.Setup(x => x.LockDocumentAsync(documentId, It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
+        locks.As<IAccountingHistoryLockManager>()
+            .Setup(x => x.LockAccountingHistoryExtensionAsync(It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
         locks.Setup(x => x.LockPeriodAsync(It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
         var closedPeriods = new Mock<IClosedPeriodRepository>(MockBehavior.Strict);
         closedPeriods.Setup(x => x.FindFirstClosedAsync(
                 It.IsAny<IReadOnlyCollection<DateOnly>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((DateOnly?)null);
+        closedPeriods.Setup(x => x.FindFirstClosedOnOrAfterAsync(It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((DateOnly?)null);
 
         var validator = new Mock<NGB.Accounting.Posting.Validators.IAccountingPostingValidator>(MockBehavior.Strict);

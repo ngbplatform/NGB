@@ -109,6 +109,8 @@ public sealed class PostgresAccountingCoreSchemaValidationService(
 
         // 5.1) Closed-period guards (defense in depth)
         await PostgresSchemaValidationChecks.RequireFunctionAsync(uow, snapshot, "ngb_forbid_posting_into_closed_period", errors, ct);
+        await PostgresSchemaValidationChecks.RequireFunctionAsync(uow, snapshot, "ngb_lock_closed_period_history", errors, ct);
+        await PostgresSchemaValidationChecks.RequireTriggerAsync(uow, snapshot, "trg_acc_closed_period_history", "accounting_closed_periods", errors, ct);
         await PostgresSchemaValidationChecks.RequireTriggerAsync(uow, snapshot, "trg_acc_reg_no_closed_period", "accounting_register_main", errors, ct);
         await PostgresSchemaValidationChecks.RequireTriggerAsync(uow, snapshot, "trg_acc_reg_no_closed_period_delete", "accounting_register_main", errors, ct);
         await PostgresSchemaValidationChecks.RequireTriggerAsync(uow, snapshot, "trg_acc_turnovers_no_closed_period", "accounting_turnovers", errors, ct);

@@ -16,7 +16,7 @@ public sealed class PostgresAdvisoryLockManager(
     IOptions<PostgresOptions> options,
     ILogger<PostgresAdvisoryLockManager> logger,
     TimeProvider timeProvider)
-    : IAdvisoryLockBatchManager, IOperationalRegisterSharedPeriodLockManager
+    : IAdvisoryLockBatchManager, IOperationalRegisterSharedPeriodLockManager, IAccountingHistoryLockManager
 {
     private const uint FnvOffset = 2166136261u;
     private const uint FnvPrime = 16777619u;
@@ -152,6 +152,34 @@ public sealed class PostgresAdvisoryLockManager(
         => current < maximum
             ? TimeSpan.FromMilliseconds(Math.Min(maximum.TotalMilliseconds, current.TotalMilliseconds * 2))
             : current;
+
+    public async Task LockAccountingHistoryExtensionAsync(DateOnly earliestPeriod, CancellationToken ct = default)
+    {
+        uow.EnsureActiveTransaction();
+        await uow.EnsureConnectionOpenAsync(ct);
+
+        // The register is durable history: Unpost appends rows instead of removing the first month.
+        // Only a first posting or a posting before that month can change closing prerequisites.
+        const string sql = """
+                           SELECT EXISTS (
+                               SELECT 1 FROM accounting_register_main WHERE period_month <= @Period
+                           );
+                           """;
+        var hasEarlierHistory = await uow.Connection.ExecuteScalarAsync<bool>(new CommandDefinition(
+            sql,
+            new { Period = new DateOnly(earliestPeriod.Year, earliestPeriod.Month, 1) },
+            transaction: uow.Transaction,
+            cancellationToken: ct));
+
+        if (!hasEarlierHistory)
+            await LockKeySetAsync(AdvisoryLockNamespaces.AccountingHistory, [1], ct, shared: true);
+    }
+
+    public async Task LockAccountingHistoryChangeAsync(CancellationToken ct = default)
+    {
+        uow.EnsureActiveTransaction();
+        await LockTwoIntAsync(AdvisoryLockNamespaces.AccountingHistory, 1, ct);
+    }
 
     public Task LockPeriodAsync(DateOnly period, CancellationToken ct = default)
         => LockPeriodAsync(period, AdvisoryLockPeriodScope.Accounting, ct);

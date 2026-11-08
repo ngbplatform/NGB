@@ -177,9 +177,7 @@ public sealed class GeneralJournalEntry_ReversePosted_Concurrency_And_ClosedPeri
 
         var (cashId, revenueId, _) = await ReportingTestHelpers.SeedMinimalCoAAsync(host);
 
-        // Close March 2026 upfront.
         var closedPeriod = new DateOnly(2026, 3, 1);
-        await ReportingTestHelpers.CloseMonthAsync(host, closedPeriod, closedBy: "tests");
 
         var originalId = await CreateAndPostManualOriginalAsync(
             host,
@@ -187,6 +185,11 @@ public sealed class GeneralJournalEntry_ReversePosted_Concurrency_And_ClosedPeri
             cashId,
             revenueId,
             amount: 10m);
+
+        // Create the original before closing its dependent months.
+        await ReportingTestHelpers.CloseMonthAsync(host, new DateOnly(2026, 1, 1), closedBy: "tests");
+        await ReportingTestHelpers.CloseMonthAsync(host, new DateOnly(2026, 2, 1), closedBy: "tests");
+        await ReportingTestHelpers.CloseMonthAsync(host, closedPeriod, closedBy: "tests");
 
         var reversalDateUtc = new DateTime(2026, 3, 10, 0, 0, 0, DateTimeKind.Utc);
         var reversalDateOnly = DateOnly.FromDateTime(reversalDateUtc);

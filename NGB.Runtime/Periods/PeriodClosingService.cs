@@ -57,7 +57,6 @@ public sealed class PeriodClosingService(
     IAccountingBalanceProjectionWriter? balanceProjectionWriter = null)
     : IPeriodClosingService
 {
-    private static readonly Guid ClosedPeriodChainLockId = DeterministicGuid.Create("AccountingClosedPeriodChain");
     private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
 
     public async Task CloseMonthAsync(DateOnly period, string closedBy, CancellationToken ct = default)
@@ -80,8 +79,9 @@ public sealed class PeriodClosingService(
             try
             {
                 // Chain changes must serialize before taking month locks or reading prerequisites.
-                // Posting and rebuild operations retain their existing per-month concurrency.
-                await advisoryLocks.LockDocumentAsync(ClosedPeriodChainLockId, innerCt);
+                // Ordinary postings retain per-month concurrency; history extensions share the boundary guard.
+                await advisoryLocks.LockDocumentAsync(AccountingHistoryGuard.ChainLockId, innerCt);
+                await AccountingHistoryGuard.LockForPeriodChangeAsync(advisoryLocks, innerCt);
 
                 // CRITICAL CONCURRENCY GUARD:
                 // Lock the period for the duration of this transaction.
@@ -177,7 +177,8 @@ public sealed class PeriodClosingService(
         {
             try
             {
-                await advisoryLocks.LockDocumentAsync(ClosedPeriodChainLockId, innerCt);
+                await advisoryLocks.LockDocumentAsync(AccountingHistoryGuard.ChainLockId, innerCt);
+                await AccountingHistoryGuard.LockForPeriodChangeAsync(advisoryLocks, innerCt);
                 await advisoryLocks.LockPeriodAsync(period, innerCt);
 
                 if (!await closedPeriodRepository.IsClosedAsync(period, innerCt))
@@ -257,7 +258,8 @@ public sealed class PeriodClosingService(
         {
             try
             {
-                await advisoryLocks.LockDocumentAsync(ClosedPeriodChainLockId, innerCt);
+                await advisoryLocks.LockDocumentAsync(AccountingHistoryGuard.ChainLockId, innerCt);
+                await AccountingHistoryGuard.LockForPeriodChangeAsync(advisoryLocks, innerCt);
                 await advisoryLocks.LockPeriodAsync(fiscalYearEndPeriod, innerCt);
 
                 var postingRow = await TryGetFiscalYearPostingRowAsync(documentId, innerCt);
@@ -428,7 +430,8 @@ public sealed class PeriodClosingService(
         {
             try
             {
-                await advisoryLocks.LockDocumentAsync(ClosedPeriodChainLockId, innerCt);
+                await advisoryLocks.LockDocumentAsync(AccountingHistoryGuard.ChainLockId, innerCt);
+                await AccountingHistoryGuard.LockForPeriodChangeAsync(advisoryLocks, innerCt);
 
                 // CRITICAL CONCURRENCY GUARD:
                 // Lock the full fiscal-year window [Jan..endPeriod] in ascending order.
