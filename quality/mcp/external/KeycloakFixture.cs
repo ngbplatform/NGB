@@ -127,6 +127,13 @@ internal sealed class KeycloakFixture : IAsyncDisposable
 
     internal async Task<(string AccessToken, string Subject)> AuthenticateUserAsync(string username = "alex.carter")
     {
+        var tokens = await AuthenticateUserWithTokensAsync(username);
+        return (tokens.AccessToken, tokens.Subject);
+    }
+
+    internal async Task<(string AccessToken, string IdToken, string RefreshToken, string Subject)> AuthenticateUserWithTokensAsync(
+        string username = "alex.carter")
+    {
         using var handler = new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false };
         using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(30) };
         var verifier = Base64Url(RandomNumberGenerator.GetBytes(32));
@@ -189,7 +196,11 @@ internal sealed class KeycloakFixture : IAsyncDisposable
         var payload = token.Split('.')[1];
         using var claims = JsonDocument.Parse(Convert.FromBase64String(payload.Replace('-', '+').Replace('_', '/')
             .PadRight((payload.Length + 3) / 4 * 4, '=')));
-        return (token, claims.RootElement.GetProperty("sub").GetString()!);
+        return (
+            token,
+            tokens.GetProperty("id_token").GetString()!,
+            tokens.GetProperty("refresh_token").GetString()!,
+            claims.RootElement.GetProperty("sub").GetString()!);
     }
 
     public async ValueTask DisposeAsync()
