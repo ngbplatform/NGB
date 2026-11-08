@@ -374,6 +374,7 @@ public sealed class GeneralJournalEntryDocumentService(
 
                 await gje.UpsertHeaderAsync(newHeader, innerCt);
                 await TouchDocumentUpdatedAtAsync(doc, now, innerCt);
+                await documents.IncrementVersionAsync(documentId, now, innerCt);
 
                 var changes = BuildHeaderAuditChanges(header, newHeader);
                 await WriteDocumentAuditAsync(
@@ -432,6 +433,7 @@ public sealed class GeneralJournalEntryDocumentService(
 
                 await gje.TouchUpdatedAtAsync(documentId, now, innerCt);
                 await TouchDocumentUpdatedAtAsync(doc, now, innerCt);
+                await documents.IncrementVersionAsync(documentId, now, innerCt);
 
                 var changes = BuildLineAuditChanges(existingLines, normalized);
                 await WriteDocumentAuditAsync(

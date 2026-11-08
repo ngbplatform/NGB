@@ -10,6 +10,7 @@ public static class PostgresBackgroundJobsServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(services);
         services.TryAddSingleton<IRecurringJobHashBatchReader, PostgresRecurringJobHashBatchReader>();
+        services.TryAddSingleton<IBackgroundJobExecutionLockProvider, PostgresBackgroundJobExecutionLockProvider>();
         return services;
     }
 }

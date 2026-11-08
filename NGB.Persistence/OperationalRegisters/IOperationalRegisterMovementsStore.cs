@@ -9,8 +9,8 @@ namespace NGB.Persistence.OperationalRegisters;
 /// - Movements are append-only. PostgreSQL allocates movement IDs only after acquiring the
 ///   transaction-scoped register lock, including for storno. The ascending sequence uses CACHE 1.
 ///   Direct SQL writes or resetting/reconfiguring the sequence violate the projection contract.
-/// - Unpost/Repost is implemented by appending storno movements (a copy of the document's existing movements with
-///   <c>is_storno = true</c>).
+/// - Unpost/Repost appends opposite-sign copies of the document's still-unmatched movements.
+///   Previously cancelled pairs remain in history and are not copied again.
 /// </summary>
 public interface IOperationalRegisterMovementsStore
 {
@@ -33,7 +33,8 @@ public interface IOperationalRegisterMovementsStore
         CancellationToken ct = default);
 
     /// <summary>
-    /// Appends storno movements for all existing non-storno movements of the given document.
+    /// Cancels unmatched movements of the given document by appending opposite-sign copies.
+    /// Matching includes the exact timestamp, dimension set and all resource values, preserving multiplicity.
     /// Must be called inside an active transaction.
     /// </summary>
     Task AppendStornoByDocumentAsync(Guid registerId, Guid documentId, CancellationToken ct = default);

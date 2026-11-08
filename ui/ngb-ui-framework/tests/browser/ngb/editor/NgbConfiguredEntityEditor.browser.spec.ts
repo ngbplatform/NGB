@@ -412,7 +412,9 @@ test('orchestrates document state, actions, extensions, navigation, and persiste
   await mocks.persistenceContext!.ensureDocumentMetadata('demo.invoice')
   expect(mocks.ensureDocumentType).toHaveBeenCalledWith('demo.invoice')
   await mocks.persistenceContext!.onCreated('new-document-id')
-  mocks.persistenceContext!.onSaved()
+  const refreshesBeforeSave = mocks.refreshDocumentActions.mock.calls.length
+  await mocks.persistenceContext!.onSaved()
+  expect(mocks.refreshDocumentActions).toHaveBeenCalledTimes(refreshesBeforeSave + 1)
   expect(onCreated).toHaveBeenCalledWith('new-document-id')
   expect(onSaved).toHaveBeenCalledOnce()
   expect(mocks.routerReplace).toHaveBeenCalledWith('/documents/demo.invoice/new-document-id')

@@ -88,8 +88,7 @@ CREATE TABLE IF NOT EXISTS {table}(
         // Large-scale / paging indexes.
         // - month_move: supports paging by movement_id within a month (GetByMonth without dimension filter).
         // - month_dim_move: supports paging by movement_id within a (month, dimension_set_id) slice.
-        // - doc_month_nostorno: supports distinct months lookup per document and speeds up storno appends
-        //   (we only storno non-storno rows).
+        // - doc_month_nostorno: supports distinct months lookup per document.
         var ixMonthMove = Ix(table, "month_move");
         var ixMonthDimMove = Ix(table, "month_dim_move");
         var ixDimMonthOccurred = Ix(table, "dim_month_occurred");
@@ -241,17 +240,28 @@ FROM UNNEST({string.Join(", ", unnestArgs)}) AS x({string.Join(", ", unnestCols)
         var resourceCols = resources.Length == 0
             ? string.Empty
             : ", " + string.Join(", ", resources.Select(r => r.ColumnCode));
+        var selectedResources = resources.Length == 0
+            ? string.Empty
+            : ", " + string.Join(", ", resources.Select(r => $"pending.{r.ColumnCode}"));
 
-        // Storno semantics:
-        // - The net effect of a document is computed as SUM(non-storno) - SUM(storno).
-        // - To cancel the *current* net effect (after any number of Post/Repost cycles),
-        //   we must append an opposite-sign row for EACH historical movement row.
-        //   This is achieved by toggling is_storno.
+        // Cancel only the unmatched copies of each complete movement value. This also
+        // handles history written by the old algorithm without changing historical rows.
+        // Keep multiplicity (including zero-valued resources) for signed-count projectors.
+        // The quoted count alias cannot collide with validated lowercase resource columns.
         var sql = $"""
+WITH pending AS (
+    SELECT document_id, occurred_at_utc, dimension_set_id{resourceCols},
+           SUM(CASE WHEN is_storno THEN -1 ELSE 1 END) AS "UnpairedCount"
+    FROM {table}
+    WHERE document_id = @DocumentId
+    GROUP BY document_id, occurred_at_utc, dimension_set_id{resourceCols}
+    HAVING SUM(CASE WHEN is_storno THEN -1 ELSE 1 END) <> 0
+)
 INSERT INTO {table} (document_id, occurred_at_utc, dimension_set_id, is_storno{resourceCols})
-SELECT document_id, occurred_at_utc, dimension_set_id, NOT is_storno{resourceCols}
-FROM {table}
-WHERE document_id = @DocumentId;
+SELECT pending.document_id, pending.occurred_at_utc, pending.dimension_set_id,
+       pending."UnpairedCount" > 0{selectedResources}
+FROM pending
+CROSS JOIN LATERAL generate_series(1::bigint, abs(pending."UnpairedCount")) AS copies;
 """;
 
         // Storno append also counts as a movement (if someone somehow calls it first).

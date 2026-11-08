@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using Hangfire;
 using Hangfire.PostgreSql;
 using Hangfire.PostgreSql.Factories;
@@ -11,6 +12,8 @@ namespace NGB.BackgroundJobs.PostgreSql;
 /// </summary>
 public static class PostgresHangfireJobStorageFactory
 {
+    private static readonly ConditionalWeakTable<JobStorage, ConnectionSettings> StorageConnections = new();
+
     public static JobStorage Create(string connectionString, string storageNamespace, bool prepareSchemaIfNecessary)
     {
         if (string.IsNullOrWhiteSpace(connectionString))
@@ -24,8 +27,20 @@ public static class PostgresHangfireJobStorageFactory
             SchemaName = storageNamespace
         };
 
-        return new PostgreSqlStorage(
+        var storage = new PostgreSqlStorage(
             new NpgsqlConnectionFactory(connectionString, storageOptions, connectionSetup: null!),
             storageOptions);
+
+        // Retain the actual storage configuration without wrapping JobStorage or requiring duplicate options.
+        StorageConnections.Add(storage, new ConnectionSettings(connectionString, storageNamespace));
+
+        return storage;
     }
+
+    internal static ConnectionSettings? GetConnectionSettings(JobStorage? storage)
+    {
+        return storage is not null && StorageConnections.TryGetValue(storage, out var settings) ? settings : null;
+    }
+
+    internal sealed record ConnectionSettings(string ConnectionString, string StorageNamespace);
 }

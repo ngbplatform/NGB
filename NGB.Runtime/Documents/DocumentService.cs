@@ -413,6 +413,7 @@ public sealed class DocumentService(
             // Touch the common header row to update updated_at_utc.
             var now = _timeProvider.GetUtcNowDateTime();
             await documents.UpdateDraftHeaderAsync(id, locked.Number, locked.DateUtc, now, innerCt);
+            await documents.IncrementVersionAsync(id, now, innerCt);
 
             if (audit is not null && beforeAudit is not null)
             {

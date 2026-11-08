@@ -7,7 +7,7 @@ namespace NGB.Runtime.OperationalRegisters;
 ///
 /// Semantics:
 /// - Movements tables are append-only.
-/// - Unpost/Repost is represented by appending storno movements (copy of original movements with <c>is_storno=true</c>).
+/// - Unpost/Repost appends opposite-sign copies of unmatched movements; cancelled history is retained.
 /// - Post appends new movements.
 /// - Repost appends storno for previous movements, then appends the new movements.
 ///

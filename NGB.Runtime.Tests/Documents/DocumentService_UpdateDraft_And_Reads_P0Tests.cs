@@ -821,6 +821,9 @@ public sealed class DocumentService_UpdateDraft_And_Reads_P0Tests
                     It.IsAny<DateTime>(),
                     It.IsAny<CancellationToken>()))
                 .ReturnsAsync(true);
+
+            docs.Setup(x => x.IncrementVersionAsync(lockedDoc.Id, It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(lockedDoc);
         }
 
         if (existingRow is not null)

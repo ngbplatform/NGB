@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NGB.BackgroundJobs.Contracts;
 using NGB.BackgroundJobs.DependencyInjection;
+using NGB.Persistence.BackgroundJobs;
 using NGB.Tools.Exceptions;
 using NGB.Tools.Extensions;
 
@@ -59,49 +60,7 @@ public sealed class PlatformHangfireJobRunner(
         }
         catch (DistributedLockTimeoutException ex)
         {
-            var timeoutSeconds = _opts.DistributedLockTimeoutSeconds;
-            if (timeoutSeconds <= 0)
-                timeoutSeconds = 1;
-
-            // Keep skip-on-overlap semantics, but do not leak Hangfire-specific exception types to
-            // the platform surface (notifier/telemetry). Treat it as a timeout.
-            var timeoutEx = new NgbTimeoutException(
-                operation: jobId,
-                innerException: ex,
-                additionalContext: new Dictionary<string, object?>
-                {
-                    ["lockResource"] = lockResource,
-                    ["timeoutSeconds"] = timeoutSeconds,
-                    ["reason"] = "hangfire.distributed_lock.timeout"
-                });
-
-            logger.LogInformation(
-                "NGB.BackgroundJobs: skipped JobId={JobId} because the previous run is still executing (lock={LockResource}).",
-                jobId,
-                lockResource);
-
-            var now = _timeProvider.GetUtcNowDateTime();
-
-            logger.LogInformation(
-                "NGB.BackgroundJobs: JobRunSummary JobId={JobId} RunId={RunId} Outcome={Outcome} DurationMs={DurationMs} Counters={Counters}",
-                jobId,
-                runId,
-                "SkippedOverlap",
-                0,
-                new Dictionary<string, long> { ["skipped_overlap"] = 1 });
-
-            await NotifyIfProblemAsync(
-                logger,
-                notifier,
-                new PlatformJobRunResult(
-                    jobId,
-                    runId,
-                    PlatformJobRunOutcome.SkippedOverlap,
-                    now,
-                    now,
-                    0,
-                    new Dictionary<string, long> { ["skipped_overlap"] = 1 },
-                    Error: timeoutEx));
+            await NotifyOverlapAsync(jobId, runId, lockResource, ex, "hangfire.distributed_lock.timeout");
             return;
         }
 
@@ -110,6 +69,28 @@ public sealed class PlatformHangfireJobRunner(
             // Some scoped services (e.g. PostgresUnitOfWork) may implement IAsyncDisposable only.
             // Disposing a regular IServiceScope would call Dispose() and fail.
             await using var scope = scopeFactory.CreateAsyncScope();
+            var executionLocks = scope.ServiceProvider.GetService<IBackgroundJobExecutionLockProvider>();
+            await using var executionLock = executionLocks is null
+                ? null
+                : await executionLocks.TryAcquireAsync(new BackgroundJobExecutionLockRequest(
+                        _opts.ConnectionString,
+                        _opts.StorageNamespace,
+                        lockResource,
+                        TimeSpan.FromSeconds(Math.Max(1, _opts.DistributedLockTimeoutSeconds))),
+                    cancellationToken.ShutdownToken);
+
+            if (executionLocks is not null && executionLock is null)
+            {
+                await NotifyOverlapAsync(
+                    jobId, 
+                    runId,
+                    lockResource,
+                    new TimeoutException("The previous job run still holds its execution lock."),
+                    "execution_lock.timeout");
+
+                return;
+            }
+
             var metrics = scope.ServiceProvider.GetRequiredService<IJobRunMetrics>();
             var jobs = scope.ServiceProvider.GetServices<IPlatformBackgroundJob>();
 
@@ -144,6 +125,11 @@ public sealed class PlatformHangfireJobRunner(
                 return;
             }
 
+            using var executionCancellation = executionLock is null
+                ? null
+                : CancellationTokenSource.CreateLinkedTokenSource(cancellationToken.ShutdownToken, executionLock.LockLostToken);
+            var executionToken = executionCancellation?.Token ?? cancellationToken.ShutdownToken;
+
             var startedUtc = _timeProvider.GetUtcNowDateTime();
             logger.LogInformation("NGB.BackgroundJobs: starting JobId={JobId} at {StartedUtc:o}.", jobId, startedUtc);
 
@@ -153,8 +139,13 @@ public sealed class PlatformHangfireJobRunner(
 
             try
             {
-                await job.RunAsync(cancellationToken.ShutdownToken);
+                executionToken.ThrowIfCancellationRequested();
+
+                await job.RunAsync(executionToken);
+
+                executionToken.ThrowIfCancellationRequested();
                 finishedUtc = _timeProvider.GetUtcNowDateTime();
+
                 logger.LogInformation(
                     "NGB.BackgroundJobs: finished JobId={JobId} at {FinishedUtc:o} (durationMs={DurationMs}).",
                     jobId,
@@ -165,7 +156,17 @@ public sealed class PlatformHangfireJobRunner(
             {
                 outcome = "Cancelled";
                 finishedUtc = _timeProvider.GetUtcNowDateTime();
-                logger.LogWarning("NGB.BackgroundJobs: cancelled JobId={JobId}.", jobId);
+
+                if (executionLock?.LockLostToken.IsCancellationRequested == true)
+                {
+                    metrics.Increment("execution_lock_lost");
+                    logger.LogError("NGB.BackgroundJobs: execution lock lost for JobId={JobId}; cancellation requested.", jobId);
+                }
+                else
+                {
+                    logger.LogWarning("NGB.BackgroundJobs: cancelled JobId={JobId}.", jobId);
+                }
+
                 throw;
             }
             catch (Exception ex)
@@ -180,6 +181,7 @@ public sealed class PlatformHangfireJobRunner(
                     });
                 finishedUtc = _timeProvider.GetUtcNowDateTime();
                 logger.LogError(error, "NGB.BackgroundJobs: failed JobId={JobId}.", jobId);
+
                 throw error;
             }
             finally
@@ -243,6 +245,58 @@ public sealed class PlatformHangfireJobRunner(
                 await NotifyIfProblemAsync(logger, notifier, result);
             }
         }
+    }
+
+    private async Task NotifyOverlapAsync(
+        string jobId,
+        string runId,
+        string lockResource,
+        Exception ex,
+        string reason)
+    {
+        var timeoutSeconds = _opts.DistributedLockTimeoutSeconds;
+        if (timeoutSeconds <= 0)
+            timeoutSeconds = 1;
+
+        // Keep skip-on-overlap semantics, but do not leak Hangfire-specific exception types to
+        // the platform surface (notifier/telemetry). Treat it as a timeout.
+        var timeoutEx = new NgbTimeoutException(
+            operation: jobId,
+            innerException: ex,
+            additionalContext: new Dictionary<string, object?>
+            {
+                ["lockResource"] = lockResource,
+                ["timeoutSeconds"] = timeoutSeconds,
+                ["reason"] = reason
+            });
+
+        logger.LogInformation(
+            "NGB.BackgroundJobs: skipped JobId={JobId} because the previous run is still executing (lock={LockResource}).",
+            jobId,
+            lockResource);
+
+        var now = _timeProvider.GetUtcNowDateTime();
+
+        logger.LogInformation(
+            "NGB.BackgroundJobs: JobRunSummary JobId={JobId} RunId={RunId} Outcome={Outcome} DurationMs={DurationMs} Counters={Counters}",
+            jobId,
+            runId,
+            "SkippedOverlap",
+            0,
+            new Dictionary<string, long> { ["skipped_overlap"] = 1 });
+
+        await NotifyIfProblemAsync(
+            logger,
+            notifier,
+            new PlatformJobRunResult(
+                jobId,
+                runId,
+                PlatformJobRunOutcome.SkippedOverlap,
+                now,
+                now,
+                0,
+                new Dictionary<string, long> { ["skipped_overlap"] = 1 },
+                Error: timeoutEx));
     }
 
     private static async Task NotifyIfProblemAsync(

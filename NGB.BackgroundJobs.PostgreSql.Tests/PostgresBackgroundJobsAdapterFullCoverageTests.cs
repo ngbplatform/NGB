@@ -107,6 +107,8 @@ public sealed class PostgresBackgroundJobsAdapterFullCoverageTests
         using var provider = services.BuildServiceProvider();
         provider.GetRequiredService<IRecurringJobHashBatchReader>()
             .Should().BeOfType<PostgresRecurringJobHashBatchReader>();
+        provider.GetRequiredService<IBackgroundJobExecutionLockProvider>()
+            .Should().BeOfType<PostgresBackgroundJobExecutionLockProvider>();
 
         Action nullServices = () => PostgresBackgroundJobsServiceCollectionExtensions
             .AddNgbPostgresBackgroundJobsAdapter(null!);

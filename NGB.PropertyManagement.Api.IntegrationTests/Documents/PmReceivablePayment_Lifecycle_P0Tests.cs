@@ -162,7 +162,17 @@ ORDER BY entry_id;
                     PageSize: 50),
                 CancellationToken.None);
 
-            movements.Lines.Should().HaveCount(6);
+            // Two Post/Unpost cycles retain two movement/storno pairs.
+            movements.Lines.Should().HaveCount(4);
+            var movementDate = new DateTime(2026, 2, 7, 0, 0, 0, DateTimeKind.Utc);
+            movements.Lines.OrderBy(x => x.MovementId)
+                .Select(x => (x.OccurredAtUtc, x.IsStorno, Amount: Convert.ToDecimal(x.Values["amount"])))
+                .Should().Equal(
+                    (movementDate, false, -123.45m),
+                    (movementDate, true, -123.45m),
+                    (movementDate, false, -123.45m),
+                    (movementDate, true, -123.45m));
+            movements.Lines.Select(x => x.DimensionSetId).Distinct().Should().ContainSingle();
 
             var balances = await opregRead.GetBalancesPageAsync(
                 new OperationalRegisterMonthlyProjectionPageRequest(

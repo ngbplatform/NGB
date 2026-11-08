@@ -340,7 +340,10 @@ const persistenceContext: ConfiguredEntityEditorPersistenceContext = {
       : buildDocumentFullPageUrl(editorTypeCode.value, id)
     await router.replace(url)
   },
-  onSaved: () => emit('saved'),
+  onSaved: async () => {
+    if (editorKind.value === 'document') await refreshDocumentActions()
+    emit('saved')
+  },
 }
 
 const {

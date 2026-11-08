@@ -79,6 +79,43 @@ describe('configured entity editor document actions', () => {
     vi.unstubAllGlobals()
   })
 
+  it.each([false, true])('posts with the displayed version, refreshing only after its own save: %s', async (saved) => {
+    const state: DocumentEditorStateDto = {
+      ...emptyState,
+      actions: [{
+        code: 'post',
+        label: 'Post',
+        kind: 'Primary',
+        executionKind: 'Command',
+        order: 1,
+        isAllowed: true,
+        disabledReasons: [],
+      }],
+    }
+    const values = createArgs(state)
+    const actions = useConfiguredEntityEditorDocumentActions(values.args)
+    await flushAsyncWork()
+
+    values.loadEditorState.mockResolvedValue({ ...state, documentVersion: 8 })
+    if (saved) await actions.refreshDocumentActions()
+    executeDocumentActionMock.mockResolvedValue({
+      executionId: 'execution',
+      actionCode: 'post',
+      document: state.document,
+      documentVersion: saved ? 9 : 8,
+      actions: [],
+      workCenterMayChange: false,
+    })
+
+    actions.requestDocumentAction('post')
+    await flushAsyncWork()
+
+    expect(executeDocumentActionMock).toHaveBeenCalledWith(
+      'pm.invoice', 'doc-1', 'post', { expectedVersion: saved ? 8 : 7, reason: null },
+    )
+    expect(values.loadEditorState).toHaveBeenCalledTimes(saved ? 2 : 1)
+  })
+
   it('projects server metadata into primary and grouped header actions', async () => {
     const state: DocumentEditorStateDto = {
       ...emptyState,

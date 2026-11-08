@@ -36,6 +36,24 @@ In 3.0, `NGB.BackgroundJobs` is provider-neutral. The host selects PostgreSQL st
 `NGB.PostgreSql`; HTTP error/health integration uses `NGB.PostgreSql.AspNetCore`.
 See [Host composition](/start-here/host-composition) for the complete registration order.
 
+`AddNgbPostgresBackgroundJobsAdapter()` also registers an execution lock for each job ID.
+The runner retains the Hangfire lock and additionally holds a PostgreSQL advisory lock throughout
+job execution and result notification. The execution lock has no lease
+expiry, so a job exceeding the Hangfire provider's lock lifetime remains protected against
+another platform runner. Different job IDs and storage namespaces do not block each other.
+This uses `DistributedLock.Postgres` and an internally owned transaction on the Hangfire database;
+it adds no tables or migrations and uses one additional connection per running job.
+
+Storage created by `PostgresHangfireJobStorageFactory` supplies its actual connection details
+automatically. For manually constructed PostgreSQL storage, set `PlatformHangfireOptions.ConnectionString`
+and `StorageNamespace` to match that storage. Custom storage without an execution-lock adapter
+continues to use its existing Hangfire locking behavior.
+
+Loss of the execution-lock connection cancels the token passed to the job. Jobs must honor
+cancellation and retain their business-level idempotency and transaction guarantees: cancellation
+cannot fence off a job that ignores its token or undo external side effects. When deploying this
+change, drain old workers before starting new ones; old workers do not acquire the additional lock.
+
 ## Platform job catalog
 
 The fixed platform job catalog includes recurring jobs such as:

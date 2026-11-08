@@ -353,6 +353,7 @@ internal sealed class DocumentDraftService(
                     Number = newNumber,
                     DateUtc = newDateUtc,
                     Status = doc.Status,
+                    Version = checked(doc.Version + 1),
                     CreatedAtUtc = doc.CreatedAtUtc,
                     UpdatedAtUtc = now,
                     PostedAtUtc = doc.PostedAtUtc,
@@ -365,6 +366,7 @@ internal sealed class DocumentDraftService(
                 }
 
                 await documents.UpdateDraftHeaderAsync(documentId, newNumber, newDateUtc, now, innerCt);
+                await documents.IncrementVersionAsync(documentId, now, innerCt);
 
                 // Allow a document type to keep common draft header fields in its typed tables.
                 // This hook runs in the same transaction and MUST be safe to call multiple times.

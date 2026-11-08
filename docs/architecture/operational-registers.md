@@ -103,6 +103,8 @@ OR movements are append-only. The register is not updated by overwriting a curre
 
 Instead, the durable truth is the movement stream. Any summaries or finalized balances exist to make reads efficient and deterministic, not to replace the source-of-truth movement history.
 
+Unpost cancels the document's unmatched movements by appending opposite-sign copies. Matching includes the exact timestamp, dimension set and every resource value, with identical movements retaining their multiplicity. Previously cancelled pairs remain unchanged and are not copied again, so repeated Post/Unpost cycles add only the new movements and their cancellations. Existing history needs no migration or cleanup.
+
 ## Finalization and dirty months
 
 For time-sensitive register reads, the platform supports the idea of dirty periods and finalization.

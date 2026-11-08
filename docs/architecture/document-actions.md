@@ -50,7 +50,7 @@ Content-Type: application/json
 }
 ```
 
-`documents.version` is incremented after every successful action. A new request with a stale `expectedVersion` fails with a conflict and does not run the handler.
+`documents.version` is incremented after every successful action and when draft content is saved through the platform services. The increment is part of the same transaction as the change; a rolled-back save does not advance the version. A new request with a stale `expectedVersion` fails with a conflict and does not run the handler. Editors refresh their action state after their own save and retain the previously read version when executing an action without saving, so another session's draft edit is detected.
 
 `platform_document_action_executions` stores the idempotency key, a SHA-256 request fingerprint, execution state, and completed response. Repeating the same request returns the stored response after current authorization succeeds. Reusing a key for different input fails. A concurrent in-progress request is reported explicitly.
 

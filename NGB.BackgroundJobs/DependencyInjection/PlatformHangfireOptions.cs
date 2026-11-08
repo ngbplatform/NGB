@@ -8,13 +8,14 @@ namespace NGB.BackgroundJobs.DependencyInjection;
 public sealed class PlatformHangfireOptions
 {
     /// <summary>
-    /// Provider connection string used by an optional batched storage inspector.
-    /// Job execution itself uses the <c>JobStorage</c> supplied by composition.
+    /// Provider connection string used by optional storage adapters. The PostgreSQL execution-lock
+    /// adapter uses the actual storage configuration when created by PostgresHangfireJobStorageFactory;
+    /// manually constructed storage uses these connection details as a fallback.
     /// </summary>
     public string ConnectionString { get; set; } = string.Empty;
 
     /// <summary>
-    /// Provider storage namespace used by an optional batched storage inspector.
+    /// Provider storage namespace used by optional storage adapters.
     /// </summary>
     public string StorageNamespace { get; set; } = "hangfire";
 

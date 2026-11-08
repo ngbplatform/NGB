@@ -190,6 +190,17 @@ public sealed class DocumentService_DeriveAsync_P0Tests
             ["memo"] = JsonSerializer.SerializeToElement("payload memo")
         });
 
+        harness.Documents
+            .Setup(x => x.IncrementVersionAsync(derivedId, It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DocumentRecord
+            {
+                Id = derivedId,
+                TypeCode = TargetTypeCode,
+                DateUtc = new DateTime(2026, 4, 17, 0, 0, 0, DateTimeKind.Utc),
+                Status = DocumentStatus.Draft,
+                Version = 2
+            });
+
         var derived = await harness.Service.DeriveAsync(
             TargetTypeCode,
             sourceId,
@@ -204,6 +215,8 @@ public sealed class DocumentService_DeriveAsync_P0Tests
         capturedValues.Should().NotBeNull();
         capturedValues!.Single(x => x.ColumnName == "display").Value.Should().Be("Payload draft");
         capturedValues!.Single(x => x.ColumnName == "memo").Value.Should().Be("payload memo");
+        harness.Documents.Verify(x => x.IncrementVersionAsync(
+            derivedId, It.IsAny<DateTime>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]

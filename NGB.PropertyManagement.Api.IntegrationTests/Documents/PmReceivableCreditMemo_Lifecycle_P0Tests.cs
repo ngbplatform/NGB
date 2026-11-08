@@ -143,7 +143,17 @@ ORDER BY entry_id;
                     PageSize: 50),
                 CancellationToken.None);
 
-            movements.Lines.Should().HaveCount(6);
+            // Two Post/Unpost cycles retain two movement/storno pairs.
+            movements.Lines.Should().HaveCount(4);
+            var movementDate = new DateTime(2026, 2, 8, 0, 0, 0, DateTimeKind.Utc);
+            movements.Lines.OrderBy(x => x.MovementId)
+                .Select(x => (x.OccurredAtUtc, x.IsStorno, Amount: Convert.ToDecimal(x.Values["amount"])))
+                .Should().Equal(
+                    (movementDate, false, -25m),
+                    (movementDate, true, -25m),
+                    (movementDate, false, -25m),
+                    (movementDate, true, -25m));
+            movements.Lines.Select(x => x.DimensionSetId).Distinct().Should().ContainSingle();
             movements.Lines.Sum(x => x.IsStorno ? -Convert.ToDecimal(x.Values["amount"]) : Convert.ToDecimal(x.Values["amount"])).Should().Be(0m);
         }
         finally
@@ -203,7 +213,17 @@ ORDER BY entry_id;
                     PageSize: 50),
                 CancellationToken.None);
 
-            movements.Lines.Should().HaveCount(6);
+            movements.Lines.Should().HaveCount(4);
+            var originalDate = new DateTime(2026, 4, 9, 0, 0, 0, DateTimeKind.Utc);
+            var changedDate = new DateTime(2026, 4, 8, 0, 0, 0, DateTimeKind.Utc);
+            movements.Lines.OrderBy(x => x.MovementId)
+                .Select(x => (x.OccurredAtUtc, x.IsStorno, Amount: Convert.ToDecimal(x.Values["amount"])))
+                .Should().Equal(
+                    (originalDate, false, -111m),
+                    (originalDate, true, -111m),
+                    (changedDate, false, -111m),
+                    (changedDate, true, -111m));
+            movements.Lines.Select(x => x.DimensionSetId).Distinct().Should().ContainSingle();
             movements.Lines.Sum(x => x.IsStorno ? -Convert.ToDecimal(x.Values["amount"]) : Convert.ToDecimal(x.Values["amount"])).Should().Be(0m);
         }
         finally
