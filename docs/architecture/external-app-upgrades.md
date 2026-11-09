@@ -208,6 +208,46 @@ and test projects explicitly. Run business acceptance and the deployment/backup
 procedure below against the matching target. Candidate release evidence must also
 prove preservation of real persisted data, permissions, history and jobs.
 
+### Reference-register storage update
+
+3.4.0 includes platform migration
+`V2026_11_09_0100__reference_register_recorder_cancellation.sql`. It discovers
+periodic `SubordinateToRecorder` registers from the application's own metadata,
+including registers unknown to the platform authors, and adds internal column
+`__is_recorder_cancellation boolean NOT NULL DEFAULT false` to existing records
+tables. Newly created tables receive it through the standard schema service.
+Independent and nonperiodic registers do not require this column.
+
+Updating NuGet packages or running the SDK/Kit upgrade command does **not** execute
+SQL. Use this deployment sequence:
+
+1. Update and build matching packages for the API, workers and Migrator. Take and
+   verify the consistent backup described in the deployment procedure.
+2. Stop all old API/worker writers and schedule the migration in a maintenance
+   window: adding the column and its constraint acquires table locks.
+3. Run the **updated** Migrator against the existing application database. Its
+   platform pack applies the migration automatically; application developers do
+   not write a separate migration for each register.
+4. If migration fails, keep the target hosts stopped. A conflicting business or
+   unowned column is reported rather than silently overwritten; inspect it and
+   resolve the conflict before retrying.
+5. After successful migration, start all matching target hosts and check schema
+   health and application acceptance. Do not mix old and new RR readers/writers.
+
+The standard SDK's handler signatures, write/read DTOs and business `Values`
+remain unchanged. Custom SQL depending on the complete physical row shape (for
+example copying `SELECT *` into an old archive table) needs review. Custom readers
+and providers must implement the corresponding cancellation semantics; recompiling
+an old reader alone does not fix its selection algorithm.
+
+The migration preserves every previous field value and treats old rows as
+unmarked. It cannot safely infer whether an old deletion represented intentional
+business deletion or automatic cancellation. Previously incorrect current states
+are not automatically repaired. Investigate a confirmed affected document and use
+an authorized lifecycle correction, respecting closed-period restrictions; do not
+bulk-relabel or delete historical records. Trade's price-reader fixes require no
+Trade-specific schema migration.
+
 ## Migrate 3.2.0 to 3.3.0
 
 Use the 3.3.0 application tool for this transition, such as `ngb.mjs` from the

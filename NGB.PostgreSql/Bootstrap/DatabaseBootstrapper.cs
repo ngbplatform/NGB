@@ -112,6 +112,7 @@ public static class DatabaseBootstrapper
         new ReferenceRegisterIndependentWriteStateMigration(),
         new ReferenceRegisterIndependentWriteLogHistoryMigration(),
         new ReferenceRegistersIndexesMigration(),
+        new ReferenceRegisterRecorderCancellationMigration(),
 
         // Platform (users)
         new PlatformUsersMigration(),
@@ -241,6 +242,7 @@ public static class DatabaseBootstrapper
         new ReferenceRegisterIndependentWriteStateMigration(),
         new ReferenceRegisterIndependentWriteLogHistoryMigration(),
         new ReferenceRegistersIndexesMigration(),
+        new ReferenceRegisterRecorderCancellationMigration(),
 
         // Platform users.
         new PlatformUsersMigration(),

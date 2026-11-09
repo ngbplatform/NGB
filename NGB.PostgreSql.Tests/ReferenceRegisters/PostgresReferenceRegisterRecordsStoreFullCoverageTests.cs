@@ -199,6 +199,31 @@ public sealed class PostgresReferenceRegisterRecordsStoreFullCoverageTests
             RegisterId, It.IsAny<CancellationToken>()), Times.Once);
     }
 
+    [Theory]
+    [InlineData(null, "NO", true)]
+    [InlineData("int4", "NO", true)]
+    [InlineData("bool", "YES", true)]
+    [InlineData("bool", "NO", false)]
+    public async Task Ready_check_requires_the_internal_cancellation_column_for_periodic_recorders(
+        string? udt,
+        string nullable,
+        bool needsSchemaEnsure)
+    {
+        var columns = new List<ColumnMetaSpec> { Meta("record_id", "NO", "int8") };
+        if (udt is not null)
+            columns.Add(Meta("__is_recorder_cancellation", nullable, udt));
+        var fixture = Fixture(
+            Reg(ReferenceRegisterPeriodicity.Month, ReferenceRegisterRecordMode.SubordinateToRecorder, hasRecords: true),
+            [],
+            columns);
+
+        await fixture.Store.EnsureReadyForWriteAsync(RegisterId);
+
+        fixture.Connection.Commands.Any(command => command.CommandText.Contains(
+                "ngb_ensure_reference_register_recorder_cancellation", StringComparison.Ordinal))
+            .Should().Be(needsSchemaEnsure);
+    }
+
     [Fact]
     public async Task Ready_check_repairs_missing_base_rejects_unsafe_field_drift_and_accepts_explicit_shared_caches()
     {

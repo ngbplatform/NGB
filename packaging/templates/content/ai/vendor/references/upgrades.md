@@ -27,3 +27,24 @@ An incomplete transaction blocks further writes until recovery is reviewed with
 before applying recovery; never delete its journal or lock to suppress a
 diagnostic. Database migration and deployment remain separate, with the
 established backup requirement.
+
+## Reference-register migration in 3.4.0
+
+Updating packages does not execute SQL. Update the application's Migrator together
+with its API/workers, preserve a verified consistent backup, stop the old processes,
+run the target Migrator, and start matching target hosts only after it succeeds.
+The API and worker do not perform this migration at startup. Use a maintenance
+window because the DDL acquires table locks; do not mix reader/writer versions.
+
+The platform migration discovers periodic `SubordinateToRecorder` RR tables from
+application metadata and adds `__is_recorder_cancellation boolean NOT NULL DEFAULT
+false`. No per-application migration or standard handler change is required. New
+registers receive the column through the normal schema service. A business-field
+or unowned-column collision stops migration without overwriting application data.
+
+Existing history and ordinary deletion meanings are preserved. Do not guess and
+bulk-relabel old tombstones or claim old incorrect states were automatically
+repaired. Investigate an affected document before an authorized lifecycle correction,
+including any closed-period restrictions. Custom SQL depending on the entire row
+shape and custom effective-state readers need review. Standard DTOs and business
+field dictionaries do not expose the internal flag.

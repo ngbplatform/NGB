@@ -12,7 +12,7 @@
     "package": "NGB.Platform.Templates",
     "version": "3.4.0"
   },
-  "payloadSha256": "24afb1b43b7d75e314d99a375393558e9d7833e9586ce4b730f0951f38ca61c3",
+  "payloadSha256": "af82b331455f3397820bd878406454703d8662d13de2849060a18175d6540705",
   "capabilitySha256": "a90867377959dc4a3f697f1c96f5a46e86eb8e8dcf3dc64afed7ad83cc1b3576",
   "files": [
     {
@@ -1443,7 +1443,7 @@
     {
       "path": "ai/vendor/references/registers.md",
       "role": "file",
-      "sha256": "f84b43dfed436c691b619c88237d81dec656dd4a61ae5b2337e51f474c2b9f21"
+      "sha256": "6df2f8ed932f915f849971d12bd2af4eb66f6b1b5d257b8763faf50e07c2ba0d"
     },
     {
       "path": "ai/vendor/references/release.md",
@@ -1468,7 +1468,7 @@
     {
       "path": "ai/vendor/references/upgrades.md",
       "role": "file",
-      "sha256": "086421baed6e21b976ef15c786b62d003a943bc487bde9aa827a2f0e97199a27"
+      "sha256": "5613607f5d76bb90b0aa1082ca3238117a28503544a80d01f6198e4f3201c225"
     },
     {
       "path": "ai/vendor/references/work-center.md",

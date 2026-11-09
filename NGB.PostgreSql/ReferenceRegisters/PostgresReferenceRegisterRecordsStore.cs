@@ -83,13 +83,22 @@ public sealed class PostgresReferenceRegisterRecordsStore(
         var fields = context.Fields;
         await EnsureFieldColumnsAsync(table, fields, reg.HasRecords, ct);
 
+        if (ReferenceRegisterRecorderCancellationColumn.IsRequired(reg.Periodicity, reg.RecordMode))
+        {
+            await uow.Connection.ExecuteAsync(new CommandDefinition(
+                "SELECT ngb_ensure_reference_register_recorder_cancellation(@RegisterId);",
+                new { RegisterId = registerId },
+                transaction: uow.Transaction,
+                cancellationToken: ct));
+        }
+
         // Ensure append-only guards + indexes.
         await PostgresAppendOnlyGuardSql.EnsureUpdateDeleteForbiddenTriggerAsync(uow, table, Trg("trg_refreg_append_only_", table), ct);
         await EnsureIndexesAsync(table, reg, ct);
         _schemasReadyForWrite[registerId] = new SchemaReadiness(uow.Transaction);
 
         if (uow.Transaction is null)
-            _relationShapeCache.MarkVerified(table, ShapeFingerprint(fields));
+            _relationShapeCache.MarkVerified(table, ShapeFingerprint(fields, reg));
     }
 
     public async Task EnsureReadyForWriteAsync(Guid registerId, CancellationToken ct = default)
@@ -106,10 +115,10 @@ public sealed class PostgresReferenceRegisterRecordsStore(
             var ready = uow.Transaction is null
                 ? await _relationShapeCache.IsVerifiedAsync(
                     context.RecordsTable,
-                    ShapeFingerprint(context.Fields),
-                    probeCt => HasCurrentFieldShapeAsync(context.RecordsTable, context.Fields, probeCt),
+                    ShapeFingerprint(context.Fields, register),
+                    probeCt => HasCurrentFieldShapeAsync(context.RecordsTable, context.Fields, register, probeCt),
                     ct)
-                : await HasCurrentFieldShapeAsync(context.RecordsTable, context.Fields, ct);
+                : await HasCurrentFieldShapeAsync(context.RecordsTable, context.Fields, register, ct);
 
             if (ready)
             {
@@ -126,6 +135,7 @@ public sealed class PostgresReferenceRegisterRecordsStore(
     private async Task<bool> HasCurrentFieldShapeAsync(
         string table,
         IReadOnlyList<ReferenceRegisterField> fields,
+        ReferenceRegisterAdminItem register,
         CancellationToken ct)
     {
         await uow.EnsureConnectionOpenAsync(ct);
@@ -148,6 +158,14 @@ public sealed class PostgresReferenceRegisterRecordsStore(
 
         if (!existing.ContainsKey("record_id"))
             return false;
+
+        if (ReferenceRegisterRecorderCancellationColumn.IsRequired(register.Periodicity, register.RecordMode)
+            && (!existing.TryGetValue(ReferenceRegisterRecorderCancellationColumn.Name, out var cancellation)
+                || cancellation.UdtName != "bool"
+                || cancellation.IsNullable != "NO"))
+        {
+            return false;
+        }
 
         foreach (var field in fields)
         {
@@ -325,6 +343,17 @@ public sealed class PostgresReferenceRegisterRecordsStore(
             ? string.Empty
             : "AND NOT (dimension_set_id = ANY(@KeepDimensionSetIds))";
 
+        var periodic = reg.Periodicity != ReferenceRegisterPeriodicity.NonPeriodic;
+        var cancellationColumn = periodic ? $", {ReferenceRegisterRecorderCancellationColumn.Name}" : string.Empty;
+        var cancellationSelect = periodic ? $", t.{ReferenceRegisterRecorderCancellationColumn.Name}" : string.Empty;
+        var cancellationValue = periodic ? ", TRUE" : string.Empty;
+
+        // Cancel explicit deletion points too when replacing a periodic recorder's entire effect.
+        // Already cancelled points remain untouched, so repeated cancellation does not grow history.
+        var cancellationFilter = periodic
+            ? $"{ReferenceRegisterRecorderCancellationColumn.Name} = FALSE"
+            : "is_deleted = FALSE";
+
         var sqlInsert = $"""
                          WITH last_rows AS (
                              SELECT DISTINCT ON {distinctOn}
@@ -332,7 +361,7 @@ public sealed class PostgresReferenceRegisterRecordsStore(
                                  t.period_utc,
                                  t.period_bucket_utc,
                                  t.recorder_document_id,
-                                 t.is_deleted{fieldCols}
+                                 t.is_deleted{fieldCols}{cancellationSelect}
                              FROM {table} t
                              WHERE t.recorder_document_id = @RecorderDocumentId
                              ORDER BY {orderBy}
@@ -343,7 +372,7 @@ public sealed class PostgresReferenceRegisterRecordsStore(
                              period_bucket_utc,
                              recorder_document_id,
                              recorded_at_utc,
-                             is_deleted{insertCols}
+                             is_deleted{insertCols}{cancellationColumn}
                          )
                          SELECT
                              dimension_set_id,
@@ -351,9 +380,9 @@ public sealed class PostgresReferenceRegisterRecordsStore(
                              period_bucket_utc,
                              recorder_document_id,
                              statement_timestamp(),
-                             TRUE{(fields.Count == 0 ? string.Empty : ", " + string.Join(", ", fields.Select(f => f.ColumnCode)))}
+                             TRUE{(fields.Count == 0 ? string.Empty : ", " + string.Join(", ", fields.Select(f => f.ColumnCode)))}{cancellationValue}
                          FROM last_rows
-                         WHERE is_deleted = FALSE
+                         WHERE {cancellationFilter}
                          {keepFilter};
                          """;
 
@@ -445,8 +474,8 @@ public sealed class PostgresReferenceRegisterRecordsStore(
         _hasRecordsEnsured[context.Register.RegisterId] = new SchemaReadiness(uow.Transaction);
     }
 
-    private static string ShapeFingerprint(IEnumerable<ReferenceRegisterField> fields)
-        => string.Join(
+    private static string ShapeFingerprint(IEnumerable<ReferenceRegisterField> fields, ReferenceRegisterAdminItem register)
+        => $"{register.Periodicity}:{register.RecordMode}:recorder_cancellation|" + string.Join(
             '|',
             fields.Select(static field => $"{field.ColumnCode}:{field.ColumnType}:{field.IsNullable}"));
 

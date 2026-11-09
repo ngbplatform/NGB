@@ -30,6 +30,20 @@ for transaction ownership, command identity, periodic buckets, as-of bounds and
 tombstone-aware paging. Its example exercises public services in a trusted fixture;
 application HTTP/UI authorization remains a separate responsibility.
 
+In 3.4.0 the standard PostgreSQL provider distinguishes automatic cancellation
+from intentional deletion for periodic `SubordinateToRecorder` registers. Its
+internal `__is_recorder_cancellation` column is not a resource or a public DTO
+member: handlers keep the existing contracts and must not populate this flag.
+Readers resolve the latest recorded version per exact effective point before
+selecting the active schedule. Moving a replacement to an earlier date must not
+let an obsolete cancellation hide it. Explicit deletion still ends the value;
+historical recorded-time boundaries and repeated Repost idempotency are preserved.
+Post also supersedes points left by an older Unpost. The generic Unpost fallback
+pages the full recorder history, including future effective dates. Custom providers
+must implement equivalent read/write semantics themselves. Independent and
+nonperiodic registers keep their existing contracts. Follow [upgrade rules](upgrades.md#reference-register-migration-in-340)
+before running new hosts against an existing database.
+
 Operational register read, projection and finalization contracts and reference
 register read/management contracts are in Runtime and Persistence. Confirm bounds,
 period buckets, ordering and cursors in the installed signatures. Build dimensions

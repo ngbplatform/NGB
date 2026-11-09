@@ -5,6 +5,7 @@ using NGB.PostgreSql.Schema;
 using NGB.ReferenceRegisters;
 using NGB.Tools.Exceptions;
 using NGB.Tools.Extensions;
+using NGB.Trade.PostgreSql.Pricing;
 using NGB.Trade.Reporting;
 
 namespace NGB.Trade.PostgreSql.Reporting;
@@ -120,11 +121,12 @@ latest AS (
             price.effective_date,
             price.source_document_id,
             price.is_deleted
-        FROM {ItemPricesTable} price
-        WHERE price.dimension_set_id = candidate.dimension_set_id
-          AND price.recorder_document_id IS NULL
-          AND price.recorded_at_utc <= @AsOfUtc
-        ORDER BY price.recorded_at_utc DESC, price.record_id DESC
+        FROM (
+            {TradeItemPriceStateSql.LatestBySource(ItemPricesTable, "candidate.dimension_set_id", "@AsOfUtc")}
+        ) price
+        WHERE price.is_deleted = FALSE
+          AND price.effective_date <= (@AsOfUtc AT TIME ZONE 'UTC')::date
+        ORDER BY price.effective_date DESC, price.recorded_at_utc DESC, price.record_id DESC
         LIMIT 1
     ) record ON TRUE
 ),

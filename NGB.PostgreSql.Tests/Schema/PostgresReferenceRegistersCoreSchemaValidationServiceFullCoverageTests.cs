@@ -325,8 +325,9 @@ public sealed class PostgresReferenceRegistersCoreSchemaValidationServiceFullCov
         var table = Table(register);
         var periodNullable = register.Periodicity == ReferenceRegisterPeriodicity.NonPeriodic;
         var recorderNullable = register.RecordMode != ReferenceRegisterRecordMode.SubordinateToRecorder;
-        return
-        [
+
+        var columns = new List<DbColumnSchema>
+        {
             new DbColumnSchema(table, "record_id", "bigint", false, null),
             new DbColumnSchema(table, "dimension_set_id", "uuid", false, null),
             new DbColumnSchema(table, "period_utc", "timestamp with time zone", periodNullable, null),
@@ -334,7 +335,12 @@ public sealed class PostgresReferenceRegistersCoreSchemaValidationServiceFullCov
             new DbColumnSchema(table, "recorder_document_id", "uuid", recorderNullable, null),
             new DbColumnSchema(table, "recorded_at_utc", "timestamp with time zone", false, null),
             new DbColumnSchema(table, "is_deleted", "boolean", false, null)
-        ];
+        };
+
+        if (!periodNullable && !recorderNullable)
+            columns.Add(new DbColumnSchema(table, "__is_recorder_cancellation", "boolean", false, null));
+
+        return columns;
     }
 
     private static IReadOnlyList<DbIndexSchema> PhysicalIndexes(RegisterSpec register)

@@ -112,6 +112,38 @@ For example:
 
 This is why RR fits well with pricing, policy history, and other date-effective reference semantics.
 
+## Recorder cancellation in 3.4.0
+
+For periodic registers in `SubordinateToRecorder` mode, the PostgreSQL provider
+marks automatic recorder cancellations with internal column
+`__is_recorder_cancellation`. They remain append-only rows with `is_deleted=true`.
+An intentional deletion emitted by a handler retains the ordinary deletion
+semantics and has the internal flag set to `false`.
+
+Readers first select the latest recorded version of each exact effective point,
+within the requested recorded-time boundary. Cancelled points do not hide another
+active point or reveal their own superseded live version. If no active point
+remains, the current value is absent; `includeDeleted` can still expose a tombstone.
+Raw history retains all previous rows and values.
+
+For example, replacing a value of 100 effective December 20 with 130 effective
+December 10 must return 130 on December 25. Cancelling the obsolete December 20
+point must not erase that replacement. An explicitly scheduled deletion on
+December 20 still ends the preceding value. Repeated Repost keeps its existing
+idempotent behavior; this correction does not turn it into an unlimited new action.
+
+Post supersedes prior recorder points, including unmarked deletions left by an
+older platform when a Draft was unposted. Unpost cancels all effective points,
+including future ones. The generic Unpost fallback traverses the recorder's full
+paged history when the optimized writer is unavailable. Custom persistence
+providers remain responsible for their own cancellation storage and read semantics.
+Independent and nonperiodic register semantics are unchanged.
+
+The internal flag is not a business field, a handler argument or a new public DTO
+member. Use the standard readers for effective state rather than reconstructing it
+from raw history. Existing data and deployment requirements are described in the
+[3.4.0 storage upgrade procedure](external-app-upgrades.md#reference-register-storage-update).
+
 ## Developer design checklist
 
 When creating a new RR, decide:

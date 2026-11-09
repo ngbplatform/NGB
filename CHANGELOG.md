@@ -25,7 +25,25 @@ release certification are pending.
 - Release verification binds Kit checks, real-agent evaluations and full platform
   backend/frontend coverage to the exact release candidate.
 
+### Fixed
+
+- Reference-register fallback Unpost traverses recorder history, including future
+  effective dates and multiple versions across pages, without cancelling a key twice.
+- Periodic reference registers subordinate to a recorder distinguish automatic
+  cancellation from intentional deletion. Moving a replacement value to an earlier
+  date no longer lets an obsolete cancellation hide it; historical reads are preserved.
+- Trade current-price reports and pricing lookup select prices by effective date
+  from each source document's latest state. Cancelling one source preserves other
+  posted prices; editing its date does not resurrect its superseded versions.
+
 ### Migration
+
+- Run the updated Migrator before starting updated API/worker processes. The
+  platform migration discovers existing periodic subordinate RR tables from metadata
+  and adds internal `__is_recorder_cancellation` with default `false`. No application
+  migration or handler change is needed for standard providers. Existing history is
+  retained; previously incorrect states are not automatically reconstructed.
+  See the [RR storage upgrade procedure](docs/architecture/external-app-upgrades.md#reference-register-storage-update).
 
 - Follow the [3.3.0 → 3.4.0 upgrade guide](docs/architecture/external-app-upgrades.md#migrate-330-to-340)
   for target CLI acquisition, preview/apply and preservation of custom instructions.

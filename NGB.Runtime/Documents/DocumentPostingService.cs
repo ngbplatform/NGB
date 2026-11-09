@@ -933,8 +933,17 @@ internal sealed class DocumentPostingService(
                 startedAtUtc,
                 innerCt);
 
+            var registers = await LoadReferenceRegistersByIdAsync(registerIds, refregRepository, innerCt);
             foreach (var registerId in registerIds)
             {
+                var register = RequireReferenceRegister(registers.GetValueOrDefault(registerId), registerId);
+                if (register.RecordMode == ReferenceRegisterRecordMode.SubordinateToRecorder
+                    && register.Periodicity != ReferenceRegisterPeriodicity.NonPeriodic)
+                {
+                    // Also supersede effects cancelled by an older platform before this Draft was posted.
+                    await AppendReferenceRegisterRecorderTombstonesAsync(registerId, doc.Id, keepDimensionSetIds: null, innerCt);
+                }
+
                 var records = builder.RecordsByRegister[registerId];
                 await refregRecordsStore.AppendAsync(registerId, records, innerCt);
             }
@@ -999,7 +1008,6 @@ internal sealed class DocumentPostingService(
                     await AppendReferenceRegisterRecorderTombstonesAsync(
                         registerId,
                         doc.Id,
-                        startedAtUtc,
                         keepDimensionSetIds: null,
                         innerCt);
                 }
@@ -1101,7 +1109,6 @@ internal sealed class DocumentPostingService(
                         await AppendReferenceRegisterRecorderTombstonesAsync(
                             registerId,
                             doc.Id,
-                            startedAtUtc,
                             keepDimensionSetIds,
                             innerCt);
                     }
@@ -1125,7 +1132,6 @@ internal sealed class DocumentPostingService(
     private async Task AppendReferenceRegisterRecorderTombstonesAsync(
         Guid registerId,
         Guid recorderDocumentId,
-        DateTime asOfUtc,
         IReadOnlyCollection<Guid>? keepDimensionSetIds,
         CancellationToken ct)
     {
@@ -1142,7 +1148,6 @@ internal sealed class DocumentPostingService(
         var tombstones = await BuildReferenceRegisterRecorderTombstonesAsync(
             registerId,
             recorderDocumentId,
-            asOfUtc,
             keepDimensionSetIds,
             ct);
 
@@ -1153,26 +1158,30 @@ internal sealed class DocumentPostingService(
     internal async Task<IReadOnlyList<ReferenceRegisterRecordWrite>> BuildReferenceRegisterRecorderTombstonesAsync(
         Guid registerId,
         Guid recorderDocumentId,
-        DateTime asOfUtc,
         IReadOnlyCollection<Guid>? keepDimensionSetIds,
         CancellationToken ct)
     {
-        // We page through SliceLastAll because it provides the last version per key as-of moment,
-        // including the field values needed to satisfy NOT NULL constraints.
+        // Recorder history includes future-effective rows. It is ordered newest first, so the
+        // first version of each exact effective key decides whether a tombstone is needed.
+        // The document lock prevents concurrent lifecycle writes while we traverse this history.
         HashSet<Guid>? keep = null;
         if (keepDimensionSetIds is { Count: > 0 })
             keep = keepDimensionSetIds as HashSet<Guid> ?? [..keepDimensionSetIds];
         
         var list = new List<ReferenceRegisterRecordWrite>();
-        Guid? after = null;
+        var seen = new HashSet<(Guid DimensionSetId, DateTime? PeriodUtc)>();
+        DateTime? beforeRecordedAtUtc = null;
+        long? beforeRecordId = null;
 
         while (true)
         {
-            var page = await refregRecordsReader.SliceLastAllAsync(
+            ct.ThrowIfCancellationRequested();
+
+            var page = await refregRecordsReader.ListByRecorderDocumentAsync(
                 registerId,
-                asOfUtc,
                 recorderDocumentId,
-                afterDimensionSetId: after,
+                beforeRecordedAtUtc,
+                beforeRecordId,
                 limit: 200,
                 ct: ct);
 
@@ -1181,8 +1190,8 @@ internal sealed class DocumentPostingService(
 
             foreach (var r in page)
             {
-                // Only tombstone currently active keys.
-                if (r.IsDeleted)
+                // Remember deleted versions too: an older live row must not be cancelled again.
+                if (!seen.Add((r.DimensionSetId, r.PeriodUtc)) || r.IsDeleted)
                     continue;
 
                 if (keep is not null && keep.Contains(r.DimensionSetId))
@@ -1196,7 +1205,8 @@ internal sealed class DocumentPostingService(
                     IsDeleted: true));
             }
 
-            after = page[^1].DimensionSetId;
+            beforeRecordedAtUtc = page[^1].RecordedAtUtc;
+            beforeRecordId = page[^1].RecordId;
         }
 
         return list;

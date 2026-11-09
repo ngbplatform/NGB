@@ -89,13 +89,13 @@ public sealed class PostgresReferenceRegisterRecordsReader(
                       recorder_document_id AS "RecorderDocumentId",
                       recorded_at_utc      AS "RecordedAtUtc",
                       is_deleted           AS "IsDeleted"{fieldsSelect}
-                  FROM {table} t
+                  FROM {SliceSource(table, reg.RecordMode, reg.Periodicity, "@AsOfUtc")} t
                   WHERE
                       t.dimension_set_id = @DimensionSetId
                       {whereRecorder}
                       AND t.recorded_at_utc <= @AsOfUtc
                       {wherePeriod}
-                  ORDER BY {orderByPeriod} t.recorded_at_utc DESC, t.record_id DESC
+                  ORDER BY {CancellationOrder(reg.RecordMode, reg.Periodicity)}{orderByPeriod} t.recorded_at_utc DESC, t.record_id DESC
                   LIMIT 1;
                   """;
 
@@ -227,13 +227,13 @@ public sealed class PostgresReferenceRegisterRecordsReader(
                       recorder_document_id AS "RecorderDocumentId",
                       recorded_at_utc      AS "RecordedAtUtc",
                       is_deleted           AS "IsDeleted"{fieldsSelect}
-                  FROM {table} t
+                  FROM {SliceSource(table, reg.RecordMode, reg.Periodicity, recordedAsOfUtc.HasValue ? "@RecordedAsOfUtc" : null)} t
                   WHERE
                       t.dimension_set_id = @DimensionSetId
                       {whereRecorder}
                       {whereRecorded}
                       {wherePeriod}
-                  ORDER BY {orderByPeriod} t.recorded_at_utc DESC, t.record_id DESC
+                  ORDER BY {CancellationOrder(reg.RecordMode, reg.Periodicity)}{orderByPeriod} t.recorded_at_utc DESC, t.record_id DESC
                   LIMIT 1;
                   """;
 
@@ -424,7 +424,7 @@ public sealed class PostgresReferenceRegisterRecordsReader(
                           recorder_document_id AS "RecorderDocumentId",
                           recorded_at_utc      AS "RecordedAtUtc",
                           is_deleted           AS "IsDeleted"{fieldsSelect}
-                      FROM {table} t
+                      FROM {SliceSource(table, reg.RecordMode, reg.Periodicity, "@AsOfUtc")} t
                       WHERE
                           t.recorded_at_utc <= @AsOfUtc
                           {whereRecorder}
@@ -433,7 +433,7 @@ public sealed class PostgresReferenceRegisterRecordsReader(
                       ORDER BY
                           t.dimension_set_id,
                           t.recorder_document_id,
-                          {orderByPeriod} t.recorded_at_utc DESC,
+                          {CancellationOrder(reg.RecordMode, reg.Periodicity)}{orderByPeriod} t.recorded_at_utc DESC,
                           t.record_id DESC
                   )
                   {resultSql};
@@ -666,7 +666,7 @@ public sealed class PostgresReferenceRegisterRecordsReader(
                           recorder_document_id AS "RecorderDocumentId",
                           recorded_at_utc      AS "RecordedAtUtc",
                           is_deleted           AS "IsDeleted"{fieldsSelect}
-                      FROM {table} t
+                      FROM {SliceSource(table, reg.RecordMode, reg.Periodicity, "@AsOfUtc")} t
                       WHERE
                           t.recorded_at_utc <= @AsOfUtc
                           {whereRecorder}
@@ -682,7 +682,7 @@ public sealed class PostgresReferenceRegisterRecordsReader(
                       ORDER BY
                           t.dimension_set_id,
                           t.recorder_document_id,
-                          {orderByPeriod} t.recorded_at_utc DESC,
+                          {CancellationOrder(reg.RecordMode, reg.Periodicity)}{orderByPeriod} t.recorded_at_utc DESC,
                           t.record_id DESC
                   )
                   {resultSql};
@@ -985,6 +985,37 @@ public sealed class PostgresReferenceRegisterRecordsReader(
             (bool)data["IsDeleted"]!,
             values);
     }
+
+    private static string SliceSource(
+        string table,
+        ReferenceRegisterRecordMode mode,
+        ReferenceRegisterPeriodicity periodicity,
+        string? recordedBoundary)
+    {
+        if (!ReferenceRegisterRecorderCancellationColumn.IsRequired(periodicity, mode))
+            return table;
+
+        // Collapse each exact effective point at the requested knowledge boundary first.
+        // A cancelled point must not expose its older live version or hide an earlier replacement.
+        var recordedFilter = recordedBoundary is null
+            ? string.Empty
+            : $"AND recorded_at_utc <= {recordedBoundary}";
+
+        return $"""
+            (
+                SELECT DISTINCT ON (dimension_set_id, recorder_document_id, period_utc) *
+                FROM {table}
+                WHERE recorder_document_id = @RecorderDocumentId
+                  {recordedFilter}
+                ORDER BY dimension_set_id, recorder_document_id, period_utc, recorded_at_utc DESC, record_id DESC
+            )
+            """;
+    }
+
+    private static string CancellationOrder(ReferenceRegisterRecordMode mode, ReferenceRegisterPeriodicity periodicity)
+        => ReferenceRegisterRecorderCancellationColumn.IsRequired(periodicity, mode)
+            ? $"t.{ReferenceRegisterRecorderCancellationColumn.Name} ASC, "
+            : string.Empty;
 
     private static (string WherePeriod, string OrderByPeriod, DateTime? BucketAsOfUtc) BuildPeriodClause(
         ReferenceRegisterPeriodicity periodicity,

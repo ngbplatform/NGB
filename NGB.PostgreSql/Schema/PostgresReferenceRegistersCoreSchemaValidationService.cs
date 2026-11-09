@@ -5,6 +5,7 @@ using NGB.Metadata.Base;
 using NGB.Metadata.Schema;
 using NGB.Persistence.Schema;
 using NGB.Persistence.UnitOfWork;
+using NGB.PostgreSql.ReferenceRegisters;
 using NGB.PostgreSql.Schema.Internal;
 using NGB.ReferenceRegisters;
 using NGB.Tools.Exceptions;
@@ -353,6 +354,15 @@ public sealed class PostgresReferenceRegistersCoreSchemaValidationService(
 
         RequireColumnType(table, Col("recorded_at_utc"), expectedDbType: "timestamp with time zone", expectedNullable: false, errors);
         RequireColumnType(table, Col("is_deleted"), expectedDbType: "boolean", expectedNullable: false, errors);
+
+        if (ReferenceRegisterRecorderCancellationColumn.IsRequired(r.Periodicity, r.RecordMode))
+        {
+            var cancellation = Col(ReferenceRegisterRecorderCancellationColumn.Name);
+            if (cancellation is null)
+                errors.Add($"Table '{table}' is missing required column '{ReferenceRegisterRecorderCancellationColumn.Name}'.");
+            else
+                RequireColumnType(table, cancellation, expectedDbType: "boolean", expectedNullable: false, errors);
+        }
 
         // Foreign keys are part of the core safety contract.
         PostgresSchemaValidationChecks.RequireForeignKey(snapshot, table, "dimension_set_id", "platform_dimension_sets", "dimension_set_id", errors);

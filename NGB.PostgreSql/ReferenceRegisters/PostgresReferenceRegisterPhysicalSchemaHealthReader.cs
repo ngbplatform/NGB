@@ -135,6 +135,10 @@ public sealed class PostgresReferenceRegisterPhysicalSchemaHealthReader(
             "recorded_at_utc",
             "is_deleted"
         };
+
+        if (ReferenceRegisterRecorderCancellationColumn.IsRequired((ReferenceRegisterPeriodicity)reg.Periodicity, (ReferenceRegisterRecordMode)reg.RecordMode))
+            requiredCols.Add(ReferenceRegisterRecorderCancellationColumn.Name);
+
         requiredCols.AddRange(expectedFieldCols);
 
         var requiredIndexes = BuildRequiredIndexes(reg);

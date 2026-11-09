@@ -99,9 +99,10 @@ LEFT JOIN LATERAL (
         record.effective_date,
         record.source_document_id,
         record.is_deleted
-    FROM {ItemPricesTable} record
-    WHERE record.dimension_set_id = requested.dimension_set_id
-      AND record.recorder_document_id IS NULL
+    FROM (
+        {TradeItemPriceStateSql.LatestBySource(ItemPricesTable, "requested.dimension_set_id", null)}
+    ) record
+    WHERE record.is_deleted = FALSE
       AND record.effective_date IS NOT NULL
       AND record.effective_date <= @AsOfDate::date
     ORDER BY

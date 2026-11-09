@@ -182,38 +182,41 @@ public sealed class DocumentPostingServiceFullCoverageTests
         var firstActiveId = Guid.NewGuid();
         var secondActiveId = Guid.NewGuid();
         var period = new DateTime(2026, 8, 1, 0, 0, 0, DateTimeKind.Utc);
-        var asOf = new DateTime(2026, 8, 22, 12, 0, 0, DateTimeKind.Utc);
         var reader = new Mock<IReferenceRegisterRecordsReader>(MockBehavior.Strict);
         var firstPage = new ReferenceRegisterRecordRead[]
         {
-            Read(deletedId, recorderId, isDeleted: true, period, new Dictionary<string, object?> { ["value"] = 1 }),
-            Read(firstActiveId, recorderId, isDeleted: false, period, new Dictionary<string, object?> { ["value"] = 2 })
+            Read(deletedId, recorderId, isDeleted: true, period, new Dictionary<string, object?> { ["value"] = 1 }) with { RecordId = 6 },
+            Read(firstActiveId, recorderId, isDeleted: false, period, new Dictionary<string, object?> { ["value"] = 2 }) with { RecordId = 5 },
+            Read(firstActiveId, recorderId, isDeleted: false, period.AddMonths(1), new Dictionary<string, object?> { ["value"] = 3 }) with { RecordId = 4 }
         };
         var secondPage = new ReferenceRegisterRecordRead[]
         {
-            Read(secondActiveId, recorderId, isDeleted: false, period, new Dictionary<string, object?> { ["value"] = "last" })
+            Read(deletedId, recorderId, isDeleted: false, period, new Dictionary<string, object?> { ["value"] = 10 }) with { RecordId = 3 },
+            Read(firstActiveId, recorderId, isDeleted: false, period, new Dictionary<string, object?> { ["value"] = 20 }) with { RecordId = 2 },
+            Read(secondActiveId, recorderId, isDeleted: false, period, new Dictionary<string, object?> { ["value"] = "last" }) with { RecordId = 1 }
         };
 
-        reader.Setup(x => x.SliceLastAllAsync(registerId, asOf, recorderId, null, 200, It.IsAny<CancellationToken>()))
+        reader.Setup(x => x.ListByRecorderDocumentAsync(registerId, recorderId, null, null, 200, It.IsAny<CancellationToken>()))
             .ReturnsAsync(firstPage);
-        reader.Setup(x => x.SliceLastAllAsync(registerId, asOf, recorderId, firstActiveId, 200, It.IsAny<CancellationToken>()))
+        reader.Setup(x => x.ListByRecorderDocumentAsync(registerId, recorderId, firstPage[2].RecordedAtUtc, firstPage[2].RecordId, 200, It.IsAny<CancellationToken>()))
             .ReturnsAsync(secondPage);
-        reader.Setup(x => x.SliceLastAllAsync(registerId, asOf, recorderId, secondActiveId, 200, It.IsAny<CancellationToken>()))
+        reader.Setup(x => x.ListByRecorderDocumentAsync(registerId, recorderId, secondPage[2].RecordedAtUtc, secondPage[2].RecordId, 200, It.IsAny<CancellationToken>()))
             .ReturnsAsync([]);
 
         var result = await CreateSut(referenceRegisterRecordsReader: reader.Object)
             .BuildReferenceRegisterRecorderTombstonesAsync(
                 registerId,
                 recorderId,
-                asOf,
                 keepDimensionSetIds: null,
                 CancellationToken.None);
 
-        result.Should().HaveCount(2);
-        result.Select(x => x.DimensionSetId).Should().Equal(firstActiveId, secondActiveId);
-        result.Should().OnlyContain(x => x.IsDeleted && x.RecorderDocumentId == recorderId && x.PeriodUtc == period);
+        result.Should().HaveCount(3);
+        result.Select(x => x.DimensionSetId).Should().Equal(firstActiveId, firstActiveId, secondActiveId);
+        result.Should().OnlyContain(x => x.IsDeleted && x.RecorderDocumentId == recorderId);
+        result.Select(x => x.PeriodUtc).Should().Equal(period, period.AddMonths(1), period);
         result[0].Values.Should().Contain("value", 2);
-        result[1].Values.Should().Contain("value", "last");
+        result[1].Values.Should().Contain("value", 3);
+        result[2].Values.Should().Contain("value", "last");
         result[0].Values.Should().NotBeSameAs(firstPage[1].Values);
         reader.VerifyAll();
     }
@@ -225,7 +228,6 @@ public sealed class DocumentPostingServiceFullCoverageTests
         var recorderId = Guid.NewGuid();
         var keptId = Guid.NewGuid();
         var removedId = Guid.NewGuid();
-        var asOf = new DateTime(2026, 8, 22, 12, 0, 0, DateTimeKind.Utc);
 
         foreach (IReadOnlyCollection<Guid> keep in new IReadOnlyCollection<Guid>[]
                  {
@@ -234,19 +236,18 @@ public sealed class DocumentPostingServiceFullCoverageTests
                  })
         {
             var reader = new Mock<IReferenceRegisterRecordsReader>(MockBehavior.Strict);
-            reader.Setup(x => x.SliceLastAllAsync(registerId, asOf, recorderId, null, 200, It.IsAny<CancellationToken>()))
+            reader.Setup(x => x.ListByRecorderDocumentAsync(registerId, recorderId, null, null, 200, It.IsAny<CancellationToken>()))
                 .ReturnsAsync([
                     Read(keptId, recorderId, isDeleted: false, period: null, new Dictionary<string, object?>()),
                     Read(removedId, recorderId, isDeleted: false, period: null, new Dictionary<string, object?>())
                 ]);
-            reader.Setup(x => x.SliceLastAllAsync(registerId, asOf, recorderId, removedId, 200, It.IsAny<CancellationToken>()))
+            reader.Setup(x => x.ListByRecorderDocumentAsync(registerId, recorderId, It.IsAny<DateTime?>(), 1, 200, It.IsAny<CancellationToken>()))
                 .ReturnsAsync([]);
 
             var result = await CreateSut(referenceRegisterRecordsReader: reader.Object)
                 .BuildReferenceRegisterRecorderTombstonesAsync(
                     registerId,
                     recorderId,
-                    asOf,
                     keep,
                     CancellationToken.None);
 
@@ -486,11 +487,11 @@ public sealed class DocumentPostingServiceFullCoverageTests
             .ReturnsAsync([Register(registerId, ReferenceRegisterPeriodicity.NonPeriodic)]);
         var dimensionSetId = Guid.NewGuid();
         var reader = new Mock<IReferenceRegisterRecordsReader>();
-        reader.SetupSequence(x => x.SliceLastAllAsync(
+        reader.SetupSequence(x => x.ListByRecorderDocumentAsync(
                 registerId,
-                It.IsAny<DateTime>(),
                 documentId,
-                It.IsAny<Guid?>(),
+                It.IsAny<DateTime?>(),
+                It.IsAny<long?>(),
                 200,
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync([Read(dimensionSetId, documentId, false, null, new Dictionary<string, object?> { ["required"] = 1 })])
@@ -576,11 +577,11 @@ public sealed class DocumentPostingServiceFullCoverageTests
                 .ReturnsAsync([Register(registerId, ReferenceRegisterPeriodicity.NonPeriodic)]);
             var removedId = Guid.NewGuid();
             var reader = new Mock<IReferenceRegisterRecordsReader>();
-            reader.SetupSequence(x => x.SliceLastAllAsync(
+            reader.SetupSequence(x => x.ListByRecorderDocumentAsync(
                     registerId,
-                    It.IsAny<DateTime>(),
                     documentId,
-                    It.IsAny<Guid?>(),
+                    It.IsAny<DateTime?>(),
+                    It.IsAny<long?>(),
                     200,
                     It.IsAny<CancellationToken>()))
                 .ReturnsAsync([Read(removedId, documentId, false, null, new Dictionary<string, object?>())])

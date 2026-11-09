@@ -26,6 +26,23 @@ contracts for this candidate. Classification counts identify the reviewed surfac
 functional acceptance additionally requires the corresponding executable checks.
 Neither the Kit nor its registry depends on a particular installed business product.
 
+## Reference-register and Trade corrections
+
+- RR fallback Unpost cancels future-effective records and traverses all history pages.
+- Periodic subordinate RR readers distinguish automatic recorder cancellation from
+  intentional deletion, preserving a replacement moved to an earlier effective date.
+- Trade report and lookup readers agree on effective prices and retain other posted
+  price sources when one document is cancelled. These Trade fixes change no schema.
+
+**Deployment action required:** update the Migrator as well as the API and workers,
+stop old processes, run the target Migrator, then start all target hosts. Package
+installation alone does not migrate a database. The platform migration automatically
+adds `__is_recorder_cancellation` to eligible application RR tables discovered from
+metadata; standard handlers and DTOs require no changes. Old history is preserved,
+not automatically reclassified. Custom physical SQL and readers need review.
+See the [storage upgrade procedure](../architecture/external-app-upgrades.md#reference-register-storage-update)
+for conflicts, table locks and treatment of previously incorrect states.
+
 ## Versions and supported execution
 
 SDK, UI, CLI, template and Kit versions are coordinated at 3.4.0. Candidate
