@@ -35,10 +35,6 @@ public sealed class ReferenceRegisterUpgradeFixture : PostgresTestFixture
         // Start with the actual prior migration history, without modifying applied checksums
         // or depending on a locally built legacy DLL. The test then runs the ordinary migrator.
         var assembly = typeof(DatabaseBootstrapper).Assembly;
-        var previousMigrations = assembly.GetManifestResourceNames()
-            .Where(name => name.StartsWith("NGB.PostgreSql.db.migrations.", StringComparison.Ordinal)
-                           && !name.EndsWith("__reference_register_recorder_cancellation.sql", StringComparison.Ordinal))
-            .ToArray();
         await using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync(cancellationToken);
         var evolve = new EvolveDb.Evolve(connection)
@@ -46,8 +42,10 @@ public sealed class ReferenceRegisterUpgradeFixture : PostgresTestFixture
             IsEraseDisabled = true,
             Schemas = ["public"],
             MetadataTableName = "migration_changelog__platform",
+            // Keep later platform migrations out of this historical starting point.
+            TargetVersion = new EvolveDb.Migration.MigrationVersion("2026_11_08_0100"),
             EmbeddedResourceAssemblies = [assembly],
-            EmbeddedResourceFilters = previousMigrations
+            EmbeddedResourceFilters = ["NGB.PostgreSql.db.migrations.V"]
         };
         evolve.Migrate();
 

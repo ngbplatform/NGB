@@ -30,12 +30,11 @@ public sealed class AccountingPostingBoundaryMigrationTests(SchemaPostgresTestFi
             EnableClusterMode = false,
             Schemas = ["public"],
             MetadataTableName = "migration_changelog__platform",
+            // Freeze the pre-upgrade schema. Excluding just the tested script would
+            // accidentally apply later migrations as new releases add them.
+            TargetVersion = new EvolveDb.Migration.MigrationVersion("2026_10_01_0100"),
             EmbeddedResourceAssemblies = [assembly],
-            EmbeddedResourceFilters = assembly.GetManifestResourceNames()
-                .Where(name => name.StartsWith("NGB.PostgreSql.db.migrations.V", StringComparison.Ordinal)
-                    && name.EndsWith(".sql", StringComparison.Ordinal)
-                    && name != MigrationResource)
-                .ToArray()
+            EmbeddedResourceFilters = ["NGB.PostgreSql.db.migrations.V"]
         };
         previousMigrator.Migrate();
 
