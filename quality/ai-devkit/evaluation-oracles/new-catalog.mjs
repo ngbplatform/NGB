@@ -4,7 +4,7 @@ import { passingTestCases } from '../example-evidence.mjs'
 
 // Shared host sources are frozen independently from all agent-writable files.
 export const harnessSha256 = {
-  'AgentAcceptance.csproj': 'c0b7eddbdcb56c5eb351956338f8c1259e71cdf7a54c403ad31cbde2e4a5a04b',
+  'AgentAcceptance.csproj': '278434490d506d1be70eab74a6944d4a1614ea51661e00bc8ca5140e4be42c6d',
   'Controllers.cs': '81ce3d09eeae2a1db236373792ce45afd49e43e8aa02aa80b4ea26ed977cf7b9',
   'CatalogAcceptance.cs': '85f0dc8374bb9e1516d416ebdde3d5e16e1b246e86b86e9818080d74daf56c76',
   'InspectionHost.cs': '5883a1caaf1fecaa7a1997f8eeed6cde376241d1afc1d23e3cc77579170e95f4',

@@ -11,7 +11,7 @@ export const harnessSha256 = {
   'InspectionRequests.cs': '6d29f0826cdb6be7b7c87fb7732ef078e93038cd124d81cb07b38764cbcd1d59',
   'TestIdentity.cs': '1ea714b3727d846b9a455ab1f0a49eb1931b8bda6fde54cac2b696173fa76466',
   'xunit.runner.json': 'ebeeae03ee3082c11aeb2729d9d0c4bd489a1c86a2a45078c63016c3da3bb66c',
-  'AgentAcceptance.csproj': '47ed23951fe71e6fcc52d07cca1e34feb71b74add07fbac8d5270ed6e71378a6',
+  'AgentAcceptance.csproj': '1649c09b4734a15f0530bd2e54989546a2ea505998954880e1749ba0fdfd4c2e',
   'PermissionAcceptance.cs': '5c3d943f42eb7b9d9bcfb4f16adc877bb694e3f7b681fb7b657d6a496f579aa5',
   'PermissionBrowserHost.cs': 'd50996aab8aa3a739401b63f2898730006fdb93ffbfda548d682194848b3c69e',
   'browser-setup.mjs': '63a3f44ecc62ae4c0067916aa5a077dc335cbcee8ecdc92536fea4dcef38fdef',

@@ -198,7 +198,9 @@ public sealed class AssistantHttpTests
         else if (provider == "Anthropic")
         {
             Assert.Equal("/v1/messages", request.Uri.AbsolutePath);
-            Assert.Equal(AssistantProviderFixture.ApiKey, request.ApiKey);
+            // The pinned Anthropic 13.5 SDK sends explicit API keys as Bearer credentials.
+            Assert.Equal("Bearer " + AssistantProviderFixture.ApiKey, request.Authorization);
+            Assert.Null(request.ApiKey);
             Assert.Equal(128, root.GetProperty("max_tokens").GetInt32());
         }
         else

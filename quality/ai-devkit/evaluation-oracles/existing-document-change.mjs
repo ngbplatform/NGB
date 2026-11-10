@@ -5,7 +5,7 @@ import { passingTestCases } from '../example-evidence.mjs'
 // These sources run in a sibling harness outside the evaluated agent's writable tree.
 // Changing a harness source requires a new oracle identity before inference.
 export const harnessSha256 = {
-  'AgentAcceptance.csproj': 'c0b7eddbdcb56c5eb351956338f8c1259e71cdf7a54c403ad31cbde2e4a5a04b',
+  'AgentAcceptance.csproj': '278434490d506d1be70eab74a6944d4a1614ea51661e00bc8ca5140e4be42c6d',
   'Controllers.cs': '81ce3d09eeae2a1db236373792ce45afd49e43e8aa02aa80b4ea26ed977cf7b9',
   'DocumentChangeAcceptance.cs': '640d5a170323af4bea1c52afc4819a18051031af352ccc58fbe9a153e9f598b4',
   'InspectionHost.cs': '5883a1caaf1fecaa7a1997f8eeed6cde376241d1afc1d23e3cc77579170e95f4',

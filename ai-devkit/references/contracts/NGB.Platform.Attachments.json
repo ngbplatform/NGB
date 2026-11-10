@@ -2,11 +2,11 @@
   "schemaVersion": 1,
   "package": "NGB.Platform.Attachments",
   "version": "3.4.0",
-  "packageSha256": "2f3ce6c6d87f4c3846b7c1d4b6930ec91a004023ae12452cdc20754755bf45ca",
+  "packageSha256": "ee60d7ebb337d729947c64e65005647da1d8689c0f1e115b0554d206c0993cba",
   "assembly": {
     "name": "NGB.Attachments",
     "version": "3.0.0.0",
-    "sha256": "1494e997cf1576d540c260a7fea0a379a7e3e135f9df22ab204e4d4957da220f"
+    "sha256": "a64a9f66a4e906da314e6fd94fb3b265719aaf83c11962c99c26029931b9d166"
   },
   "contractSha256": "e75d995ee7a626bceb215845a8756d699032eb5581b7514b2516367a78ae382f",
   "types": [

@@ -9,7 +9,7 @@ import { assetPaths, readAsset } from '../../packaging/templates/content/infrast
 import { digest } from '../../packaging/templates/content/infrastructure/ngb/kit-contracts.mjs'
 import { verifyCliArchive } from '../../packaging/templates/content/infrastructure/ngb/archive.mjs'
 import { inspectCapabilities, preparePayload } from '../../ai-devkit/prepare.mjs'
-import { exampleFrontendSources, exampleSources, passingTestCases } from './example-evidence.mjs'
+import { assertUiConsumerLock, exampleFrontendSources, exampleSources, passingTestCases } from './example-evidence.mjs'
 import { executionEnvironment, runTool } from '../../packaging/templates/content/infrastructure/ngb/process.mjs'
 import { browserTestCounts, frontendCoverage, frontendTestCounts, uniqueCoverageReport } from '../../packaging/templates/content/infrastructure/ngb/evidence.mjs'
 import { classifyCoverageExclusion, evaluateCoverage, mergeCoverage, parseCobertura } from '../../packaging/templates/content/infrastructure/ngb/coverage.mjs'
@@ -88,6 +88,11 @@ try {
       const path = join(stage, file.path.slice('ai/vendor/examples/'.length))
       await mkdir(dirname(path), { recursive: true })
       await writeFile(path, file.content, { flag: 'wx' })
+    }
+    if (Object.hasOwn(inputs, `${name}/web/package.json`)) {
+      const artifact = manifest.artifacts.find(item => item.path === `npm/ngbplatform-ui-${manifest.version}.tgz`)
+      assert.ok(artifact, 'The candidate does not contain the exact UI package.')
+      assertUiConsumerLock(JSON.parse(await readFile(join(root, 'web/package-lock.json'))), artifact, manifest.version)
     }
     await writeFile(join(root, 'NuGet.Config'), `<?xml version="1.0" encoding="utf-8"?>
 <configuration>

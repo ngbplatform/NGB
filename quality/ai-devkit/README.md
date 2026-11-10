@@ -26,13 +26,43 @@ node quality/ai-devkit/certify.mjs contracts "$ngb_candidate"
 node quality/ai-devkit/certify.mjs application "$ngb_candidate"
 ```
 
-The artifacts profile compares canonical, template and npm CLI contents and
-extracts actual public package contracts. The contracts profile runs deterministic
+The artifacts profile compares canonical, template and npm CLI contents, verifies
+the UI archive against current shipped sources and checks the starter/example UI
+lock integrity against the actual candidate. `packaging/templates/prepare-locks.mjs`
+regenerates the starter, CRM package consumer and canonical example locks together.
+The profile also extracts actual public package contracts. The contracts profile runs deterministic
 tooling, architecture, malformed-input, ownership, recovery and process tests.
 The application profile creates a fresh starter, executes its complete suite/load
 profile, then builds and tests the independent complex example. Capability binding
 requires successful example evidence; a failed example cannot produce a green
 capability report.
+
+## Reliability regression coverage
+
+The independent `equipment-inspection` application consumes exact candidate NuGet
+packages. Its tests complement the platform suites; they do not import platform
+test fixtures or reference projects from the NGB checkout.
+
+| Contract | Package-consumer evidence |
+| --- | --- |
+| Amount 1000 → 900 → 1400, with an earlier date | `EquipmentServiceHttpTests`: HTTP Post/Unpost/replay, unchanged prior rows, linear OR history, monthly projections, trial balance and nonperiodic RR state |
+| Posting before a later closed month | `AccountingPeriodHttpTests`: refusal without effects, explicit reopen, retry and correct subsequent balance |
+| Existing periodic subordinate RR tables | `ReferenceRegisterUpgradeTests`: real versioned migration prefix, ordinary application Migrator twice, preserved legacy values/deletions, hidden internal column, earlier replacement and historical reads |
+| Job longer than the Hangfire storage lease | `BackgroundJobsTests`: two worker compositions sharing PostgreSQL, overlap refused before/after expiry, successful acquisition after completion |
+| Draft action version versus save concurrency | `DraftSaveBoundaryTests`: stale action refused after save; stale Draft/catalog saves still accepted by the existing contract |
+| Generic payload date versus registry date | `DraftSaveBoundaryTests`: payload changes leave the registry date unchanged until the existing trusted header service is called |
+
+The RR fixture starts from embedded SQL up to `2026_11_08_0100`, without altering
+applied checksums or enabling out-of-order migration. This proves the new migration
+against that persisted layout; it does not replace the separate frozen 3.3.0
+application upgrade profiles. Retain those fixtures unchanged.
+
+Capability acceptance entries bind these cases to their executable names. The two
+generic-save/date limitations are deliberately passing characterizations of missing
+guarantees, not evidence that those guarantees were implemented. Generated contract
+snapshots, registry classifications and guidance must describe the same package
+bytes. Regenerate the template and CLI after editing canonical Kit content, then
+seal a fresh candidate; earlier certification and real-agent reports remain stale.
 
 ## Persisted upgrades
 

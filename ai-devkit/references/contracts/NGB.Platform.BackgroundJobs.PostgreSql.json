@@ -2,27 +2,37 @@
   "schemaVersion": 1,
   "package": "NGB.Platform.BackgroundJobs.PostgreSql",
   "version": "3.4.0",
-  "packageSha256": "f3164acf0ddfa418aa215270da00da3276408a7cfeb0c7a09c83456262af696d",
+  "packageSha256": "779223f5801a11cb015581b8ab6bc1d4c22c04720ca502fb3d88d7d79fd65a0d",
   "assembly": {
     "name": "NGB.BackgroundJobs.PostgreSql",
     "version": "3.0.0.0",
-    "sha256": "fceb12110f571e3fcc0dcf87032a4f39674c39a307880c9c649f4b805efd9762"
+    "sha256": "61d83772bc292946ede87bc06c9d911ca8bcfd0391118b344bd2f55db88d2f41"
   },
-  "contractSha256": "10c12a4f26ca7e577c3c680f2307afeddc3ca980ebe4eb6164f75162cd5d3506",
+  "contractSha256": "e535b16ae6c4bee4c5453d80d3d50fe3b97efb12763ec04e846bd6c0131ed270",
   "types": [
     {
       "name": "NGB.BackgroundJobs.PostgreSql.DependencyInjection.PostgresBackgroundJobsServiceCollectionExtensions",
       "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
-      "contractSha256": "c6868205fcb41e85fdc808ca8ec35d84c2ebeda8efc1c8970f3f3aac9df6709c",
+      "contractSha256": "04f9e08a779eff11fc796362fa90848c67f353e65cf47109d8966201626cc64f",
       "methods": [
         "AddNgbPostgresBackgroundJobsAdapter"
       ],
       "fields": []
     },
     {
+      "name": "NGB.BackgroundJobs.PostgreSql.PostgresBackgroundJobExecutionLockProvider",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "b942d0cbe3e0443ab549d252637dbfadc460352e48fc5b004e0ea895651a3e32",
+      "methods": [
+        ".ctor",
+        "TryAcquireAsync"
+      ],
+      "fields": []
+    },
+    {
       "name": "NGB.BackgroundJobs.PostgreSql.PostgresHangfireJobStorageFactory",
       "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
-      "contractSha256": "47c7ccff449a0fc21d89f984571ba96c1d75f414dadadb9f5cc08750e1ada304",
+      "contractSha256": "7a68fb06c7547d941accc27ca89f053a2291e5261ab5b594202d3719e57c56dd",
       "methods": [
         "Create"
       ],
@@ -31,7 +41,7 @@
     {
       "name": "NGB.BackgroundJobs.PostgreSql.PostgresRecurringJobHashBatchReader",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "41398720d52d065b247aa1db1375a0cf2ef5f936627477d6c2167f8c83e08265",
+      "contractSha256": "9917526ac6244b9002259c0986d02b98a0204d539d9fac3b01d0a111d561b0ec",
       "methods": [
         ".ctor",
         "GetManyAsync"

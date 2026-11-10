@@ -17,6 +17,8 @@ or inventing movements; distinguish it from a missing handler configuration.
    Preserve append-only history and the engine's schema evolution checks.
 4. Verify successful write, retry, stale version, competing operation, rollback and
    reversal against actual PostgreSQL. Compare expected state and original history.
+   Include changed amounts and earlier/later effective dates across months,
+   finalization after several changes, and recorded-time historical RR reads.
 5. Run `node infrastructure/ngb.mjs validate --profile build` and
    `node infrastructure/ngb.mjs test --profile all`; record actual volume/query
    measurements separately from unit-test coverage.

@@ -12,8 +12,6 @@ namespace NGB.BackgroundJobs.PostgreSql;
 /// </summary>
 public static class PostgresHangfireJobStorageFactory
 {
-    private static readonly ConditionalWeakTable<JobStorage, ConnectionSettings> StorageConnections = new();
-
     public static JobStorage Create(string connectionString, string storageNamespace, bool prepareSchemaIfNecessary)
     {
         if (string.IsNullOrWhiteSpace(connectionString))
@@ -32,9 +30,19 @@ public static class PostgresHangfireJobStorageFactory
             storageOptions);
 
         // Retain the actual storage configuration without wrapping JobStorage or requiring duplicate options.
-        StorageConnections.Add(storage, new ConnectionSettings(connectionString, storageNamespace));
+        PostgresHangfireStorageConnections.Register(storage, connectionString, storageNamespace);
 
         return storage;
+    }
+}
+
+internal static class PostgresHangfireStorageConnections
+{
+    private static readonly ConditionalWeakTable<JobStorage, ConnectionSettings> StorageConnections = new();
+
+    internal static void Register(JobStorage storage, string connectionString, string storageNamespace)
+    {
+        StorageConnections.Add(storage, new ConnectionSettings(connectionString, storageNamespace));
     }
 
     internal static ConnectionSettings? GetConnectionSettings(JobStorage? storage)

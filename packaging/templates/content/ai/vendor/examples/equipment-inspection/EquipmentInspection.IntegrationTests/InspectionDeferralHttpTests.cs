@@ -52,9 +52,12 @@ public sealed class InspectionDeferralHttpTests
         var result = await ReadActionAsync(deferred);
         Assert.Equal(2, reads.Count);
         Assert.All(reads, id => Assert.Equal(before.Id, id));
-        Assert.Equal(version + 1, result.DocumentVersion);
+        // Both the common-header save and action completion advance the token.
+        // Consumers use the returned version rather than calculating its next value.
+        Assert.True(result.DocumentVersion > version);
         Assert.Equal(NGB.Contracts.Metadata.DocumentStatus.Draft, result.Document.Status);
         var after = await RecordAsync(host, path);
+        Assert.Equal(result.DocumentVersion, after.Version);
         Assert.Equal(before.DateUtc.AddDays(1), after.DateUtc);
         Assert.Equal(before.Number, after.Number);
         var audit = Assert.Single(await ActionsAsync(host, before.Id));
@@ -68,6 +71,7 @@ public sealed class InspectionDeferralHttpTests
         Assert.Equal(result.ExecutionId, (await ReadActionAsync(repeated)).ExecutionId);
         Assert.Equal(before.Id, Assert.Single(reads));
         Assert.Equal(after.DateUtc, (await RecordAsync(host, path)).DateUtc);
+        Assert.Equal(after.Version, (await RecordAsync(host, path)).Version);
         Assert.Single(await ActionsAsync(host, before.Id));
         using var stale = await DeferAsync(client, path, version, "stale-deferral", "Another request");
         await AssertErrorAsync(stale, HttpStatusCode.Conflict, "document.version_conflict");
@@ -137,7 +141,7 @@ public sealed class InspectionDeferralHttpTests
         await AssertErrorAsync(Assert.Single(responses, response => !response.IsSuccessStatusCode),
             HttpStatusCode.Conflict, "document.version_conflict");
         var current = await RecordAsync(host, path);
-        Assert.Equal(version + 1, current.Version);
+        Assert.True(current.Version > version);
         Assert.Equal(winner.DocumentVersion, current.Version);
         Assert.Equal(before.DateUtc.AddDays(1), current.DateUtc);
         Assert.Single(await ActionsAsync(host, before.Id));
@@ -175,7 +179,8 @@ public sealed class InspectionDeferralHttpTests
         failure.Enabled = false;
         using var retry = await DeferAsync(admin, path, version, "rollback-deferral", "Equipment unavailable");
         var result = await ReadActionAsync(retry);
-        Assert.Equal(version + 1, result.DocumentVersion);
+        Assert.True(result.DocumentVersion > version);
+        Assert.Equal(result.DocumentVersion, (await RecordAsync(host, path)).Version);
         Assert.Equal(before.DateUtc.AddDays(1), (await RecordAsync(host, path)).DateUtc);
         Assert.Single(await ActionsAsync(host, before.Id));
     }

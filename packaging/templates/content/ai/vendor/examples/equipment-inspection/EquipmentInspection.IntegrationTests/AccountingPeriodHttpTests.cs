@@ -30,6 +30,47 @@ public sealed class AccountingPeriodHttpTests
     private static readonly DateOnly EndPeriod = new(2025, 12, 1);
 
     [Fact]
+    public async Task Posting_before_a_later_closed_month_requires_reopening_and_preserves_subsequent_balances()
+    {
+        await using var host = new InspectionHost();
+        await host.StartAsync();
+        using var admin = await host.CreateClientAsync("administrator");
+        var december = await CreateServiceAsync(host, admin, 100m);
+        using var initial = await ExecutePostAsync(admin, december.Path, december.Version, "december-receipt");
+        await ReadActionAsync(initial);
+        await PostAsync<PeriodCloseStatusDto>(admin, Endpoint + "/month/close", new CloseMonthRequestDto(EndPeriod));
+
+        var november = await CreateServiceAsync(host, admin, 50m);
+        await using var scope = host.Services.CreateAsyncScope();
+        var services = scope.ServiceProvider;
+        await services.GetRequiredService<IDocumentDraftService>().UpdateDraftAsync(
+            november.Id, number: null, dateUtc: new DateTime(2025, 11, 15, 12, 0, 0, DateTimeKind.Utc));
+        var before = await admin.GetFromJsonAsync<DocumentEditorStateDto>(november.Path + "/editor-state", Json);
+        using var denied = await ExecutePostAsync(admin, november.Path, before!.DocumentVersion, "earlier-receipt");
+        await AssertErrorAsync(denied, HttpStatusCode.Forbidden, "accounting.posting.later_period_closed");
+        await AssertNoEffectsAsync(admin, november.Path);
+        Assert.Empty(await services.GetRequiredService<IAccountingEntryReader>().GetByDocumentAsync(november.Id));
+        var unchanged = await admin.GetFromJsonAsync<DocumentEditorStateDto>(november.Path + "/editor-state", Json);
+        Assert.Equal(before.DocumentVersion, unchanged!.DocumentVersion);
+        Assert.Equal(DocumentStatus.Draft, unchanged.Document.Status);
+        var trialBalance = services.GetRequiredService<ITrialBalanceReader>();
+        var january = EndPeriod.AddMonths(1);
+        Assert.Equal(100m, (await trialBalance.GetAsync(january, january))
+            .Where(row => row.AccountCode == EquipmentServiceDefinitions.ExpenseAccountCode).Sum(row => row.ClosingBalance));
+
+        await PostAsync<PeriodCloseStatusDto>(admin, Endpoint + "/month/reopen",
+            new ReopenMonthRequestDto(EndPeriod, "Include the earlier receipt"));
+        using var retry = await ExecutePostAsync(admin, november.Path, before.DocumentVersion, "earlier-receipt");
+        Assert.Equal(DocumentStatus.Posted, (await ReadActionAsync(retry)).Document.Status);
+        await PostAsync<PeriodCloseStatusDto>(admin, Endpoint + "/month/close", new CloseMonthRequestDto(EndPeriod.AddMonths(-1)));
+        await PostAsync<PeriodCloseStatusDto>(admin, Endpoint + "/month/close", new CloseMonthRequestDto(EndPeriod));
+        var corrected = await trialBalance.GetAsync(january, january);
+        Assert.Equal(150m, corrected.Where(row => row.AccountCode == EquipmentServiceDefinitions.ExpenseAccountCode).Sum(row => row.ClosingBalance));
+        Assert.Equal(-150m, corrected.Where(row => row.AccountCode == EquipmentServiceDefinitions.PayableAccountCode).Sum(row => row.ClosingBalance));
+        Assert.Equal(0m, corrected.Sum(row => row.ClosingBalance));
+    }
+
+    [Fact]
     public async Task Closed_month_rejects_document_actions_preserves_balances_and_reopens_explicitly()
     {
         await using var host = new InspectionHost();

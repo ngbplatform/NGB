@@ -47,9 +47,14 @@ const integrity = `sha512-${createHash('sha512').update(archive).digest('base64'
 const sourceManifest = JSON.parse(await readFile(join(repository, 'ui/ngb-ui-framework/package.json'), 'utf8'))
 assert.equal(sourceManifest.version, version)
 const published = createPlatformUiPackageManifest(sourceManifest)
-for (const filename of ['packaging/templates/content/web/package-lock.json', 'ui/ngb-crm-web/package-lock.json']) {
+const consumerLocks = [
+  'packaging/templates/content/web/package-lock.json',
+  'ui/ngb-crm-web/package-lock.json',
+  'ai-devkit/examples/equipment-inspection/web/package-lock.json',
+]
+for (const [index, filename] of consumerLocks.entries()) {
   const path = join(repository, filename)
-  const workspace = join(root, filename.includes('ngb-crm-web') ? 'crm-lock' : 'starter-lock')
+  const workspace = join(root, `consumer-lock-${index}`)
   await mkdir(workspace)
   const manifest = JSON.parse(await readFile(join(dirname(path), 'package.json'), 'utf8'))
   assert.equal(manifest.dependencies['@ngbplatform/ui'], version)
@@ -75,4 +80,5 @@ for (const filename of ['packaging/templates/content/web/package-lock.json', 'ui
   })
   await writeFile(path, `${JSON.stringify(lock, null, 2)}\n`)
 }
+await prepareTemplate(true)
 console.log(`Generated lockfiles identify the existing ${version} candidate artifacts.`)

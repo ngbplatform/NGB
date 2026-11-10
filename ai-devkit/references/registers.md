@@ -17,6 +17,14 @@ IOperationalRegisterMovementsBuilder, CancellationToken)`. The handler's TypeCod
 must match its document definition. Supply movements for Post/Repost. The existing
 engine handles Unpost with appended storno movements; do not delete old movements.
 
+Unpost appends opposite-sign copies only for unmatched stored movements, retaining
+their original occurrence dates, dimensions and resources. Repeated corrections
+grow history linearly with the effects written; old redundant history remains
+unchanged. Sum resources with the `IsStorno` sign, never infer a current amount
+from the physical row count. A date change invalidates affected and tracked later
+monthly projections. Read published turnovers/balances after normal finalization,
+or use the supported resource-net reader for current transaction-visible nets.
+
 For document-driven Reference Registers, implement
 `IDocumentReferenceRegisterPostingHandler.BuildRecordsAsync(DocumentRecord,
 ReferenceRegisterWriteOperation, IReferenceRegisterRecordsBuilder,
@@ -43,6 +51,13 @@ pages the full recorder history, including future effective dates. Custom provid
 must implement equivalent read/write semantics themselves. Independent and
 nonperiodic registers keep their existing contracts. Follow [upgrade rules](upgrades.md#reference-register-migration-in-340)
 before running new hosts against an existing database.
+
+For backdated periodic reads, effective time and recorded time are separate.
+`SliceLastForEffectiveMomentAsync` can ask for September's value using all
+knowledge recorded now; `SliceLastAsync` applies its one timestamp to both
+boundaries. Do not interpret records written today as knowledge already available
+in September. Supply the recorder ID for subordinate reads; these are not a
+global latest-value query across all documents.
 
 Operational register read, projection and finalization contracts and reference
 register read/management contracts are in Runtime and Persistence. Confirm bounds,

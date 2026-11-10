@@ -2,13 +2,13 @@
   "schemaVersion": 1,
   "package": "NGB.Platform.BackgroundJobs",
   "version": "3.4.0",
-  "packageSha256": "abf916b51668fd8c19dc12a0467e5723a66f8c53de3a8440eb5543dd9995cfdf",
+  "packageSha256": "cea60383b15a239bc8d41038c08e6d9268552f181024f618237f628733f7d072",
   "assembly": {
     "name": "NGB.BackgroundJobs",
     "version": "3.0.0.0",
-    "sha256": "174716af1d77dc9a27c892f288891c5d426052d6223389fbce42b166d907fabe"
+    "sha256": "3f8600d6fa2fdaab6ba16b4e87ab5b4473842076c86e63238bd661a969053803"
   },
-  "contractSha256": "925e7f6097a0c069e556b1779eaccc11e9ff0294cd8172b736b91af6bcd9d99e",
+  "contractSha256": "fffb4fa64e66caaffc6ea511a9de4e8641979ee623cc2f1f0397fdc8bf47b05e",
   "types": [
     {
       "name": "NGB.BackgroundJobs.Catalog.BackgroundJobCatalog",
@@ -301,7 +301,7 @@
     {
       "name": "NGB.BackgroundJobs.DependencyInjection.PlatformBackgroundJobsSchedulingServiceCollectionExtensions",
       "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
-      "contractSha256": "fe108dbe31263e36addcca13df21333efc44645173d7827b80d4080e590eb7f9",
+      "contractSha256": "98e2a67251fdec412f545c3b5dd61b5ec8debbdc8ce3c289500061cbf4df97ef",
       "methods": [
         "AddPlatformBackgroundJobSchedulesFromConfiguration"
       ],
@@ -310,7 +310,7 @@
     {
       "name": "NGB.BackgroundJobs.DependencyInjection.PlatformBackgroundJobsServiceCollectionExtensions",
       "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
-      "contractSha256": "90de54c0ec2966fc1971b79e2aa49329cb5dce2854a2d4a15236653c58e01c05",
+      "contractSha256": "559f5cb07da36dd2abf856adce479f55044fd14c043b06512f8e378aafaf1fdc",
       "methods": [
         "AddPlatformBackgroundJobsHangfire"
       ],
@@ -340,7 +340,7 @@
     {
       "name": "NGB.BackgroundJobs.Hosting.BackgroundJobsHostingBootstrap",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "378f7d24017dcbcf5e3b927094b31124f91231dff71bd82db7f281ce7100fef1",
+      "contractSha256": "1a776223b001307f3f53f91845cdcf9fde7c42e49a9a808f706bb10d81070784",
       "methods": [
         ".ctor",
         "EnsureInfrastructureAsync",
@@ -353,7 +353,7 @@
     {
       "name": "NGB.BackgroundJobs.Hosting.BackgroundJobsHostingExtensions",
       "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
-      "contractSha256": "774ca694c4dbba68902b1b2f90014526c2ff89d22faaf5f8dad6c202c09451bc",
+      "contractSha256": "97b9e8b49eca61030f1e98af0696c020417f7469ef9a60210b917949cb8b0ce5",
       "methods": [
         "AddNgbBackgroundJobs",
         "MapNgbBackgroundJobs",
@@ -414,7 +414,7 @@
     {
       "name": "NGB.BackgroundJobs.Hosting.BackgroundJobStorageFactory",
       "attributes": "Public, Sealed",
-      "contractSha256": "bd1d82c4e02846d39aabd3ee7571a0dc5d78486c91d725550e71bddbbcfefd84",
+      "contractSha256": "c1702f02ee2427904da0a661a23916969f5abec12fc1e9e17a31f3e1b84c31f9",
       "methods": [
         ".ctor",
         "BeginInvoke",
@@ -446,7 +446,7 @@
     {
       "name": "NGB.BackgroundJobs.Infrastructure.PlatformHangfireRecurringJobsHostedService",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "a12b2c9ee8e6b13864b8de3e254c4e33101d961463fb3ba81afae19d46495b19",
+      "contractSha256": "9dec6add66d277c7a751f560fd14caafdfc5144878fb64c561cf16f16ae5b8dc",
       "methods": [
         ".ctor",
         "StartAsync",

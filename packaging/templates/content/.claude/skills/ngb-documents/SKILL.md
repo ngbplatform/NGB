@@ -20,6 +20,9 @@ them. Confirm the requested outcome and existing contracts first.
    Never invent movements or write a Posted status directly.
 4. Route interactive actions through the authorized action dispatcher. Preserve
    idempotency keys, expected versions and the existing action availability rules.
+   Reload the version after Draft saves. Check the registry date explicitly:
+   generic payload dates are not automatically bound to it in 3.4.0, and generic
+   save has no expected-version check. Read the documented limitations first.
 5. Test incomplete Draft, invalid Post, valid Post, retry, concurrent change and
    unauthorized action against the actual service/API path. Assert the resulting
    effects and preserved history independently of implementation details.

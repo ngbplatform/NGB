@@ -8,8 +8,8 @@ namespace NGB.BackgroundJobs.PostgreSql;
 public sealed class PostgresBackgroundJobExecutionLockProvider(JobStorage? storage = null)
     : IBackgroundJobExecutionLockProvider
 {
-    private readonly PostgresHangfireJobStorageFactory.ConnectionSettings? _storageSettings =
-        PostgresHangfireJobStorageFactory.GetConnectionSettings(storage);
+    private readonly PostgresHangfireStorageConnections.ConnectionSettings? _storageSettings =
+        PostgresHangfireStorageConnections.GetConnectionSettings(storage);
 
     public async Task<IBackgroundJobExecutionLock?> TryAcquireAsync(
         BackgroundJobExecutionLockRequest request,

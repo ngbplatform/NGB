@@ -2,13 +2,13 @@
   "schemaVersion": 1,
   "package": "NGB.Platform.Accounting",
   "version": "3.4.0",
-  "packageSha256": "6cbba9a69441f5f26c20c3b1db1265df019bcde10c65117d9b930cb69618fc5a",
+  "packageSha256": "e95759f4cf92c0921480047c0771357a552c1ef8a2cef69c64528c8d4fe429cb",
   "assembly": {
     "name": "NGB.Accounting",
     "version": "3.0.0.0",
-    "sha256": "eeebb7c65a5d3cac42920397d267ca626954ca83da3a0def2cd703b3a9692aba"
+    "sha256": "55b35745be3bffd610251d293184b6d303044d51a352d4f28b91fe11e9ac3660"
   },
-  "contractSha256": "b85c031c5a7527359b93a0e356b8a0605e6f179c54676da26c444e2acefe0018",
+  "contractSha256": "35f7483cef23d8f7162dca9b010870f01a6973b77b8ca98d3b2706c7c005581c",
   "types": [
     {
       "name": "NGB.Accounting.Accounts.Account",
@@ -277,7 +277,7 @@
     {
       "name": "NGB.Accounting.Balances.AccountingOperationalBalanceSnapshot",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "7df73592cfa5af32a5fc38d3a17affb66f648ad8333ec337933bf43160ef1a70",
+      "contractSha256": "e963b363494735dd00312729fd855ec01e7a56191ae33e1168c4d175efb2c592",
       "methods": [
         ".ctor",
         "get_AccountId",
@@ -286,12 +286,14 @@
         "get_DimensionSetId",
         "get_Period",
         "get_PreviousClosingBalance",
+        "get_PriorOpenPeriodDelta",
         "set_AccountId",
         "set_CreditTurnover",
         "set_DebitTurnover",
         "set_DimensionSetId",
         "set_Period",
-        "set_PreviousClosingBalance"
+        "set_PreviousClosingBalance",
+        "set_PriorOpenPeriodDelta"
       ],
       "fields": []
     },

@@ -50,6 +50,30 @@ Compare JSON values semantically rather than relying on object-property order.
 Reusing a key for a different request returns `document_action.idempotency_conflict`;
 a new request with a stale expected version returns `document.version_conflict`.
 
+Successful generic Draft head/part saves and actual common-header changes advance
+the action version in the save transaction. Reload editor state after saving;
+posting with a version read before that save must fail. This is action concurrency
+protection, not optimistic concurrency for the save itself: generic document and
+catalog updates have no expected-version argument in 3.4.0. Two stale editors can
+still overwrite one another. Do not advertise lost-update protection or invent a
+request field that the installed API does not validate.
+
+Treat the returned version as an opaque concurrency token. A custom action that
+updates the common header can advance it during both the save and action
+completion. Use the returned/refreshed value; do not calculate `oldVersion + 1`.
+Replay must retain the committed version and must not repeat the date change.
+
+`DocumentRecord.DateUtc` is the registry's business date; `CreatedAtUtc` is the
+creation timestamp. Generic `IDocumentService.CreateDraftAsync` initializes the
+registry date from the current clock. A payload field such as `document_date_utc`
+is application data and is not automatically bound to the registry date or initial
+number allocation. Updating that payload field alone does not move postings made
+from `DocumentRecord.DateUtc`. Trusted common-header changes use the existing
+`IDocumentDraftService.UpdateDraftAsync`; any interactive workflow needs its
+existing authorized application boundary. Do not silently add a date-sync handler,
+rewrite historical dates/numbers, or claim that generic CRUD already supplies this
+binding. See the explicit 3.4.0 limits in `ai/vendor/known-limitations.json`.
+
 Completed replay refreshes the current actor's permissions before returning the
 saved result. It requires an active authenticated actor, source-document View and
 the registered action's authorization, including custom evaluators and current

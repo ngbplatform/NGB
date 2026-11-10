@@ -4,6 +4,8 @@ using System.Net;
 using System.Net.Http.Json;
 using EquipmentInspection.Definitions;
 using Hangfire;
+using Hangfire.PostgreSql;
+using Hangfire.PostgreSql.Factories;
 using Hangfire.Storage;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Hosting;
@@ -13,6 +15,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using NGB.BackgroundJobs.Catalog;
 using NGB.BackgroundJobs.Contracts;
+using NGB.BackgroundJobs.DependencyInjection;
 using NGB.BackgroundJobs.Infrastructure;
 using NGB.Contracts.Documents;
 using NGB.Contracts.Services;
@@ -27,6 +30,60 @@ namespace EquipmentInspection.IntegrationTests;
 public sealed class BackgroundJobsTests
 {
     private const string FinalizationJob = "opreg.finalization.run_dirty_months";
+
+    [Fact]
+    public async Task Execution_lock_prevents_overlap_between_workers_after_the_storage_lease_expires()
+    {
+        await using var application = new InspectionHost();
+        await application.StartAsync();
+        var probe = new BlockingProbe();
+        var notifications = new ProblemNotifications();
+        var storageOptions = new PostgreSqlStorageOptions
+        {
+            SchemaName = "example_short_lease",
+            PrepareSchemaIfNecessary = true,
+            DistributedLockTimeout = TimeSpan.FromSeconds(4)
+        };
+        void ConfigureWorker(IServiceCollection services)
+        {
+            services.AddSingleton<IPlatformBackgroundJob>(probe);
+            services.AddSingleton<IPlatformJobNotifier>(notifications);
+            services.Configure<PlatformHangfireOptions>(options => options.StorageNamespace = storageOptions.SchemaName);
+            // Shorten only Hangfire's lease. The packaged execution-lock adapter and
+            // both real worker compositions remain responsible for preventing overlap.
+            services.AddSingleton<JobStorage>(_ => new PostgreSqlStorage(
+                new NpgsqlConnectionFactory(application.ConnectionString, storageOptions, connectionSetup: null!), storageOptions));
+        }
+
+        await using var firstWorker = CreateWorker(application, enabled: false, configureServices: ConfigureWorker);
+        await using var secondWorker = CreateWorker(application, enabled: false, configureServices: ConfigureWorker);
+        using var firstClient = firstWorker.CreateClient();
+        using var secondClient = secondWorker.CreateClient();
+        var first = firstWorker.Services.GetRequiredService<PlatformHangfireJobRunner>();
+        var second = secondWorker.Services.GetRequiredService<PlatformHangfireJobRunner>();
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(40));
+        var token = new TestCancellation(cancellation.Token);
+        var running = first.RunAsync(BlockingProbe.Id, token);
+        try
+        {
+            await probe.Entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            await second.RunAsync(BlockingProbe.Id, token).WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.Equal(1, probe.Attempts);
+            await Task.Delay(storageOptions.DistributedLockTimeout + TimeSpan.FromSeconds(1), cancellation.Token);
+            Assert.False(running.IsCompleted);
+            await second.RunAsync(BlockingProbe.Id, token).WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.Equal(1, probe.Attempts);
+            Assert.Equal(2, notifications.Results.Count(result => result.Outcome == PlatformJobRunOutcome.SkippedOverlap));
+        }
+        finally
+        {
+            probe.Release.TrySetResult();
+            await running.WaitAsync(TimeSpan.FromSeconds(10));
+        }
+
+        await second.RunAsync(BlockingProbe.Id, token);
+        Assert.Equal(2, probe.Attempts);
+    }
 
     [Fact]
     public async Task Scheduled_worker_finalizes_real_movements_and_restart_preserves_registration_and_projections()

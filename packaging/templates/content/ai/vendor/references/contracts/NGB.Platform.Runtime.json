@@ -2,13 +2,13 @@
   "schemaVersion": 1,
   "package": "NGB.Platform.Runtime",
   "version": "3.4.0",
-  "packageSha256": "97f1ce4751185e49820c1d18287f00c82466579a1e895804096d8a9b3712e6cd",
+  "packageSha256": "394584557d33e09684fdd1f30ad8941ef88f5d5e2c2f350208b9a2d485e3030b",
   "assembly": {
     "name": "NGB.Runtime",
     "version": "3.0.0.0",
-    "sha256": "e7ae8e8621aaa03bc1e65c5236a1cf43c69f7a5d79979cf378b89c7020766c6d"
+    "sha256": "93dad0a64ebec79851572aa5a6e7b74fb7f589fa37bd9d0595da132af06e176b"
   },
-  "contractSha256": "9a694737983e420c5b715327901b2b34327d032d70247b3ec45547f4cf6100ea",
+  "contractSha256": "8a8c9c47db8cce5b9cb55fba0bae336a192fe7ab92c8917e64eab5e3be57b96a",
   "types": [
     {
       "name": "NGB.Runtime.Accounting.AccountingNegativeBalanceForbiddenException",
@@ -35,7 +35,7 @@
     {
       "name": "NGB.Runtime.Accounts.AccountDimensionRuleRequest",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "627c9919760baadfdf77e93d267ce64cfcaae7b2ab97759d92aa0b90972c79c8",
+      "contractSha256": "f3370ae21e027eeb864e0454390e0a19ad9c12fca3b6423c3ba15fb6953276c1",
       "methods": [
         ".ctor",
         "<Clone>$",
@@ -57,7 +57,7 @@
     {
       "name": "NGB.Runtime.Accounts.ChartOfAccountsAdminService",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "f7d0f0de5a72e72e0cf977aec2f418dc6ec57b463bbb4f3a6d79c0a1df0684a3",
+      "contractSha256": "c7b7470deb3056f002e3a16cfceb7aef55bd83eacce838a4641cc2849d840b4d",
       "methods": [
         ".ctor",
         "GetAsync",
@@ -70,7 +70,7 @@
     {
       "name": "NGB.Runtime.Accounts.ChartOfAccountsManagementService",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "ef137d5c4d06d28c924c08fef815eab547027ddbccd3c0780de42263527b0d4f",
+      "contractSha256": "0cf7c671a4e6cd4717556d63677e8edbcc75334fc0c7483ec1e9ac868e7fe766",
       "methods": [
         ".ctor",
         "CreateAsync",
@@ -84,7 +84,7 @@
     {
       "name": "NGB.Runtime.Accounts.ChartOfAccountsProvider",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "fee1b950840a01d352a7dd3ac2f44c79659f3d74cceac2d7950ce563e177a332",
+      "contractSha256": "69cebed7239406eddbc263a02e0740fbef7aad5e10c75c9a679ee5f95f018443",
       "methods": [
         ".ctor",
         "GetAsync"
@@ -105,7 +105,7 @@
     {
       "name": "NGB.Runtime.Accounts.CreateAccountRequest",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "f8ebbde257ed63e81295313f923b342bac2ae7b2398acad16fae603291cb7bbc",
+      "contractSha256": "6bc3b23f03bf5bb1c4b9ff08da8d789e4107d969fd55600ff5476bec8399597b",
       "methods": [
         ".ctor",
         "<Clone>$",
@@ -192,7 +192,7 @@
     {
       "name": "NGB.Runtime.Accounts.IChartOfAccountsAdminService",
       "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
-      "contractSha256": "693d563d234332cbadf477ef6adcdbe543b426eb1bfe9375c82a1649bb58e1fa",
+      "contractSha256": "19fac5e79d762477db167fa34dd61ab264c35dfb74543acdc069423bf427cfdf",
       "methods": [
         "GetAsync",
         "GetByIdAsync",
@@ -204,7 +204,7 @@
     {
       "name": "NGB.Runtime.Accounts.IChartOfAccountsManagementService",
       "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
-      "contractSha256": "337570e6990abb253b7cf5bb1bd26a921eb31f000436b8d15594929989c1159f",
+      "contractSha256": "3022c4cc768e7b44c9d00498feb0ac38389507c266ac5c87a781381b7876ac47",
       "methods": [
         "CreateAsync",
         "MarkForDeletionAsync",
@@ -217,7 +217,7 @@
     {
       "name": "NGB.Runtime.Accounts.UpdateAccountRequest",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "3e13de40cc6087076f663e9066e4171ba55441ae9e5a6c570afaf0da2533dbd6",
+      "contractSha256": "35348086e67997eb214575e967b733b8ea2b860de829c450bea7e8843557e486",
       "methods": [
         ".ctor",
         "<Clone>$",
@@ -255,7 +255,7 @@
     {
       "name": "NGB.Runtime.Admin.AccountingAdminMainMenuContributor",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "fcae196217f83be7cc9cbe851f9e401dc9e80f3122181bca78bcb6c59b850831",
+      "contractSha256": "adf16a7ffd5a7a06630cc90116c6f2d1287a9ec0831ee9ffc2a44665a8e87e06",
       "methods": [
         ".ctor",
         "ContributeAsync"
@@ -265,7 +265,7 @@
     {
       "name": "NGB.Runtime.Admin.AccountingDocumentsMainMenuContributor",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "48a4dbd158d9d10e8ee2cacabfd89506144fca9f0bde9e1e4229adbdc1fbe7f9",
+      "contractSha256": "40879caa62210ccdb2ca9c32528a893a33c97e5fe8a687deea51d3dc6466908f",
       "methods": [
         ".ctor",
         "ContributeAsync"
@@ -275,7 +275,7 @@
     {
       "name": "NGB.Runtime.Admin.AccountingReportsMainMenuContributor",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "1b03d45950ec685a46a79ea9922c27d26d050f64a50ed634ebc4705274773a59",
+      "contractSha256": "a89779faa20d30317d18d2ad4a886fdaa87ef34b20243fd6202558d3e1c58e45",
       "methods": [
         ".ctor",
         "ContributeAsync"
@@ -285,7 +285,7 @@
     {
       "name": "NGB.Runtime.Admin.AdminService",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "1586298d431ad4da77d55f842ce0c34b0ef690b43506bf665161988f0dad9a9c",
+      "contractSha256": "778d12615db1b6a6fa459730cb966aeccb48200fb14933fc0603b48d23489233",
       "methods": [
         ".ctor",
         "CreateChartOfAccountAsync",
@@ -304,7 +304,7 @@
     {
       "name": "NGB.Runtime.Admin.IMainMenuService",
       "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
-      "contractSha256": "09277a37b090a7689166b5f3592db5a0a8ce2adbe664673c8301f1c7d3cc00c1",
+      "contractSha256": "e2a6311ccde371625316d5d1da08e63c88597c86ff611320fee201cde0f8a1cf",
       "methods": [
         "GetMainMenuAsync"
       ],
@@ -313,7 +313,7 @@
     {
       "name": "NGB.Runtime.Admin.PermissionAwareAdminService",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "d35965d916556814d363b8f5d4a5e51d027ba46a60c373efd8798e98ac209d43",
+      "contractSha256": "550c16fbcde7f8927f50ac8c43cb50a425acaded5e27eacd40dde13ec0ec7912",
       "methods": [
         ".ctor",
         "CreateChartOfAccountAsync",
@@ -386,7 +386,7 @@
     {
       "name": "NGB.Runtime.AuditLog.AuditLogQueryService",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "04a077a2eb4184cd39ed2a11d85af8357863b936035636dbc985c637b9151850",
+      "contractSha256": "4af09ad1ef2c7d2ccd437483b1726f873c081906ef1856cf437cfd70d7c14026",
       "methods": [
         ".ctor",
         "GetEntityAuditLogAsync"
@@ -396,7 +396,7 @@
     {
       "name": "NGB.Runtime.AuditLog.AuditLogWriteRequest",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "a1755ad4b56ae806a6974599e0fd18bb04fb721fb70b4f8e1d493ac5a42b79cb",
+      "contractSha256": "05420f439cd7193de5cbd38e9ea77c6b9c5a71136852847b393c6c1c8e095b94",
       "methods": [
         ".ctor",
         "<Clone>$",
@@ -424,7 +424,7 @@
     {
       "name": "NGB.Runtime.AuditLog.IAuditLogService",
       "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
-      "contractSha256": "98ab96725f61138a7d3cd8bb798c1231a167435eb8a6bd348bb3f8e73a3d8747",
+      "contractSha256": "75befa3a743b307b7b07592235fbd068ba8c7ac7999c16a48199c6a438d5e96e",
       "methods": [
         "WriteAsync",
         "WriteBatchAsync"
@@ -434,7 +434,7 @@
     {
       "name": "NGB.Runtime.AuditLog.PermissionAwareAuditLogQueryService",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "fb1644dc734913b10e9868a8ac66c416012daf64effc1a089e0019d43d931942",
+      "contractSha256": "b0509636d6d5ca82c43c038f80075d14ff4a32a1ecd58632d2117ed8a6da9f5d",
       "methods": [
         ".ctor",
         "GetEntityAuditLogAsync"
@@ -444,7 +444,7 @@
     {
       "name": "NGB.Runtime.Catalogs.CatalogDraftService",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "0136ea534d0307fbc6ee68c2970da4668a29333609f3991d9a5625e74f650f67",
+      "contractSha256": "5bf9c6c7a86e55559c8894db1f996ce7d8ae5923fe34dca955e2ec6b42716c90",
       "methods": [
         ".ctor",
         "CreateAsync",
@@ -457,7 +457,7 @@
     {
       "name": "NGB.Runtime.Catalogs.CatalogService",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "7db523f1a435dc6b1264a44cbb183f75fe07ef186d652e8c5c371582eaac7e99",
+      "contractSha256": "ca3cb92cde832c82d55bccabf111b9efeca8a5f6c193ed6c74c1eda6be747ee8",
       "methods": [
         ".ctor",
         "CreateAsync",
@@ -478,7 +478,7 @@
     {
       "name": "NGB.Runtime.Catalogs.CatalogWriteEngine",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "b2939db14ec8f941db55bca04c19d74af9ad724c83f145cb4dd89449c14c6578",
+      "contractSha256": "b5d1c17c10fa305b359bd713918e523735d5fd65aac38bf5b5fa734d5075c953",
       "methods": [
         ".ctor",
         "DeleteStorageAsync",
@@ -501,7 +501,7 @@
     {
       "name": "NGB.Runtime.Catalogs.ICatalogSchemaValidationService",
       "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
-      "contractSha256": "d3388fcb25635ee45cbcb2fef8c68186ae41bce8d45d72bd3eaa9648c4ba8456",
+      "contractSha256": "d272f5e4491e8e9554f1d452ffe96e942b55b4c27bc500d07f9c0ad7fa320c45",
       "methods": [
         "DiagnoseAllAsync",
         "ValidateAllAsync"
@@ -511,7 +511,7 @@
     {
       "name": "NGB.Runtime.Catalogs.PermissionAwareCatalogService",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "051665ccbb6b33b891a63f5153984162b6f3cf7d52d447c61f04d7f8077eccf3",
+      "contractSha256": "4114d590faf2842014de9e7e2502fd10aa26562def32ace88cb4ebad732ebe1e",
       "methods": [
         ".ctor",
         "CreateAsync",
@@ -548,7 +548,7 @@
     {
       "name": "NGB.Runtime.Catalogs.Storage.CompositeCatalogTypeStorageResolver",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "b42a03f6b25111df1c428b14c92c313a39cf51368d30807f4c9e5f41d4e1d496",
+      "contractSha256": "0740aa9651b699af0312c1dfae1be7ca3443a02c8af7c4fd23690409083aaa87",
       "methods": [
         ".ctor",
         "TryResolve"
@@ -558,7 +558,7 @@
     {
       "name": "NGB.Runtime.Catalogs.Storage.InMemoryCatalogTypeStorageResolver",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "1a98ba87192d98307f1b95e82c504b0be7d0934dac2b9cc0ad23cfddb973f944",
+      "contractSha256": "a2a693910f1a6e93150bac493862654d0164acf952bc5c20e376c5a41c316f85",
       "methods": [
         ".ctor",
         "TryResolve"
@@ -568,7 +568,7 @@
     {
       "name": "NGB.Runtime.Catalogs.Validation.ICatalogValidatorResolver",
       "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
-      "contractSha256": "54522c64cf8f3220d3329d2bb92c3a6b88d26e94ff7d253d7dc732f3c8dc56ed",
+      "contractSha256": "5eed79582778f32abf80cd550531818b5cf63d32cf0d5353fedd99a26973289d",
       "methods": [
         "ResolveUpsertValidators"
       ],
@@ -577,7 +577,7 @@
     {
       "name": "NGB.Runtime.CurrentActor.ActorIdentity",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "db3e18f633dd5979d934ee29030ac929dbfe8b35fd9974e1f09696777186f9f0",
+      "contractSha256": "15f9eaf721d7b25b24c0bcf121e2897f578da03138ec69eee992fe8f9d61683e",
       "methods": [
         ".ctor",
         "<Clone>$",
@@ -604,7 +604,7 @@
     {
       "name": "NGB.Runtime.CurrentActor.ICurrentActorContext",
       "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
-      "contractSha256": "5dd35f60740a3eb004bbccab370c96ce98f5edc0c5e778191bddc8d5a75952ff",
+      "contractSha256": "dbdb7c28bf976b336d1cd543f97c275fba67cf8e5c391132b63926b6db82ea36",
       "methods": [
         "get_Current"
       ],
@@ -613,7 +613,7 @@
     {
       "name": "NGB.Runtime.CurrentActor.NullCurrentActorContext",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "e29632d898f6f9937423286435fdfb1696be25be4c1853a3c53f67ebf88b5759",
+      "contractSha256": "565f27a55d18059d3f573387cecc6cf28dfee75ae7134e1f5b92d1200bc8938c",
       "methods": [
         ".ctor",
         "get_Current"
@@ -644,7 +644,7 @@
     {
       "name": "NGB.Runtime.DependencyInjection.AttachmentsNotesServiceCollectionExtensions",
       "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
-      "contractSha256": "200acec6cc164ba7a8812145d10e0ca6e88f27d3cb353c93163ca775cb336027",
+      "contractSha256": "2770b2ebd5feae008385b0e0e83b08cbbecbce4471fd2ed941a52a93eccdb759",
       "methods": [
         "AddNgbAttachmentsAndNotes"
       ],
@@ -653,7 +653,7 @@
     {
       "name": "NGB.Runtime.DependencyInjection.DefinitionsServiceCollectionExtensions",
       "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
-      "contractSha256": "745cbb183987a5f3baaa879ac9e42025ba3961551b93be26eae5d2f9d90470fd",
+      "contractSha256": "c54322c3963532bf68c26af172c826141d1131e50bc0e5a3819f89db1dc8f675",
       "methods": [
         "AddNgbDefinitions"
       ],
@@ -662,7 +662,7 @@
     {
       "name": "NGB.Runtime.DependencyInjection.FeatureServiceCollectionExtensions",
       "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
-      "contractSha256": "f6d7a2e5aa3fb5b1431f27f4d887c776af5985f251e1db7aa4b3f769486e8a34",
+      "contractSha256": "2f9d2cf94638e1a95ab0dbb8010c7b9164135eef175f668b24fc141bd1c2c5b2",
       "methods": [
         "AddNgbFeatureManagement"
       ],
@@ -671,7 +671,7 @@
     {
       "name": "NGB.Runtime.DependencyInjection.RuntimeServiceCollectionExtensions",
       "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
-      "contractSha256": "a127f60e24f43e56e9c42f335fde00d6de18b97f946f667c818d925314db132a",
+      "contractSha256": "5ae22f8462a5ea65f3786684721c01d16bb4fa81343a623e49c157ce78c9b881",
       "methods": [
         "AddNgbRuntime",
         "AddNgbRuntimeAuthorization"
@@ -681,7 +681,7 @@
     {
       "name": "NGB.Runtime.Dimensions.DimensionSetService",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "39c61b12a829ee6e1695addacc6aa4132ed12eebee672f97cc6326c8224e3221",
+      "contractSha256": "d8f58259eab2c21f6883a5f0ea86dcb2ff52b341dafe22a19aa0baa72ad63421",
       "methods": [
         ".ctor",
         "GetOrCreateIdAsync",
@@ -702,7 +702,7 @@
     {
       "name": "NGB.Runtime.Documents.Actions.DocumentActionRegistry",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "89b796a2f22f98b53a4bef8ad21f75bc5ee3bc5066b23c2b09a1676c346bd099",
+      "contractSha256": "7d9022ee59c6ef9ff773155639b585e1de8a8f930dda4dbb13773ebd7ffa0213",
       "methods": [
         ".ctor",
         "Get",
@@ -713,7 +713,7 @@
     {
       "name": "NGB.Runtime.Documents.Derivations.DocumentDerivationAction",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "dbfd16255c1d284ac8f0214aa614716a190bc80adf23ea7b3bd1db1573aa3058",
+      "contractSha256": "4cbb55b5851b92e649a900a6d77a0c02011a5cdbcbc02a116e1cc45321c428bc",
       "methods": [
         ".ctor",
         "<Clone>$",
@@ -739,7 +739,7 @@
     {
       "name": "NGB.Runtime.Documents.Derivations.DocumentDerivationContext",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "3af614ef6a313d0e7fdf3a0aea1b65b58c9386f9f8ae3268d33dcfc8bed415f4",
+      "contractSha256": "2d9254f2c20f62a788510fd11846a0e0d1d2cc97384bb78306db766b09a052f9",
       "methods": [
         ".ctor",
         "<Clone>$",
@@ -763,7 +763,7 @@
     {
       "name": "NGB.Runtime.Documents.Derivations.IDocumentDerivationHandler",
       "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
-      "contractSha256": "4cf82222a63a94e5ade6fa4bd900155848d487aac587f7c3671fd2debfa8bcc3",
+      "contractSha256": "c639350d225bd1002ef3babf771116cae688a29a8e7d3bebb36195aa4a270d0c",
       "methods": [
         "ApplyAsync"
       ],
@@ -772,7 +772,7 @@
     {
       "name": "NGB.Runtime.Documents.Derivations.IDocumentDerivationService",
       "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
-      "contractSha256": "2eebd956c55dbdbfd07568b300827bb9c3ef42e328513ec81b72f8921632a092",
+      "contractSha256": "738a72fc85a7bc8a60a93c3fd69132c099cc138c84ef8c4adbd75ff463c3df74",
       "methods": [
         "CreateDraftAsync",
         "ListActionsForDocumentAsync",
@@ -796,7 +796,7 @@
     {
       "name": "NGB.Runtime.Documents.DocumentDraftCreateRequest",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "14762d16804fe88ad65b49c41ccecf6b767cb4fa4ad0ed207c6ae3a7d54dc600",
+      "contractSha256": "e6a36eddfc0ab932e0719f3c30bd9639e34befb532869028ab76ffdaf6e43822",
       "methods": [
         ".ctor",
         "<Clone>$",
@@ -818,7 +818,7 @@
     {
       "name": "NGB.Runtime.Documents.DocumentEffectsQueryResult",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "f2b6beca6e8eaf9d20fa1b65d18158ed5f9bc88d105f92c35bd2f890bea37caa",
+      "contractSha256": "90f6e2ea3a5afe6c00c7d49f040618979409ca6aa65dc005745eb96b78dfa124",
       "methods": [
         ".ctor",
         "<Clone>$",
@@ -840,7 +840,7 @@
     {
       "name": "NGB.Runtime.Documents.DocumentEffectsQueryService",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "bf5a358dd2d562aa519e182e8833d35887214153c0ded650a8ab027ca32233cc",
+      "contractSha256": "14bfba6405a54f88f965cd44173325612c1ce535000cbf28ca3d482bbf9037de",
       "methods": [
         ".ctor",
         "GetAsync"
@@ -860,7 +860,7 @@
     {
       "name": "NGB.Runtime.Documents.DocumentRelationshipCreateRequest",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "8cd16afe0c63448591505bf0e00c18c54f57a41987a1fe18e940c86d5539d08e",
+      "contractSha256": "3a3304b03e9641e7661c6362b0028a0e7b6b7401b7aa14da7195081da362e675",
       "methods": [
         ".ctor",
         "<Clone>$",
@@ -882,7 +882,7 @@
     {
       "name": "NGB.Runtime.Documents.DocumentRelationshipsDefinitionsContributor",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "018eb151321de5b22d0509e8300951b7053138746284c23c5d3fc47940770872",
+      "contractSha256": "e0881390764df6b71e57f8431a2948e32db45e12913d80978d102ae5608681e4",
       "methods": [
         ".ctor",
         "Contribute"
@@ -892,7 +892,7 @@
     {
       "name": "NGB.Runtime.Documents.DocumentRelationshipService",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "66c1b58fe90819a58d414d52a794678b099510a50b23eb87e6dc01b8e882b0ff",
+      "contractSha256": "095ca2b56fbb368eeedcdfdf9c0df95fb95e6335bd777c454123e73acd612e2a",
       "methods": [
         ".ctor",
         "CreateAsync",
@@ -907,7 +907,7 @@
     {
       "name": "NGB.Runtime.Documents.DocumentService",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "b266af675358d428cc81b9a794a8c9a59a8242a6a7ff97ca295c2f6e6a911f77",
+      "contractSha256": "4b11a2fd29497d5f4e3b0bf9293dff0188d56cb9e4b4fb5956ba3f24c9e7acb8",
       "methods": [
         ".ctor",
         "CreateDraftAsync",
@@ -934,7 +934,7 @@
     {
       "name": "NGB.Runtime.Documents.DocumentWriteEngine",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "2c3d1a87673877a36ae02f077243283a683013d52c168be2c30f58728ff1819e",
+      "contractSha256": "a9479a79776cca3575ba758020e5324349458970ce3d46574744dda9bdf7c69d",
       "methods": [
         ".ctor",
         "DeleteDraftStorageAsync",
@@ -1131,7 +1131,7 @@
     {
       "name": "NGB.Runtime.Documents.GeneralJournalEntry.GeneralJournalEntryDefinitionsContributor",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "c0338a9f3b5c30437b177464d8627b332ec81450408d084687481b38ab7c5287",
+      "contractSha256": "ea571b772ff26823d39fd38ccadcd91458d55a2415ee08db74c1442f17cfe09e",
       "methods": [
         ".ctor",
         "Contribute"
@@ -1141,7 +1141,7 @@
     {
       "name": "NGB.Runtime.Documents.GeneralJournalEntry.GeneralJournalEntryDocumentService",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "031d8c17d9e389c7ec53473c67a9e39053d5729f78addcd7c894f3e557a35577",
+      "contractSha256": "233b79b85c8680f6047ba382654b3216f483afd169d30c6f6655b062e9266b65",
       "methods": [
         ".ctor",
         "ApproveAsync",
@@ -1160,7 +1160,7 @@
     {
       "name": "NGB.Runtime.Documents.GeneralJournalEntry.GeneralJournalEntryDraftHeaderUpdate",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "9b92e59205c887b7be69f58e922a7bbdf989091a891bfdff7b8b646e7374067e",
+      "contractSha256": "6184b10734bfe42f4e068f9be3e68a3d821b59dc5d81eab0a20d6f9167ed0b97",
       "methods": [
         ".ctor",
         "<Clone>$",
@@ -1188,7 +1188,7 @@
     {
       "name": "NGB.Runtime.Documents.GeneralJournalEntry.GeneralJournalEntryDraftLineInput",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "310bba69696f6fd8c16633255df546e3a498ab606f75bba53c961ccdc7abb6cf",
+      "contractSha256": "cd5827638425cc725cf27c7d83043a62a655d46604d82e4fa62d817508de2ac3",
       "methods": [
         ".ctor",
         "<Clone>$",
@@ -1214,7 +1214,7 @@
     {
       "name": "NGB.Runtime.Documents.GeneralJournalEntry.GeneralJournalEntryDraftLineSnapshot",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "5dd02edcc997bdc84d65de6c4435f312872b24bbb807a420daf4e221b02a6752",
+      "contractSha256": "744a5d68eb427818dbe15534e710e04af2dbb21ce78c3d15418fdfa80eafa17b",
       "methods": [
         ".ctor",
         "<Clone>$",
@@ -1244,7 +1244,7 @@
     {
       "name": "NGB.Runtime.Documents.GeneralJournalEntry.GeneralJournalEntryDraftSnapshot",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "0b2ab83b2359964619578708abc1d0e68b4593243131623eed801575261417e1",
+      "contractSha256": "4fb92c074dd890f74bf8afb88956d31d04ad874c5bc5c3904fbf56a034efcf53",
       "methods": [
         ".ctor",
         "<Clone>$",
@@ -1266,7 +1266,7 @@
     {
       "name": "NGB.Runtime.Documents.GeneralJournalEntry.GeneralJournalEntryFacade",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "b12a2281a545cac8043adf5f862bd9c4cad91e3fe96440eeb51b40ee08e55497",
+      "contractSha256": "da37b1c22d8060c4ca81bc0627f5b102d2302fed18262cc90e7ee4943f4f42e3",
       "methods": [
         ".ctor",
         "ApproveAsync",
@@ -1285,7 +1285,7 @@
     {
       "name": "NGB.Runtime.Documents.GeneralJournalEntry.GeneralJournalEntrySystemReversalRunner",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "3adb6aa49aa82d11d3496306ee2a0d8098217f916a706933ab52fd8df103bda1",
+      "contractSha256": "80538983299b87072979c51478881d931fd460575822afe922ee9fa3516a864e",
       "methods": [
         ".ctor",
         "PostDueSystemReversalsAsync"
@@ -1295,7 +1295,7 @@
     {
       "name": "NGB.Runtime.Documents.GeneralJournalEntry.GeneralJournalEntryUiService",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "86465a63755c6a09f3e026a1741b8d3a5f34ca07813dcfa6563ab7ad7e46e15b",
+      "contractSha256": "38a76313de9eaf5e530b9bf6f99dcdc1ef973ab3e93536b56f721c4bef4f70dc",
       "methods": [
         ".ctor",
         "ApproveAsync",
@@ -1336,7 +1336,7 @@
     {
       "name": "NGB.Runtime.Documents.GeneralJournalEntry.IGeneralJournalEntryDocumentService",
       "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
-      "contractSha256": "b286a2d96e30153cad14fea66f99a53ee71a0d53463ad1b1af283bf8005ffea7",
+      "contractSha256": "2de037e66ea1d17e60174b8f6a395d7d53a12bfab891c14cac8cbb1847f3bcbf",
       "methods": [
         "ApproveAsync",
         "CreateAndPostApprovedAsync",
@@ -1354,7 +1354,7 @@
     {
       "name": "NGB.Runtime.Documents.GeneralJournalEntry.IGeneralJournalEntryFacade",
       "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
-      "contractSha256": "fe804a0b70fab0fb78b062a3ae76ebec63b24186355c701521675f13656b15b1",
+      "contractSha256": "c1dc7a8ccea4d9820d4c00c557bc9646d3c0ed5230b1fa778e67d49286cc2390",
       "methods": [
         "ApproveAsync",
         "CreateAndPostApprovedAsync",
@@ -1381,7 +1381,7 @@
     {
       "name": "NGB.Runtime.Documents.GeneralJournalEntry.PermissionAwareGeneralJournalEntryReadService",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "256454358c6a67943f2462733e5cbb455c74979e9df19660c52f5d266d83be36",
+      "contractSha256": "3037d278b19f63870cfa34d5f104b80bd14f6600b4c7a5ea0b2c0d1dc8f9b354",
       "methods": [
         ".ctor",
         "GetByIdAsync",
@@ -1392,7 +1392,7 @@
     {
       "name": "NGB.Runtime.Documents.GeneralJournalEntry.Policies.GeneralJournalEntryApprovalPolicy",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "688f1539ecea786d48c87c9323753fdd886b377dd278f2483b91235854d783c9",
+      "contractSha256": "6c0f9ddaba6352b81822c7efe2a0ca7ed1b2ddf12adc12e9c2057241070f3f53",
       "methods": [
         ".ctor",
         "EnsureCanPostAsync",
@@ -1415,7 +1415,7 @@
     {
       "name": "NGB.Runtime.Documents.IDocumentDraftBatchService",
       "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
-      "contractSha256": "ba92cbaee70ff7831a666144b81d717a75e76aedf6342124f74bd8db05051969",
+      "contractSha256": "b4055816f028f6d7df49da93125d253dfb3b0876cb077bed24404977138b018e",
       "methods": [
         "CreateDraftsAsync"
       ],
@@ -1435,7 +1435,7 @@
     {
       "name": "NGB.Runtime.Documents.IDocumentEffectsQueryService",
       "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
-      "contractSha256": "e87d5ea3dd41415653bf6e8ac2d61bded03c25f0b66397992a852cc2af2a7e1d",
+      "contractSha256": "f05ecceb08a6a7d16db42182d160a5b14aae6f50518463a3202fb3139a8cea22",
       "methods": [
         "GetAsync"
       ],
@@ -1453,7 +1453,7 @@
     {
       "name": "NGB.Runtime.Documents.IDocumentPostingService",
       "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
-      "contractSha256": "d7180f38c69653f25fedbbce4f149444a456ac7eaff005b2da9f78593b62d395",
+      "contractSha256": "c4632df31b700ef777bf73b2180d994edad6a0ae197ad74c3f52e6121cfbfa58",
       "methods": [
         "MarkForDeletionAsync",
         "PostAsync",
@@ -1466,7 +1466,7 @@
     {
       "name": "NGB.Runtime.Documents.IDocumentRelationshipBatchService",
       "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
-      "contractSha256": "c25c17d9a5962f044d73f83a21a75835e0203ffb72080920ad1283c3cc5b946a",
+      "contractSha256": "68309efbfc66c075522fc9ed0638175e905f205344ba03415ec00786338e49e9",
       "methods": [
         "CreateManyAsync"
       ],
@@ -1475,7 +1475,7 @@
     {
       "name": "NGB.Runtime.Documents.IDocumentRelationshipGraphReadService",
       "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
-      "contractSha256": "90a63b0dc006dac16ce2999e06aed3bf70ab8392864fa564f2fa8867dea50012",
+      "contractSha256": "8002b20ccff691593618c56b7d416970ba5d844f456632c06d78c711dd30da9f",
       "methods": [
         "GetGraphAsync",
         "GetIncomingPageAsync",
@@ -1486,7 +1486,7 @@
     {
       "name": "NGB.Runtime.Documents.IDocumentRelationshipService",
       "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
-      "contractSha256": "3985af998c2404553854239b0f4a12969c89b0abcda40810cf43fc43fe483d73",
+      "contractSha256": "3ad693d4b4915709296b15afa638a9711f98f8919dd33e9afa8708dc376a3b17",
       "methods": [
         "CreateAsync",
         "DeleteAsync",
@@ -1518,7 +1518,7 @@
     {
       "name": "NGB.Runtime.Documents.Numbering.DocumentNumberAllocationRequest",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "27fac84e4196802da0994ada0c7dd64ae71e89cfda9ec9ffa57057f47b17088c",
+      "contractSha256": "b2bbe0be65cacaa2cc31bc9735bcba2b62d22d60510c7096c89a790e76f11cec",
       "methods": [
         ".ctor",
         "<Clone>$",
@@ -1540,7 +1540,7 @@
     {
       "name": "NGB.Runtime.Documents.Numbering.DocumentNumberBatchAllocator",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "58ba28c059548da959cc8571b95303abab91b2fd64f124ac299057d630f8f2c4",
+      "contractSha256": "dcff60ac1b6b2a47ebbffa0221200adb5808a9ff2e4191bbc00252d53b2752a8",
       "methods": [
         ".ctor",
         "AllocateAsync"
@@ -1550,7 +1550,7 @@
     {
       "name": "NGB.Runtime.Documents.Numbering.DocumentNumberingAndTypedSyncService",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "60990a6ce4a8686172c4faa34750a39801025a1cd2f284926d8285a94f09c4b1",
+      "contractSha256": "d1d465d6fa4368857393125a4f238162f9ad2c650b2f1510fda8b09feea7ed50",
       "methods": [
         ".ctor",
         "EnsureNumberAndSyncTypedAsync"
@@ -1560,7 +1560,7 @@
     {
       "name": "NGB.Runtime.Documents.Numbering.DocumentNumberingService",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "3209a802b1ae257b57d74c0a530d082e76c3d9002cdfcf00e5ce4f91c97c8298",
+      "contractSha256": "076dd35c60eb5cf48605bc92ef100f1ef4e01532d8e56f342dc5cde62d99801f",
       "methods": [
         ".ctor",
         "EnsureNumberAsync"
@@ -1570,7 +1570,7 @@
     {
       "name": "NGB.Runtime.Documents.Numbering.IDocumentNumberBatchAllocator",
       "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
-      "contractSha256": "d7d922c663c676506d8a15c4267136c3f3139551373a1a56a21884a84cf6d6e3",
+      "contractSha256": "d24ef5993f2dd2ce59ac85c30f91d2fc0ac9622703c2791f424ebfdc8aab9ba9",
       "methods": [
         "AllocateAsync"
       ],
@@ -1588,7 +1588,7 @@
     {
       "name": "NGB.Runtime.Documents.Numbering.IDocumentNumberingAndTypedSyncService",
       "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
-      "contractSha256": "f4f1ecbe54a06f8852046b230936f623cf6f4c2795b1fcea792ee2e3361568a7",
+      "contractSha256": "61122850baf0f08b335188733b1df73c5730cfc6fc980ea3a557172f174c0b66",
       "methods": [
         "EnsureNumberAndSyncTypedAsync"
       ],
@@ -1597,7 +1597,7 @@
     {
       "name": "NGB.Runtime.Documents.Numbering.IDocumentNumberingService",
       "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
-      "contractSha256": "37fa7787b979fb3cde4f9481bf1326cd0e32cdc7eac63329773fcf636f57d62e",
+      "contractSha256": "dbd6858b8a8c204091a124feef74d86a177a18424546de34f07845df8f74a610",
       "methods": [
         "EnsureNumberAsync"
       ],
@@ -1606,7 +1606,7 @@
     {
       "name": "NGB.Runtime.Documents.PermissionAwareDocumentService",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "435c74769da38c63a86faab6f0f8027dcd4c3527ed0b2d9e81060a2908d6ef92",
+      "contractSha256": "e67e0365ed742dc7a69e1845aae8b929075d443d0698490321097a0b3ae22319",
       "methods": [
         ".ctor",
         "CreateDraftAsync",
@@ -1628,7 +1628,7 @@
     {
       "name": "NGB.Runtime.Documents.Policies.DefinitionsDocumentApprovalPolicyResolver",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "26a222681abb8eabdae8fb75098125604dba4fb299f7229f77453bd611845a94",
+      "contractSha256": "d8d8a56bd8b4c6f608b2d0cb91cf3c1c74e2f13c30827172949d55f3db851994",
       "methods": [
         ".ctor",
         "Resolve"
@@ -1638,7 +1638,7 @@
     {
       "name": "NGB.Runtime.Documents.Policies.DefinitionsDocumentNumberingPolicyResolver",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "6258f90fd372d387a191c00a0cd8300b910fb096caaa6c6327c8061eee3c15a2",
+      "contractSha256": "1ad2438e003d48729bef5bb64373a045171e54b117ccea57b6c1972826abb9b3",
       "methods": [
         ".ctor",
         "Resolve"
@@ -1663,7 +1663,7 @@
     {
       "name": "NGB.Runtime.Documents.Policies.IDocumentApprovalPolicyResolver",
       "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
-      "contractSha256": "c871e2e8f64e89f84a3e5ca7de6e3d16bed168957856106be67f44833a18d2e4",
+      "contractSha256": "1bc861a0fd16787ecc4fa04e8139f482670ee8e481dbffc425d880eb749ee585",
       "methods": [
         "Resolve"
       ],
@@ -1672,7 +1672,7 @@
     {
       "name": "NGB.Runtime.Documents.Policies.IDocumentNumberingPolicyResolver",
       "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
-      "contractSha256": "15a3f9698376e3d376aff09a8570a303d5bc8fff3a7c5e76a42be78ca8808736",
+      "contractSha256": "9c082fb558fd7ca76f634c0dd3cfa7fa45d58fd1136aec10f27b832bf91fce0d",
       "methods": [
         "Resolve"
       ],
@@ -1681,7 +1681,7 @@
     {
       "name": "NGB.Runtime.Documents.Posting.DefinitionsDocumentOperationalRegisterPostingActionResolver",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "c5d9795f8b66dbcfb79493bda8acd33dbe8c73db0b0829a2905e927510ccbfdc",
+      "contractSha256": "5895312891b9c1e8c3e67fb4a5fb055c097247475c3fb5a41bfec7df1013fbbb",
       "methods": [
         ".ctor",
         "TryResolve"
@@ -1691,7 +1691,7 @@
     {
       "name": "NGB.Runtime.Documents.Posting.DefinitionsDocumentPostingActionResolver",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "6aaab4813b5d0afc451841501241b907c03fe032758306113c512129527992b7",
+      "contractSha256": "b3cd30f7e25d686917da7b3376f66512a494f5d760f1a4c23746be0f4d17b1c3",
       "methods": [
         ".ctor",
         "Resolve",
@@ -1702,7 +1702,7 @@
     {
       "name": "NGB.Runtime.Documents.Posting.DefinitionsDocumentReferenceRegisterPostingActionResolver",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "aa045d657555d6cb14afa6a2583f4273fc6c0cdc5f7d3a88c1b4af4ad9e352fe",
+      "contractSha256": "61d51fdec258ec58000de50ba25e4e54e4e4725654f51cfca07612b7db2964ee",
       "methods": [
         ".ctor",
         "TryResolve"
@@ -1712,7 +1712,7 @@
     {
       "name": "NGB.Runtime.Documents.Posting.IDocumentOperationalRegisterPostingActionResolver",
       "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
-      "contractSha256": "278c0392f46ec0bb3ac33ab8476534d070295976ecb7e7b127eb21de1d529a65",
+      "contractSha256": "8916a67c5e2397166a40effe2a6be42b50d9a3440847d6c57276af800f446841",
       "methods": [
         "TryResolve"
       ],
@@ -1721,7 +1721,7 @@
     {
       "name": "NGB.Runtime.Documents.Posting.IDocumentPostingActionResolver",
       "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
-      "contractSha256": "a62a17d19c1add98258721bab9301133761c793e4feb731fc84e777d0e39eb7c",
+      "contractSha256": "28e2924c8392ea9d5883939855c61e0c440f7025a8e9c468fccda3c62818ede0",
       "methods": [
         "Resolve",
         "TryResolve"
@@ -1731,7 +1731,7 @@
     {
       "name": "NGB.Runtime.Documents.Posting.IDocumentReferenceRegisterPostingActionResolver",
       "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
-      "contractSha256": "a7897e2b17b46af3e5f9187b61402e22ef8683f1ac8157e39aea0401c9adafa1",
+      "contractSha256": "1d4563c26feabb00295620e50a58b1b17d3b703b12fab7fafe5a6d1158a983cb",
       "methods": [
         "TryResolve"
       ],
@@ -1740,7 +1740,7 @@
     {
       "name": "NGB.Runtime.Documents.Schema.SchemaDiagnosticsResult",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "087f8f2f2c8cb76d569e270c2c933b15024de1f21cc037fe9e4153a696dcb3b0",
+      "contractSha256": "71d7eb5b2dfa88bae48444648874acc3e7dc66d681b69ec7fb6e3364511656b6",
       "methods": [
         ".ctor",
         "<Clone>$",
@@ -1761,7 +1761,7 @@
     {
       "name": "NGB.Runtime.Documents.Storage.CompositeDocumentTypeStorageResolver",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "bc5bcf62414e12255d585768f6fc22888bf62b6361643201bc358221491515e7",
+      "contractSha256": "00d5e06aeaac4587fa71b0632670031c08c6b5d255b501950fb193369a69a8b3",
       "methods": [
         ".ctor",
         "TryResolve"
@@ -1771,7 +1771,7 @@
     {
       "name": "NGB.Runtime.Documents.Storage.InMemoryDocumentTypeStorageResolver",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "8bb86bcb88ed7291bd617953a9030ecc607265c60629f056b84a32252fb4e74b",
+      "contractSha256": "1c06955fb9f48a8d75849a1fd549f603f56ce1890baa8ce2e13f5b7246d940b8",
       "methods": [
         ".ctor",
         "TryResolve"
@@ -1792,7 +1792,7 @@
     {
       "name": "NGB.Runtime.Documents.Validation.IDocumentValidatorResolver",
       "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
-      "contractSha256": "57ab7a3858103af651f8fcfb68c8bda392a9cbb250f2e60346b0effbcf31cc14",
+      "contractSha256": "7a7f75837d1d29baccf492ee716c0fb17738f23e922dcf339ca4a07d72f54e6c",
       "methods": [
         "ResolveDraftValidators",
         "ResolvePostValidators"
@@ -1802,7 +1802,7 @@
     {
       "name": "NGB.Runtime.Documents.Workflow.DocumentWorkflowExecutor",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "c9ad03bed6230ca28f4727c8b6906325e0a95fa7e57bcd93b864cad1b138f407",
+      "contractSha256": "f214c0b293e9ba141b7d65e9ca33fab6cef1927c07ddc28479c6879d2830a8f2",
       "methods": [
         ".ctor",
         "ExecuteAsync"
@@ -1836,7 +1836,7 @@
     {
       "name": "NGB.Runtime.Features.NgbFeatureDefinition",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "7ee4c7865fe573c600d301d7105788119170c6b12b5eec3889752b86c149d957",
+      "contractSha256": "31bd222cc308c94186b7febbc282112a89c596aa55101cdbcbf8d9ad3882adbf",
       "methods": [
         ".ctor",
         "<Clone>$",
@@ -1858,7 +1858,7 @@
     {
       "name": "NGB.Runtime.Features.NgbFeatureRegistry",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "3e85bc9e208cd055f70e9852a96068550a4c2dd3d1fab806a39b177e5895bbf1",
+      "contractSha256": "8f49ecfbdbd5ade2f01612b6f304a603bd2f439bbb2dbdb68f7eb61daea778d8",
       "methods": [
         ".ctor",
         "Contains",
@@ -1869,7 +1869,7 @@
     {
       "name": "NGB.Runtime.Locks.AdvisoryLockManagerExtensions",
       "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
-      "contractSha256": "3b9febcdf872a03973c14bd93a4cb38a6997cad59f387404fa487ef1b26a889b",
+      "contractSha256": "932e873e5ad3c41b997124ceeae5d4b22d47c5dd66082450872f8e6d2b74b71d",
       "methods": [
         "LockDocumentsDeterministicallyAsync",
         "LockPeriodsDeterministicallyAsync"
@@ -1908,7 +1908,7 @@
     {
       "name": "NGB.Runtime.Maintenance.AccountingRebuildService",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "e4390b81162a4366482a7e854a3a3171c3955fea085c06d8e612fb39c105b74f",
+      "contractSha256": "5fa315140bb1be944aa36740178e46e4140240ed07fddd180fd912ad4900dc7d",
       "methods": [
         ".ctor",
         "RebuildAndVerifyAsync",
@@ -1922,7 +1922,7 @@
     {
       "name": "NGB.Runtime.Maintenance.IAccountingRebuildService",
       "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
-      "contractSha256": "99afd3dc4d84676795559b8de6fd1d4514a8adf3d44c23737b36f0623a3e2508",
+      "contractSha256": "2f0509458669f0175aae0bd2d23d3407eda3bf3fc572fc5e6ae930b0ea10bec5",
       "methods": [
         "RebuildAndVerifyAsync",
         "RebuildBalancesAsync",
@@ -1953,7 +1953,7 @@
     {
       "name": "NGB.Runtime.OperationalRegisters.IOperationalRegisterAdminEndpoint",
       "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
-      "contractSha256": "b9fb6358bd051f0a57dbc68f4db0b8cacf86e46a1431b67fcf961b0f44ed1dfa",
+      "contractSha256": "3baabc0d5e0be725e3fdd9d92edcb312fb87164fc7fb304906dc0e47d696542b",
       "methods": [
         "EnsurePhysicalSchemaByIdAsync",
         "EnsurePhysicalSchemaForAllAsync",
@@ -1976,7 +1976,7 @@
     {
       "name": "NGB.Runtime.OperationalRegisters.IOperationalRegisterAdminMaintenanceService",
       "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
-      "contractSha256": "5a9ce08190a90612ef72a44fa25788afbe7cc69b4a1272747adf4c89fc56c386",
+      "contractSha256": "a3177e87194dd60220dbd42245e7fb12a83e92346e8fe9c3840f7dab3ef556b9",
       "methods": [
         "EnsurePhysicalSchemaByIdAsync",
         "EnsurePhysicalSchemaForAllAsync",
@@ -1989,7 +1989,7 @@
     {
       "name": "NGB.Runtime.OperationalRegisters.IOperationalRegisterAdminReadService",
       "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
-      "contractSha256": "aa5afe217cc3285c63cff57cc1c3087366f6527a37f14d7f6ed4aaa3ecfa7b32",
+      "contractSha256": "b0add7e0b75e397f923018b500b98683b6fadf12524e46ffa6a8a51a3258be6f",
       "methods": [
         "GetBlockedFinalizationsAcrossAllAsync",
         "GetBlockedFinalizationsAsync",
@@ -2017,7 +2017,7 @@
     {
       "name": "NGB.Runtime.OperationalRegisters.IOperationalRegisterFinalizationService",
       "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
-      "contractSha256": "f72f7a5cf18e19a04e4804e64f8cd5b2fb7b57ac3309abe10efde696ecbea194",
+      "contractSha256": "f8fe4447ae1f36eda79afe95c817030629590b1f333588fcc7bb229be06d43dd",
       "methods": [
         "GetAsync",
         "MarkDirtyAsync",
@@ -2028,7 +2028,7 @@
     {
       "name": "NGB.Runtime.OperationalRegisters.IOperationalRegisterManagementService",
       "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
-      "contractSha256": "cb66ac1f5de2477972c7745bea3693b0b10865e082766576b8bf8ae5eccdeaba",
+      "contractSha256": "f21b97af1a8229e5b5dc2f2d38f350596f205651a3488146c19b40e21c0c2d87",
       "methods": [
         "ReplaceDimensionRulesAsync",
         "ReplaceResourcesAsync",
@@ -2049,7 +2049,7 @@
     {
       "name": "NGB.Runtime.OperationalRegisters.IOperationalRegisterMovementsApplier",
       "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
-      "contractSha256": "615c087bddf3acdd5e0220b35b7b096933485d0b44a949c4dbf9d8fee93fe07f",
+      "contractSha256": "646b3c460d6b3246e7e57f836d32d3bb978a4d9da11f58c05e78cbd1d8696b4b",
       "methods": [
         "ApplyMovementsForDocumentAsync"
       ],
@@ -2058,7 +2058,7 @@
     {
       "name": "NGB.Runtime.OperationalRegisters.IOperationalRegisterReadService",
       "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
-      "contractSha256": "ae29b5473ea28f2b897b17b13f278ea24b544acb349b8142e39d4fe0dc0bb9a3",
+      "contractSha256": "6bfebbbfc0b37a8a1ace5d14b3c1c45ba030cb5a9a8124669c8ae50fa1fa4626",
       "methods": [
         "GetBalancesPageAsync",
         "GetMovementsPageAsync",
@@ -2069,7 +2069,7 @@
     {
       "name": "NGB.Runtime.OperationalRegisters.IOperationalRegisterWriteEngine",
       "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
-      "contractSha256": "7147941bace9d9b24dd345855bc0d33c0782b5309f96ca4abb6cd057913fa1eb",
+      "contractSha256": "ce88bcdc413844a4e711fbc9aac2e242dce31f5da4b42bb49cba7af2476d9ecb",
       "methods": [
         "ExecuteAsync"
       ],
@@ -2078,7 +2078,7 @@
     {
       "name": "NGB.Runtime.OperationalRegisters.OperationalRegisterAdminEndpoint",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "bfe33925aec85b0c7099ea107ae8d72afb2fca9e158d1664358ecb82074d6d49",
+      "contractSha256": "99e4d4d1261004e606372ea3f5e6ef5cbc3eae4b5ee9531817c676e018220301",
       "methods": [
         ".ctor",
         "EnsurePhysicalSchemaByIdAsync",
@@ -2109,7 +2109,7 @@
     {
       "name": "NGB.Runtime.OperationalRegisters.OperationalRegisterAdminEndpointContracts+DimensionRuleDto",
       "attributes": "NestedPublic, Sealed, BeforeFieldInit",
-      "contractSha256": "4d1d1d2c49e640fbb36b6e772e3373172196fd65345fdd7c45fab33c5d37e4a5",
+      "contractSha256": "faf5790870bddfb1569e190e89d711aeaedf51277ec3082c9e19eb470f0bc8c2",
       "methods": [
         ".ctor",
         "<Clone>$",
@@ -2133,7 +2133,7 @@
     {
       "name": "NGB.Runtime.OperationalRegisters.OperationalRegisterAdminEndpointContracts+FinalizationDto",
       "attributes": "NestedPublic, Sealed, BeforeFieldInit",
-      "contractSha256": "0412b9a04b71ab3efc03e2f111ee964346b2568107291cbd62673cad84775d1f",
+      "contractSha256": "fc8904ba3f688199d5a32565be0d7b6320acb94563e39ea309e7f2df95c7fb6e",
       "methods": [
         ".ctor",
         "<Clone>$",
@@ -2167,7 +2167,7 @@
     {
       "name": "NGB.Runtime.OperationalRegisters.OperationalRegisterAdminEndpointContracts+PhysicalSchemaHealthDto",
       "attributes": "NestedPublic, Sealed, BeforeFieldInit",
-      "contractSha256": "6939581ce0d8b7ca9083598da66a52fb58aab846afab51ac078f42dfde3fb4b1",
+      "contractSha256": "94e418df73bdec58976f64eb283c8179d74b302a17a3a62caa104e1304f50dec",
       "methods": [
         ".ctor",
         "<Clone>$",
@@ -2193,7 +2193,7 @@
     {
       "name": "NGB.Runtime.OperationalRegisters.OperationalRegisterAdminEndpointContracts+PhysicalSchemaHealthReportDto",
       "attributes": "NestedPublic, Sealed, BeforeFieldInit",
-      "contractSha256": "b0a5073077cb696b0659a48a3b9f5aa2f902609308737a0adff8a18cc802d8ad",
+      "contractSha256": "dbbf72fbeeedc6bbe2993f946082a7b6a14feace891e1023f3ccd5735676a741",
       "methods": [
         ".ctor",
         "<Clone>$",
@@ -2215,7 +2215,7 @@
     {
       "name": "NGB.Runtime.OperationalRegisters.OperationalRegisterAdminEndpointContracts+PhysicalTableHealthDto",
       "attributes": "NestedPublic, Sealed, BeforeFieldInit",
-      "contractSha256": "275d0bbdf5dc7397383f2e1276e142176b8ad2f39d91c3ffa3ef907853ae3a70",
+      "contractSha256": "b58716e44b08b0e1bf91b496ce502818f33691cd98342084a5b5d8f2ee78dc76",
       "methods": [
         ".ctor",
         "<Clone>$",
@@ -2243,7 +2243,7 @@
     {
       "name": "NGB.Runtime.OperationalRegisters.OperationalRegisterAdminEndpointContracts+RegisterDetailsDto",
       "attributes": "NestedPublic, Sealed, BeforeFieldInit",
-      "contractSha256": "267663e46834d325bc3657bbe9621a4ea5bacf6946c66f81be90b2a039f6d25b",
+      "contractSha256": "748783b3d806393592f815c90b5180de8f009da65392be96ee65c91da3881433",
       "methods": [
         ".ctor",
         "<Clone>$",
@@ -2265,7 +2265,7 @@
     {
       "name": "NGB.Runtime.OperationalRegisters.OperationalRegisterAdminEndpointContracts+RegisterDto",
       "attributes": "NestedPublic, Sealed, BeforeFieldInit",
-      "contractSha256": "7169ec887a4885a58cf1422bae4eb818b9dc7b508eb33d7cd2f3dc3128e75a37",
+      "contractSha256": "2f567162d6a9f8ea1f32a648b0aa550d30b243b0fe724b277c4c174045c9a31d",
       "methods": [
         ".ctor",
         "<Clone>$",
@@ -2297,7 +2297,7 @@
     {
       "name": "NGB.Runtime.OperationalRegisters.OperationalRegisterAdminEndpointContracts+RegisterListItemDto",
       "attributes": "NestedPublic, Sealed, BeforeFieldInit",
-      "contractSha256": "f6fd2751ad2dbe0f233384439743003234722b40a9e554cf8175c3f213e7e9bb",
+      "contractSha256": "8921643e93be2549c3b2bab37990d5557fb696470c793c74647467e4c566261e",
       "methods": [
         ".ctor",
         "<Clone>$",
@@ -2319,7 +2319,7 @@
     {
       "name": "NGB.Runtime.OperationalRegisters.OperationalRegisterAdminEndpointContracts+ResourceDto",
       "attributes": "NestedPublic, Sealed, BeforeFieldInit",
-      "contractSha256": "0c4f595ebef4a2a134c42d0b00157972e888765a7e38596e3312e66a166b9120",
+      "contractSha256": "b3c4c56e0fdb84c1df34e5f119fa8de0c34ecd5b884c051191b0f61478a35b1f",
       "methods": [
         ".ctor",
         "<Clone>$",
@@ -2345,7 +2345,7 @@
     {
       "name": "NGB.Runtime.OperationalRegisters.OperationalRegisterAdminMaintenanceService",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "e5a4a9f36bdb75a237c1cedca20332c4491a1c7da5d2e9ed079a7863dbb366a3",
+      "contractSha256": "ad73955e7a5b2d058044a0181079eb4cf34505cc3393b421033a552486deebb7",
       "methods": [
         ".ctor",
         "EnsurePhysicalSchemaByIdAsync",
@@ -2360,7 +2360,7 @@
     {
       "name": "NGB.Runtime.OperationalRegisters.OperationalRegisterAdminMaintenanceServiceExtensions",
       "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
-      "contractSha256": "790fff797a51ead2223084b8a5b08dab90fdca5defa747529ff2c2ff927a0741",
+      "contractSha256": "b4ab233b22da8c0e54e5d70887ee823a2232c7fad218c315bcdf1f4b2dea39b8",
       "methods": [
         "EnsurePhysicalSchemasByIdsAsync"
       ],
@@ -2369,7 +2369,7 @@
     {
       "name": "NGB.Runtime.OperationalRegisters.OperationalRegisterAdminReadService",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "4175bad1dc96a912663a95c7dc899081b2ce61243417ab065f1d264e7f007762",
+      "contractSha256": "bb66d5d14ee1238aa61bc84f57fcd9092bff9c7e70d441b30a89b14ea421bfc2",
       "methods": [
         ".ctor",
         "GetBlockedFinalizationsAcrossAllAsync",
@@ -2388,7 +2388,7 @@
     {
       "name": "NGB.Runtime.OperationalRegisters.OperationalRegisterFinalizationRunner",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "bc2c51137ba560f168ec6bdc574077e4884a3fade39aa2fd62d263641d334676",
+      "contractSha256": "42cac5e4dc261b77d8546a21ef39e9b296a5b8096286abda8dc92db63d0aaea8",
       "methods": [
         ".ctor",
         "FinalizeDirtyAsync",
@@ -2399,7 +2399,7 @@
     {
       "name": "NGB.Runtime.OperationalRegisters.OperationalRegisterFinalizationService",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "a385a0d7b20810cf9f0979df08f0a160c8067c979022deece56e8237ee1df017",
+      "contractSha256": "6d45a89d0888367b150173417576be978d6157cb0c8699862fc874783dd7f85a",
       "methods": [
         ".ctor",
         "GetAsync",
@@ -2411,7 +2411,7 @@
     {
       "name": "NGB.Runtime.OperationalRegisters.OperationalRegisterManagementService",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "0d2d3a4b077f8b2be13668b09d0922b5a9f225ae22f94e33fe59a36f79827ee0",
+      "contractSha256": "438a9fa2922a650cf711678386f3491148e78e2d72b6c7bc47cfad72fbb1021e",
       "methods": [
         ".ctor",
         "ReplaceDimensionRulesAsync",
@@ -2423,7 +2423,7 @@
     {
       "name": "NGB.Runtime.OperationalRegisters.OperationalRegisterMovementsApplier",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "e7c1f91e155ac8940b0ae57cb3f17e4e87d425de29d743093cb640cfd268104b",
+      "contractSha256": "1c57d7a77f73d4233b10e745babd66710bb693215994e21f0ce9b6561a9c757a",
       "methods": [
         ".ctor",
         "ApplyMovementsForDocumentAsync"
@@ -2433,7 +2433,7 @@
     {
       "name": "NGB.Runtime.OperationalRegisters.OperationalRegisterReadService",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "a0f84b6add7986d3bfd696946c148e850b9acb8a952dea56876664e9f7eb586d",
+      "contractSha256": "714d5ffe776e95bdf94c2425d8e5cccd88a0f2c173468a29b6245f6d1e8be71d",
       "methods": [
         ".ctor",
         "GetBalancesPageAsync",
@@ -2445,7 +2445,7 @@
     {
       "name": "NGB.Runtime.OperationalRegisters.OperationalRegisterScanBoundaries",
       "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
-      "contractSha256": "989c6052347327e39e9d8a9afd4cb59d462f1b80b8a0f3fd80099a37541cbf89",
+      "contractSha256": "08e6104b9f193cf5d89852f261b049ee0e55b23e7aa008fece2ef1c34e7eba83",
       "methods": [
         "ResolveToMonthInclusiveAsync"
       ],
@@ -2454,7 +2454,7 @@
     {
       "name": "NGB.Runtime.OperationalRegisters.OperationalRegisterWriteEngine",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "85c5d2bd9865a0e17d8fae28450c70208781db55fa8a257a259b3b42e094e1a1",
+      "contractSha256": "aed24281195ff4bcc19aba1fccc34ac15bba2202bd544a8ef3880bcc55d8c91a",
       "methods": [
         ".ctor",
         "ExecuteAsync"
@@ -2464,7 +2464,7 @@
     {
       "name": "NGB.Runtime.OperationalRegisters.OperationalRegisterWriteResult",
       "attributes": "Public, Sealed",
-      "contractSha256": "2fb99ad2582c8576ff15ae69a885f47d063253dbeb7575c92075f68ecf00f7b4",
+      "contractSha256": "e9d59bae969d3a5ae4fe932899336843f16d4bd222c8ce959e1ca3c0533d36c7",
       "methods": [],
       "fields": [
         "AlreadyCompleted",
@@ -2475,7 +2475,7 @@
     {
       "name": "NGB.Runtime.OperationalRegisters.Projections.DefaultOperationalRegisterMonthProjector",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "b23c8c5098a2cb5cb9c9ea3e1e2f20e6d3123a701b29fc3beae5a55d6c9579fe",
+      "contractSha256": "250347c33ef2646140ce406b5ef5ed6e255bb7eddd6b71237153fd9388fcd807",
       "methods": [
         ".ctor",
         "PrepareMonthAsync",
@@ -2487,7 +2487,7 @@
     {
       "name": "NGB.Runtime.OperationalRegisters.Projections.Examples.MovementsCountProjector",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "57df613b48b9c41de5062a48fb8dd1a5a7dc0be911a8b466fabf8513acd70b28",
+      "contractSha256": "dc3bec3276fcac4c6b1a3f5377427302579f66d3d622bfb63bed8c45af5fde23",
       "methods": [
         ".ctor",
         "RebuildMonthAsync",
@@ -2498,7 +2498,7 @@
     {
       "name": "NGB.Runtime.OperationalRegisters.Projections.IOperationalRegisterDefaultMonthProjector",
       "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
-      "contractSha256": "569e6c7ea09f51365964352e9569ef6a26c4225508f91c1d470c200b7d956885",
+      "contractSha256": "32a24619b5f57d58c10bfaf137ac4e8087d3ddb97e120b7fd3de26981617f73e",
       "methods": [
         "RebuildMonthAsync"
       ],
@@ -2507,7 +2507,7 @@
     {
       "name": "NGB.Runtime.OperationalRegisters.Projections.IOperationalRegisterMonthProjector",
       "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
-      "contractSha256": "25c5ff0617871faa5c159ee1cc53bebbd9e022e1eb355b90d1941a0a64424d7a",
+      "contractSha256": "da1f6a1f0c25763181ab662eab040798fc9e4d5ea13039d8e94da054b06f972c",
       "methods": [
         "RebuildMonthAsync",
         "get_RegisterCodeNorm"
@@ -2517,7 +2517,7 @@
     {
       "name": "NGB.Runtime.OperationalRegisters.Projections.IOperationalRegisterPreparingDefaultMonthProjector",
       "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
-      "contractSha256": "e41a2d7a2574e533dbe2d043efa03ae4802b201b35faea5493cbe6075ed00ea9",
+      "contractSha256": "199af608d599477ddbfc937332f28ebe8599cf91a3b334473426e6fd9b7c6c73",
       "methods": [
         "PrepareMonthAsync",
         "get_SupportsPreparation"
@@ -2527,7 +2527,7 @@
     {
       "name": "NGB.Runtime.OperationalRegisters.Projections.OperationalRegisterMonthProjectionContext",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "0d8aeb0f37455cf1b7a2c858f862bfc767da5c08463432030d5969ce518379d8",
+      "contractSha256": "cc90acc4660c1f4bc68d31e3d29f8bdcd22bb3848dc3527104daeb76f9cdb3cd",
       "methods": [
         ".ctor",
         "<Clone>$",
@@ -2661,7 +2661,7 @@
     {
       "name": "NGB.Runtime.Periods.FiscalYearRetainedEarningsValidationException",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "88ec8c0a0e22c698a92c87b2a4a9fdacc0f82fa576f871fdcefdcf197b0411eb",
+      "contractSha256": "777f3012e4e5ac661b5e76a2efeac54d4cc6116e16b81e94c0b01833a4a3dd94",
       "methods": [
         ".ctor",
         "DimensionsNotAllowed"
@@ -2743,7 +2743,7 @@
     {
       "name": "NGB.Runtime.Periods.PeriodClosingService",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "ad55899d1a0797d81b139d4fc301a524d106f87e26e50ea6fd133d87c556309d",
+      "contractSha256": "233675d4e4e8dfc095876ac1aa54aa29a5618b6085313344614b6243d6ee3fc3",
       "methods": [
         ".ctor",
         "CloseFiscalYearAsync",
@@ -2756,7 +2756,7 @@
     {
       "name": "NGB.Runtime.Periods.PeriodClosingUiService",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "b6ac18efe0247821a099e85808fdbe17318803b1cab55b428f066ecf52328b2f",
+      "contractSha256": "bfca8228f59089a204a4b6258da7ce95b7740c8db331bcf61cc6e69f5da216b4",
       "methods": [
         ".ctor",
         "CloseFiscalYearAsync",
@@ -2785,7 +2785,7 @@
     {
       "name": "NGB.Runtime.Posting.AccountingPostingContext",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "0a668ed5f4670649dea5b55cf0e6afd7980e7cb318ec9e15b6f55a529267513f",
+      "contractSha256": "27a4e632eb7c06f6e1b91af46415d10423c5160d9305d969eba367ae96c68404",
       "methods": [
         ".ctor",
         "GetChartOfAccountsAsync",
@@ -2797,7 +2797,7 @@
     {
       "name": "NGB.Runtime.Posting.AccountingPostingContextFactory",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "c1a58bddde30a355827ab8b7fad8d98111a87d73b8b5099a10125e9ef96933fb",
+      "contractSha256": "dc1cee5b239ac9a74a532f4cc75bd11106df73651d35ce6c49828ca12fa68a21",
       "methods": [
         ".ctor",
         "CreateAsync"
@@ -2807,7 +2807,7 @@
     {
       "name": "NGB.Runtime.Posting.AccountingPostingPipeline",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "6577c3126ac3a9ce13a5ccb970e1eff9ffb6232fd491d057bf1f226e1100e7ff",
+      "contractSha256": "f7c47db7425f5c72cc9fa830d22ee495fdeb5983bdc48974a0ba5e6b56258897",
       "methods": [
         ".ctor",
         "ExecuteAsync"
@@ -2817,7 +2817,7 @@
     {
       "name": "NGB.Runtime.Posting.IAccountingPostingContextFactory",
       "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
-      "contractSha256": "432adf576f16132d8379736eb2a3241c35c5c06dd10a2c9e280912a8b064be58",
+      "contractSha256": "fc819b97943e81323a506f6c43c67e388fc5423c4f4d7d083e5aeaa7318f1fd6",
       "methods": [
         "CreateAsync"
       ],
@@ -2826,7 +2826,7 @@
     {
       "name": "NGB.Runtime.Posting.PostingAlreadyInProgressException",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "d722c98b0418f7727b09183007b50550e34cfdcf95ea145c9117b7cde01f1ddb",
+      "contractSha256": "4d7b1fa173dc3681d47c821a879f0af4fc2897932395f035c007e46bc3909628",
       "methods": [
         ".ctor",
         "get_DocumentId",
@@ -2837,9 +2837,23 @@
       ]
     },
     {
+      "name": "NGB.Runtime.Posting.PostingBeforeClosedPeriodException",
+      "attributes": "Public, Sealed, BeforeFieldInit",
+      "contractSha256": "52380c55410dede53908ad163f4f660ea404be2aece96bfa7143f4e7436ba408",
+      "methods": [
+        ".ctor",
+        "get_ClosedPeriod",
+        "get_Operation",
+        "get_Period"
+      ],
+      "fields": [
+        "ErrorCodeConst"
+      ]
+    },
+    {
       "name": "NGB.Runtime.Posting.PostingEngine",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "a83498be1202e760c35992fa79dde1257cf39a1587c65e40a724a53ee9162479",
+      "contractSha256": "6adc29e302bd0687e584e7d98bd5192507d5c924d1398a9a11319d3121719cec",
       "methods": [
         ".ctor",
         "PostAsync"
@@ -2862,7 +2876,7 @@
     {
       "name": "NGB.Runtime.Posting.PostingResult",
       "attributes": "Public, Sealed",
-      "contractSha256": "d927fa2f3c2f74f75e93d8d19ad84698386a3d2c871a0bd1cc6d615c5aed9cfe",
+      "contractSha256": "7b604bc79c572107c8abc44b0bb286f8b92f9f9047bb8bb4d858570c864a86bd",
       "methods": [],
       "fields": [
         "AlreadyCompleted",
@@ -2873,7 +2887,7 @@
     {
       "name": "NGB.Runtime.Posting.RepostingService",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "a963489ca57728ca147c30db7250108d723742f56bdf074a920b3c261a8660ee",
+      "contractSha256": "6237ee4f911957b7a9c4886788b15226cef52fb5abe746e02280ac01ef0f3f3c",
       "methods": [
         ".ctor",
         "RepostAsync"
@@ -2883,7 +2897,7 @@
     {
       "name": "NGB.Runtime.Posting.UnpostingService",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "4a2705671549c9a9dbc8f9a81e9ebdeceb00e02afe102a39a643ac5282c7c887",
+      "contractSha256": "2af4e3a0c6ad97018acc623126b6b63bf04e3a3c2f41903cdb08d5ff31ce70f9",
       "methods": [
         ".ctor",
         "UnpostAsync"
@@ -2902,7 +2916,7 @@
     {
       "name": "NGB.Runtime.ReferenceRegisters.IReferenceRegisterAdminEndpoint",
       "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
-      "contractSha256": "d7ba133b75d50943a1f715c10a3417085a7a3c0d61cdabdc6e3ec21921bb8c4f",
+      "contractSha256": "c4fd7eaacccacafef8184d5789e5a8527dbee0ce8d1e4646a5691dcdba2067fb",
       "methods": [
         "EnsurePhysicalSchemaByIdAsync",
         "EnsurePhysicalSchemaForAllAsync",
@@ -2917,7 +2931,7 @@
     {
       "name": "NGB.Runtime.ReferenceRegisters.IReferenceRegisterAdminMaintenanceService",
       "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
-      "contractSha256": "1c0936efc6ee8cf53c7c0ebe9ce6daab0ff84086bd00e5299484eb1ab7ee8390",
+      "contractSha256": "a78c732f3027767e3b22409798e8bc757e08f502e11abfaf44d8497e7f2f838a",
       "methods": [
         "EnsurePhysicalSchemaByIdAsync",
         "EnsurePhysicalSchemaForAllAsync"
@@ -2927,7 +2941,7 @@
     {
       "name": "NGB.Runtime.ReferenceRegisters.IReferenceRegisterAdminReadService",
       "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
-      "contractSha256": "86b8dfbeae603fa412ec27d20a25eca82d6ea8043cdbc93038d7bd97b7ec8575",
+      "contractSha256": "532af11672573c5fba6e6e0ab59fc2be4c93bb8d3ebb64a4f15c3677bfce0027",
       "methods": [
         "GetDetailsByCodeAsync",
         "GetDetailsByIdAsync",
@@ -2940,7 +2954,7 @@
     {
       "name": "NGB.Runtime.ReferenceRegisters.IReferenceRegisterIndependentWriteService",
       "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
-      "contractSha256": "f78ed7a870ebc62b79b0315d53bd0111c467b0937ab35c2084a0b732470f27d6",
+      "contractSha256": "16f7468bc01c3055c6085c740f53c3363c38805e0e7cb02ca091f64e3d18410b",
       "methods": [
         "TombstoneAsync",
         "TombstoneByDimensionSetIdAsync",
@@ -2952,7 +2966,7 @@
     {
       "name": "NGB.Runtime.ReferenceRegisters.IReferenceRegisterManagementService",
       "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
-      "contractSha256": "73e2ea599c8e82793463ea00d8981c60c482645d53285a5d02eb9e2e40de48ba",
+      "contractSha256": "06d2fb74adede96c3d59301e88120d59efc466164ff85394969fe70ab6d10757",
       "methods": [
         "ReplaceDimensionRulesAsync",
         "ReplaceFieldsAsync",
@@ -2963,7 +2977,7 @@
     {
       "name": "NGB.Runtime.ReferenceRegisters.IReferenceRegisterReadService",
       "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
-      "contractSha256": "e3ae8590029e831e0be29521491f94930e3303585f486f7c41b5a471daa1ecef",
+      "contractSha256": "67913f49ea877846706687b3461e2c87de2e76585d670af58746e73f71eebc77",
       "methods": [
         "GetKeyHistoryAsync",
         "GetKeyHistoryByDimensionSetIdAsync",
@@ -2981,7 +2995,7 @@
     {
       "name": "NGB.Runtime.ReferenceRegisters.IReferenceRegisterRecordsApplier",
       "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
-      "contractSha256": "6825f86739f7dae630f7eaca6afb1bcf3bf42bca779efdd8f6d0662332b27d20",
+      "contractSha256": "7e79c2bbf7d6371926ad4e53914036d94b46bfc587e2e7b39321a18578f2ecac",
       "methods": [
         "ApplyRecordsForDocumentAsync"
       ],
@@ -2990,7 +3004,7 @@
     {
       "name": "NGB.Runtime.ReferenceRegisters.IReferenceRegisterWriteEngine",
       "attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
-      "contractSha256": "b4aff598b75309561e8fc47efbef8fc4b2e618cb2518cd49f89ee45ec110f65d",
+      "contractSha256": "f2ac19b42d29603edcaf70a0a39b2549117ee16267bde3dbbdec70fedddd54b4",
       "methods": [
         "ExecuteAsync"
       ],
@@ -2999,7 +3013,7 @@
     {
       "name": "NGB.Runtime.ReferenceRegisters.ReferenceRegisterAdminEndpoint",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "06d869017649e166f6920c39677e2b915b26f5783df15ef59c76e8a935c8f151",
+      "contractSha256": "82d77258d677ea7815d4298db8b73372fd87224c104cfbf25795acf71551b627",
       "methods": [
         ".ctor",
         "EnsurePhysicalSchemaByIdAsync",
@@ -3022,7 +3036,7 @@
     {
       "name": "NGB.Runtime.ReferenceRegisters.ReferenceRegisterAdminEndpointContracts+DimensionRuleDto",
       "attributes": "NestedPublic, Sealed, BeforeFieldInit",
-      "contractSha256": "0e367e3c2aa433e6bd5499276cbd813d33233bc1b008f36a0c5b98e36383ba19",
+      "contractSha256": "c4eb6117bfab84785bc2f89183016c1b75bd46bf9467100a5893e9d0c2298295",
       "methods": [
         ".ctor",
         "<Clone>$",
@@ -3046,7 +3060,7 @@
     {
       "name": "NGB.Runtime.ReferenceRegisters.ReferenceRegisterAdminEndpointContracts+FieldDto",
       "attributes": "NestedPublic, Sealed, BeforeFieldInit",
-      "contractSha256": "7c5461651c14719776609b924167ea1c83b59e0ed81e6b81624cd9757f1b4269",
+      "contractSha256": "7f54dda32a09d4a64c011e1988fcdf7c2e82891195a4322b36b4dc8d6df41655",
       "methods": [
         ".ctor",
         "<Clone>$",
@@ -3076,7 +3090,7 @@
     {
       "name": "NGB.Runtime.ReferenceRegisters.ReferenceRegisterAdminEndpointContracts+PhysicalSchemaHealthDto",
       "attributes": "NestedPublic, Sealed, BeforeFieldInit",
-      "contractSha256": "21d8e49d7e681e69f9bfaf9a370ec8c4544d65ea614a0db7790ac81d1ecf7960",
+      "contractSha256": "c0b7eef4a18b5dff3a5a355632701fc5c41bbef04e14734629a037d8037a0192",
       "methods": [
         ".ctor",
         "<Clone>$",
@@ -3098,7 +3112,7 @@
     {
       "name": "NGB.Runtime.ReferenceRegisters.ReferenceRegisterAdminEndpointContracts+PhysicalSchemaHealthReportDto",
       "attributes": "NestedPublic, Sealed, BeforeFieldInit",
-      "contractSha256": "d83aadf3e7c36e058ae836aa301d49de85f1b70a31eed0c12070a07fcf1f2e4a",
+      "contractSha256": "c43ec26071453957ef33aea3604d2ec770411a8c0ca8df5c6603f2e1eae92031",
       "methods": [
         ".ctor",
         "<Clone>$",
@@ -3120,7 +3134,7 @@
     {
       "name": "NGB.Runtime.ReferenceRegisters.ReferenceRegisterAdminEndpointContracts+PhysicalTableHealthDto",
       "attributes": "NestedPublic, Sealed, BeforeFieldInit",
-      "contractSha256": "dd6037854edace830428cd2b1f14695a3fdcd7f5cbf6b72025f86ce6064d8bc1",
+      "contractSha256": "ac017ac31803ff0d84cadf7d8be824876647b97f2adc4c595ca9b34dcf28174f",
       "methods": [
         ".ctor",
         "<Clone>$",
@@ -3148,7 +3162,7 @@
     {
       "name": "NGB.Runtime.ReferenceRegisters.ReferenceRegisterAdminEndpointContracts+RegisterDetailsDto",
       "attributes": "NestedPublic, Sealed, BeforeFieldInit",
-      "contractSha256": "ad4b028fd59ac1c2d3ae22182e7803ca6c4bb55062baa33d180c99e7fb256655",
+      "contractSha256": "c8f47b6065f07a12c8fb16ff0fdee1b995e6823ec504c80ebd666829c558040b",
       "methods": [
         ".ctor",
         "<Clone>$",
@@ -3170,7 +3184,7 @@
     {
       "name": "NGB.Runtime.ReferenceRegisters.ReferenceRegisterAdminEndpointContracts+RegisterDto",
       "attributes": "NestedPublic, Sealed, BeforeFieldInit",
-      "contractSha256": "2a46d836597530bdd1528e1cf1e559170f0685b3e800618cd40ba624abe84ff6",
+      "contractSha256": "dcf5084dca34f341a76285fe7bc9f652d1fcdd6d0ef39a7169934c0c3e0c2df6",
       "methods": [
         ".ctor",
         "<Clone>$",
@@ -3206,7 +3220,7 @@
     {
       "name": "NGB.Runtime.ReferenceRegisters.ReferenceRegisterAdminEndpointContracts+RegisterListItemDto",
       "attributes": "NestedPublic, Sealed, BeforeFieldInit",
-      "contractSha256": "a4d304ce3a9c463b4f778c006f34bb53848d44b8ca32f0bb0339e2db6df850ac",
+      "contractSha256": "4a4ad2d05c2178cf13f7f4e662cc55c0a51c5c0181068efaeccafa76bcd51877",
       "methods": [
         ".ctor",
         "<Clone>$",
@@ -3237,7 +3251,7 @@
     {
       "name": "NGB.Runtime.ReferenceRegisters.ReferenceRegisterIndependentWriteService",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "c7592c0201e0292eaad17af8872f62d1ffa3ac6c4d97790515cceaf924be6266",
+      "contractSha256": "c1f131cb131e512f1fc972af0c478a58926732f30c9c2ff0376b0ee3ecd43bc2",
       "methods": [
         ".ctor",
         "TombstoneAsync",
@@ -3250,7 +3264,7 @@
     {
       "name": "NGB.Runtime.ReferenceRegisters.ReferenceRegisterManagementService",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "9d94a2e048fd69d87d9df6cfae207169c9d07285e82263f9a3516d713c790913",
+      "contractSha256": "02ad03ac65d7ccd8203c916140115bfb00713176e6d833e0f6a840517ce45de8",
       "methods": [
         ".ctor",
         "ReplaceDimensionRulesAsync",
@@ -3262,7 +3276,7 @@
     {
       "name": "NGB.Runtime.ReferenceRegisters.ReferenceRegisterReadService",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "6bd5af5ebd692762aeb7f07bb2adddcbffd944e73497e9705c5699b49b6d67ed",
+      "contractSha256": "1656b55ec42e5c7278b55283273863415265b7a9d30e2f7cc60e30fdf9bffff1",
       "methods": [
         ".ctor",
         "GetKeyHistoryAsync",
@@ -3281,7 +3295,7 @@
     {
       "name": "NGB.Runtime.ReferenceRegisters.ReferenceRegisterRecordsApplier",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "c4a62fe1a1b3f371a684d8c986a8d9cd1e65a02348acfd9a5721ad71c6e98995",
+      "contractSha256": "1bc1844a5f00a531fc45f6160fc55555aec5601cffda7359ae38aa98af5f19dd",
       "methods": [
         ".ctor",
         "ApplyRecordsForDocumentAsync"
@@ -3291,7 +3305,7 @@
     {
       "name": "NGB.Runtime.ReferenceRegisters.ReferenceRegisterRecordSnapshot",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "c1e281bf5c9fe7ae1f7ffebe10d1651535743ca95d47ea6449a1f03cf6efe7dc",
+      "contractSha256": "e5055b6dd66f9545445e7e03d35963f14327d7f964faf3c75f7787ca5a8d0ad1",
       "methods": [
         ".ctor",
         "<Clone>$",
@@ -3335,7 +3349,7 @@
     {
       "name": "NGB.Runtime.ReferenceRegisters.ReferenceRegisterWriteEngine",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "cac9bf33a1db08b0903fea994c585a89ddcacf98ccf931da3665d8685b1d04c8",
+      "contractSha256": "79ecace71579e7bf0532076f1f1ea3e81e800a2fd72e32621dfb4e45d268b20d",
       "methods": [
         ".ctor",
         "ExecuteAsync"
@@ -3602,7 +3616,7 @@
     {
       "name": "NGB.Runtime.Reporting.Definitions.ReportFilterOptionTools",
       "attributes": "Public, Abstract, Sealed, BeforeFieldInit",
-      "contractSha256": "5766c44f3e20a51c1d62cb8db7676e18a0d620ba4b675c73d5bdb3f067eb64e8",
+      "contractSha256": "82b17f4d11b39f8c3d050fb490589d349b9ac5826a0ec9a86dd940f8df2ed454",
       "methods": [
         "ToReportFilterOptions"
       ],
@@ -3904,7 +3918,7 @@
     {
       "name": "NGB.Runtime.Reporting.Planning.ReportPlanSort",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "35576c4c0054b2a5557eb4b532c101c32ce1fbe101378900b8c47f4e07e607e2",
+      "contractSha256": "1c554784fee092ae54141504bbd121a88d00bda2ccbada2096e2e50ce9a8bc99",
       "methods": [
         ".ctor",
         "<Clone>$",
@@ -4289,7 +4303,7 @@
     {
       "name": "NGB.Runtime.Reporting.Streaming.BalanceSheetStreamingExecutor",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "72f87840a6eb0c06c1244465feac9d7d74c40761fac70187159ecc30343303e5",
+      "contractSha256": "91cfe8841a0a8d24d48929617630e8baf4a5343976e7189816ecf2aa57feb380",
       "methods": [
         ".ctor",
         "RenderAsync",
@@ -4301,7 +4315,7 @@
     {
       "name": "NGB.Runtime.Reporting.Streaming.EquityStatementStreamingExecutor",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "3ee914bf5bd6d1fc619a3f22e890175c9de43c85c085d0ba54c7b9f746fb6453",
+      "contractSha256": "2fae1a4ce779875a6d595fc06e60393dd219d5c542627bd5d848c60c7744a57d",
       "methods": [
         ".ctor",
         "RenderAsync",
@@ -4313,7 +4327,7 @@
     {
       "name": "NGB.Runtime.Reporting.Streaming.FinancialStatementStreamingExecutor",
       "attributes": "Public, Abstract, BeforeFieldInit",
-      "contractSha256": "49b93bb79f0014468afae932fb1caac3e1e95517e3cb460b943e20adfcf73669",
+      "contractSha256": "92bafdb3808d68cdc49db7c1dbb08a1d0e92b4ff970ae6e3864bc5d010801f09",
       "methods": [
         ".ctor",
         "Amount",
@@ -4334,7 +4348,7 @@
     {
       "name": "NGB.Runtime.Reporting.Streaming.FinancialStatementStreamingExecutor+Input",
       "attributes": "NestedFamily, Sealed, BeforeFieldInit",
-      "contractSha256": "55afc9442c45f022d33f9131d92587413e4b268ff8fa4178cc56f587f8ba5471",
+      "contractSha256": "417366d350472f4f1bd9bb3d6451a8b8c1204f59fa1537b00749f93e16e97cd3",
       "methods": [
         ".ctor",
         "<Clone>$",
@@ -4362,7 +4376,7 @@
     {
       "name": "NGB.Runtime.Reporting.Streaming.GeneralLedgerAggregatedStreamingExecutor",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "90a687b276c8675445ba08493ad9fba025e83094349969b50490fd5dc384ab00",
+      "contractSha256": "c0f0885a5339b0d063ec2d0ca9726959f3f4722b85163055f2d5eb9e6d4368d1",
       "methods": [
         ".ctor",
         "Prepare",
@@ -4375,7 +4389,7 @@
     {
       "name": "NGB.Runtime.Reporting.Streaming.IncomeStatementStreamingExecutor",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "f2cf0c4e42bfea6115742508135c3ed6abc21f1015be5285bf93b711c806d3ad",
+      "contractSha256": "7f73ddaae6aa76aaa6dffa6b34ec02dbcbab8fffc1f18e46e7c0a893e0b0507b",
       "methods": [
         ".ctor",
         "RenderAsync",
@@ -4399,7 +4413,7 @@
     {
       "name": "NGB.Runtime.Reporting.Streaming.PlannedReportStreamingExecutor",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "8ce52841ed4aa57bdc6c8e27b69933d1c38867dd0e82ac6db85721ee9dbcb655",
+      "contractSha256": "26da38c1a7cd02fa0b5c55bccc55d477a883fa3344e5cac43b377cf8d43f6540",
       "methods": [
         ".ctor",
         "Prepare",
@@ -4864,7 +4878,7 @@
     {
       "name": "NGB.Runtime.Security.PermissionSnapshotProvider",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "271fa6449f6249f04f08a2f4e2b4415c4b5f5551078de7b430b199ff1cc30ff5",
+      "contractSha256": "1fd0bbf82d227a7bdd5b6a22cc6b240302ccdd14cae9fa73d63d685669584615",
       "methods": [
         ".ctor",
         "GetCurrentAsync",
@@ -4895,7 +4909,7 @@
     {
       "name": "NGB.Runtime.Security.RoleManagementService",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "e5bb6f057529739c2a9c28844561021194e429a0c5e85ce047066542248e9555",
+      "contractSha256": "aacdb33a0969da54f3c054dce03556a3384246f4833d1d4a94b61c44dc071eef",
       "methods": [
         ".ctor",
         "CreateRoleAsync",
@@ -4970,7 +4984,7 @@
     {
       "name": "NGB.Runtime.Security.UserAccessManagementService",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "81792bc185d7fd4088d523ed2b0c127b331814c2515f33283a18f5f772cccfc0",
+      "contractSha256": "dc1dc6675e9683a98cfd0f9c7098e0029765f1fe8805ad184c5135bf154ef6fc",
       "methods": [
         ".ctor",
         "CreateUserAsync",

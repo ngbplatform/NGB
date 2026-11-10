@@ -6,6 +6,16 @@ import { testCounts } from '../../packaging/templates/content/infrastructure/ngb
 import { browserTestCounts, frontendCoverage, frontendTestCounts } from '../../packaging/templates/content/infrastructure/ngb/evidence.mjs'
 import { inspectCapabilities } from '../../ai-devkit/prepare.mjs'
 
+export function assertUiConsumerLock(lock, artifact, version) {
+  assert.match(artifact.integrity, /^sha512-[A-Za-z0-9+/]{86}==$/, 'Missing UI artifact integrity.')
+  assert.equal(lock.packages[''].dependencies['@ngbplatform/ui'], version, 'Consumer must pin the candidate UI version.')
+  const dependency = lock.packages['node_modules/@ngbplatform/ui']
+  assert.equal(dependency.version, version, 'Consumer locked a different UI version.')
+  assert.equal(dependency.resolved, `https://registry.npmjs.org/@ngbplatform/ui/-/ui-${version}.tgz`,
+    'Consumer must retain the public registry URL.')
+  assert.equal(dependency.integrity, artifact.integrity, 'Consumer locked different UI bytes; regenerate candidate locks.')
+}
+
 export function exampleSources(payload) {
   const prefix = 'ai/vendor/examples/'
   return Object.fromEntries(payload.files.filter(file => file.path.startsWith(prefix))

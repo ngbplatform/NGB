@@ -2,7 +2,30 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { digest } from '../../packaging/templates/content/infrastructure/ngb/kit-contracts.mjs'
 import { inspectCapabilities, preparePayload } from '../../ai-devkit/prepare.mjs'
-import { bindExampleAcceptance, exampleFrontendSources, exampleSources, passingBrowserCases, passingTestCases } from './example-evidence.mjs'
+import { assertUiConsumerLock, bindExampleAcceptance, exampleFrontendSources, exampleSources, passingBrowserCases, passingTestCases } from './example-evidence.mjs'
+
+test('UI consumers must lock the exact candidate bytes even when the release version is unchanged', () => {
+  const artifact = { integrity: `sha512-${'A'.repeat(86)}==` }
+  const version = '3.4.0'
+  const lock = { packages: {
+    '': { dependencies: { '@ngbplatform/ui': version } },
+    'node_modules/@ngbplatform/ui': {
+      version, resolved: 'https://registry.npmjs.org/@ngbplatform/ui/-/ui-3.4.0.tgz', integrity: artifact.integrity,
+    },
+  } }
+  assertUiConsumerLock(lock, artifact, version)
+  assert.throws(() => assertUiConsumerLock(lock, { integrity: 'missing' }, version), /artifact integrity/)
+  for (const mutate of [
+    value => { value.packages[''].dependencies['@ngbplatform/ui'] = '^3.4.0' },
+    value => { value.packages['node_modules/@ngbplatform/ui'].version = '3.3.0' },
+    value => { value.packages['node_modules/@ngbplatform/ui'].resolved = 'file:old-ui.tgz' },
+    value => { value.packages['node_modules/@ngbplatform/ui'].integrity = `sha512-${'B'.repeat(86)}==` },
+  ]) {
+    const changed = structuredClone(lock)
+    mutate(changed)
+    assert.throws(() => assertUiConsumerLock(changed, artifact, version), /Consumer/)
+  }
+})
 
 const payload = await preparePayload()
 const registry = JSON.parse(payload.files.find(file => file.path === 'ai/vendor/capability-registry.json').content)

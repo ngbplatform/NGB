@@ -111,6 +111,43 @@
       "prohibitedWorkarounds": [
         "Inventing a sentinel cursor before all possible records"
       ]
+    },
+    {
+      "id": "documents.generic-save-concurrency",
+      "status": "unsupported",
+      "targetVersion": "3.4.0",
+      "workflow": "Reject a stale generic document Draft or catalog save using the version read by that editor",
+      "observedError": "Generic update accepts a payload without an expected-version token; a later stale save can overwrite a previously committed value. Advancing document action versions protects subsequent actions, not the save itself.",
+      "contracts": [
+        "NGB.Application.Abstractions.Services.IDocumentService",
+        "NGB.Application.Abstractions.Services.ICatalogService"
+      ],
+      "evidence": "examples/equipment-inspection/EquipmentInspection.IntegrationTests/DraftSaveBoundaryTests.cs",
+      "decision": "Keep the 3.4.0 request contracts. Full optimistic concurrency for generic saves is deferred to a separately designed major-release contract. Reload editor state after saving before issuing actions; do not claim that reloading prevents stale saves.",
+      "prohibitedWorkarounds": [
+        "Inventing an expectedVersion payload field that the server does not enforce",
+        "Claiming that an action-version increment rejects competing stale saves",
+        "Adding per-vertical shadow version tables or silently changing the write contract"
+      ]
+    },
+    {
+      "id": "documents.generic-date-binding",
+      "status": "unsupported",
+      "targetVersion": "3.4.0",
+      "workflow": "Bind an arbitrary generic document payload date to DocumentRecord.DateUtc and initial numbering",
+      "observedError": "Generic creation uses the current clock for the registry date. Updating a business date in payload does not update the registry date used by handlers reading DocumentRecord.DateUtc.",
+      "contracts": [
+        "NGB.Application.Abstractions.Services.IDocumentService",
+        "NGB.Runtime.Documents.IDocumentDraftService",
+        "NGB.Core.Documents.DocumentRecord"
+      ],
+      "evidence": "examples/equipment-inspection/EquipmentInspection.IntegrationTests/DraftSaveBoundaryTests.cs",
+      "decision": "Explicit date metadata and unified generic persistence are deferred to a separately designed major release. Trusted common-header workflows use the existing IDocumentDraftService contract. Do not infer a new interactive endpoint or automatically rewrite dates and numbers.",
+      "prohibitedWorkarounds": [
+        "Guessing the document date from a column name",
+        "Silently synchronizing registry dates in every vertical posting handler",
+        "Rewriting historical dates or document numbers during upgrade"
+      ]
     }
   ]
 }

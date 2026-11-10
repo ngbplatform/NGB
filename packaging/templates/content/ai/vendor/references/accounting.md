@@ -238,6 +238,29 @@ and is restricted to the latest closed month. Use `IAccountingBalanceReader`
 does not automatically rebuild its old balance rows. Closing it again computes
 the updated snapshot.
 
+An open affected month is also protected when any later month is closed. The
+runtime reports `accounting.posting.later_period_closed`, including the affected
+and blocking months; PostgreSQL enforces the same boundary on ledger writes.
+Saving a Draft is separate from successfully posting it. To enter earlier
+activity, explicitly reopen dependent closed months from latest to earliest,
+respect fiscal-year dependencies, then close again in sequence. Never change a
+business date, suppress the error or reopen periods automatically to make Post
+succeed. The migration updates guards but does not repair old stale snapshots;
+review historical discrepancies through the established correction workflow.
+
+In an open chain, Post 1000 on October 20, Unpost, Post 900 on October 20,
+Unpost, then Post 1400 on September 27 must leave September net activity 1400,
+October net activity zero and subsequent closing balances 1400 for the debit
+account (with no other activity). Retain every original and reversal. Gross
+debit/credit totals include reversals and must not be confused with the signed
+net. Test the actual registry date as well as application payload dates.
+
+Operational balance enforcement includes `PriorOpenPeriodDelta` between the
+last closed snapshot and the requested month. Profit-and-loss readers exclude
+synthetic fiscal-year closing activity through `IIncomeStatementAccountReader`;
+ordinary opening/closing balances retain their meaning. Use the standard readers
+instead of compensating for these corrections in application formulas.
+
 Fiscal-year close requires an open end month and closed prior months from January.
 Choose an eligible active, nondeleted, credit-normal equity account without
 required dimensions, using the retained-earnings lookup. Each profit/loss account

@@ -21,10 +21,29 @@ matching packages are published and their registry checks succeed.
   composition, documents, catalogs, peer effect engines, reports, permissions,
   Work Center, background work, content and optional MCP/assistant integration.
 
-The audited registry describes 224 capabilities and classifies 1716 public
+The audited registry describes 224 capabilities and classifies 1726 public
 contracts for this candidate. Classification counts identify the reviewed surface;
 functional acceptance additionally requires the corresponding executable checks.
 Neither the Kit nor its registry depends on a particular installed business product.
+
+## Platform reliability corrections
+
+- Accounting refuses writes in open months before a later closed month, preserving
+  frozen downstream balances. Explicit authorized reopening is required.
+- OR cancellation reverses unmatched effects without repeatedly duplicating old
+  history; date changes invalidate subsequent tracked projection months.
+- Draft saves advance the version used for subsequent document actions.
+- PostgreSQL background jobs retain execution ownership beyond Hangfire lease
+  expiry and signal cancellation if that ownership is lost.
+- Operational balance checks include earlier open-month activity; profit-and-loss
+  activity excludes synthetic fiscal-year closing entries.
+
+The accounting guard and RR migrations are additive to the upgrade procedure;
+neither rewrites old business history or silently repairs historical discrepancies.
+Generic Draft/catalog saves still lack an expected-version check. Generic document
+payload date fields still do not synchronize the common registry date or initial
+numbering. These limits remain documented; advancing an action version does not
+establish lost-update protection for the save itself.
 
 ## Reference-register and Trade corrections
 

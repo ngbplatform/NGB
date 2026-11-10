@@ -55,6 +55,19 @@ distributed lock keyed by JobId. A concurrent invocation that cannot acquire it
 reports `SkippedOverlap`. This is not a durable deduplication key for a business
 effect, nor a global ordering guarantee across different job IDs.
 
+The standard PostgreSQL adapter also registers `IBackgroundJobExecutionLockProvider`.
+It holds a separate database execution lock for the whole run, even after the
+Hangfire lease expires, using the scheduler storage's actual connection and
+namespace. `DistributedLockTimeoutSeconds` is an acquisition wait, not a maximum
+job duration. Do not replace the standard adapter with a bare storage registration
+and assume that this protection remains configured.
+
+Detected execution-lock loss cancels the token passed to `RunAsync`. Jobs must
+honor it and preserve transaction/business idempotency; a lock-loss signal is
+cooperative cancellation, not fencing of a job that ignores cancellation. A custom
+provider must supply equivalent ownership semantics. Test contention after lease
+expiry and release on cancellation/completion, not just two immediate invocations.
+
 The runner has `AutomaticRetry(Attempts = 0)`. Failures propagate into Hangfire's
 Failed state and invoke the optional `IPlatformJobNotifier`; cancellation is
 propagated separately. A configured next recurrence is a new invocation. An

@@ -28,6 +28,18 @@ before applying recovery; never delete its journal or lock to suppress a
 diagnostic. Database migration and deployment remain separate, with the
 established backup requirement.
 
+## Accounting guard migration in 3.4.0
+
+The platform migration `V2026_11_08_0100__accounting_posting_boundary.sql` replaces
+ledger guards to reject writes before a later closed month. It preserves ledger
+rows, turnovers, snapshots and closed-period markers. Run the target Migrator
+before starting matching hosts, as for the RR migration below. A successful
+migration does not certify that historical snapshots were already correct.
+Previously affected periods require explicit review and authorized reopening/
+closing, respecting fiscal-year dependencies. Keep Evolve ordering and checksum
+validation enabled; an out-of-order error requires inspecting the migration
+sequence, not globally enabling OutOfOrder.
+
 ## Reference-register migration in 3.4.0
 
 Updating packages does not execute SQL. Update the application's Migrator together

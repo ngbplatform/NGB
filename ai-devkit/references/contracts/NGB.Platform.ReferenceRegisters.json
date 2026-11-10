@@ -2,11 +2,11 @@
   "schemaVersion": 1,
   "package": "NGB.Platform.ReferenceRegisters",
   "version": "3.4.0",
-  "packageSha256": "1f89a1c408fd9ac5a2adc5dc1ac8a3c997823d2a9466370f6e027bd33fcd7d47",
+  "packageSha256": "dad23af4d30733d34fd5bada013110c50df9c1c9c34538966021f4b8e5464d13",
   "assembly": {
     "name": "NGB.ReferenceRegisters",
     "version": "3.0.0.0",
-    "sha256": "08faad43a34aff3349cdb0afd45f022590425c619c1a33761a796c676b26f885"
+    "sha256": "ace7cefa8fbd4fdcf09f90de6b6275264b3ec374e3cf50fb0c1f809cf02a74f0"
   },
   "contractSha256": "4e62f2f0a0926218af1cc8c58694dda7448ee7066fe0802322e833f6cbf432d9",
   "types": [

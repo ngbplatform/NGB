@@ -14,6 +14,8 @@ document that only needs another supported effect engine.
    keep trusted system operations out of ordinary client endpoints.
 4. Test balanced results, closed-period refusal, idempotency, concurrent versions,
    rollback and reversal with real storage and independent expected amounts.
+   Include an open month before a later closed month; it must also reject posting.
+   Period reopening is explicit, authorized and audited, never an automatic retry.
 5. Run `node infrastructure/ngb.mjs validate --profile build` and
    `node infrastructure/ngb.mjs test --profile all`.
 

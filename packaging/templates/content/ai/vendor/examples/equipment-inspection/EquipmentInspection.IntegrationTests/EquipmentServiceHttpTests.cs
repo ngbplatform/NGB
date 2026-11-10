@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using EquipmentInspection.Definitions;
 using EquipmentInspection.Runtime;
 using Microsoft.Extensions.DependencyInjection;
@@ -14,11 +15,13 @@ using NGB.Core.Dimensions;
 using NGB.OperationalRegisters;
 using NGB.OperationalRegisters.Contracts;
 using NGB.Persistence.AuditLog;
+using NGB.Persistence.Documents;
 using NGB.Persistence.Readers;
 using NGB.Persistence.Readers.Reports;
 using NGB.PostgreSql.AuditLog;
 using NGB.ReferenceRegisters;
 using NGB.Runtime.Accounts;
+using NGB.Runtime.Documents;
 using NGB.Runtime.OperationalRegisters;
 using NGB.Runtime.ReferenceRegisters;
 using Xunit;
@@ -28,6 +31,91 @@ namespace EquipmentInspection.IntegrationTests;
 
 public sealed class EquipmentServiceHttpTests
 {
+    [Theory]
+    [InlineData(9, 27)]
+    [InlineData(10, 5)]
+    public async Task Amount_and_date_edits_preserve_append_only_history_and_reconcile_all_three_engines(int month, int day)
+    {
+        await using var host = new InspectionHost();
+        await host.StartAsync();
+        using var admin = await host.CreateClientAsync("administrator");
+        var (document, equipment) = await CreateServiceAsync(admin);
+        var path = Path(document.Id);
+        await using var scope = host.Services.CreateAsyncScope();
+        var services = scope.ServiceProvider;
+        var drafts = services.GetRequiredService<IDocumentDraftService>();
+        var entries = services.GetRequiredService<IAccountingEntryReader>();
+        var registers = services.GetRequiredService<IOperationalRegisterReadService>();
+        var references = services.GetRequiredService<IReferenceRegisterReadService>();
+        var registerId = OperationalRegisterId.FromCode(EquipmentServiceDefinitions.RegisterCode);
+        var referenceId = ReferenceRegisterId.FromCode(EquipmentConditionDefinitions.RegisterCode);
+        var dimensions = new[] { new DimensionValue(EquipmentDefinitions.EquipmentDimensionId, equipment.Id) };
+        var september = new DateOnly(2026, 9, 1);
+        var october = new DateOnly(2026, 10, 1);
+        var versions = new[]
+        {
+            (Date: new DateTime(2026, 10, 20, 12, 0, 0, DateTimeKind.Utc), Amount: 1000m),
+            (Date: new DateTime(2026, 10, 20, 12, 0, 0, DateTimeKind.Utc), Amount: 900m),
+            (Date: new DateTime(2026, month, day, 12, 0, 0, DateTimeKind.Utc), Amount: 1400m)
+        };
+        string[] priorEntries = [];
+        string[] priorMovements = [];
+        string[] priorReferences = [];
+        for (var index = 0; index < versions.Length; index++)
+        {
+            var version = versions[index];
+            var hours = version.Amount / 100m;
+            using var save = await admin.PutAsJsonAsync(path,
+                Payload(("amount", version.Amount), ("hours", hours), ("condition", "Revision " + index)));
+            await EnsureSuccessAsync(save);
+            await drafts.UpdateDraftAsync(document.Id, number: null, dateUtc: version.Date);
+            var draft = await StateAsync(admin, path);
+            using var post = await ExecutePostAsync(admin, path, draft.DocumentVersion, "revision-" + index);
+            var posted = await ReadActionAsync(post);
+            Assert.Equal(DocumentStatus.Posted, posted.Document.Status);
+            Assert.Equal(version.Date, (await services.GetRequiredService<IDocumentRepository>().GetAsync(document.Id))!.DateUtc);
+            using var replay = await ExecutePostAsync(admin, path, draft.DocumentVersion, "revision-" + index);
+            Assert.Equal(posted.ExecutionId, (await ReadActionAsync(replay)).ExecutionId);
+
+            var history = (await entries.GetByDocumentAsync(document.Id)).OrderBy(row => row.EntryId).ToArray();
+            var movements = (await registers.GetMovementsPageAsync(new OperationalRegisterMovementsPageRequest(
+                registerId, september, october, DocumentId: document.Id))).Lines.OrderBy(row => row.MovementId).ToArray();
+            var referenceHistory = (await references.GetKeyHistoryAsync(referenceId, dimensions, DateTime.UtcNow,
+                recorderDocumentId: document.Id, includeDeleted: true)).OrderBy(row => row.RecordId).ToArray();
+            Assert.Equal(index * 2 + 1, history.Length);
+            Assert.Equal(index * 2 + 1, movements.Length);
+            Assert.Equal(index * 2 + 1, referenceHistory.Length);
+            Assert.Equal(priorEntries, history.Take(priorEntries.Length).Select(row => JsonSerializer.Serialize(row, Json)));
+            Assert.Equal(priorMovements, movements.Take(priorMovements.Length).Select(row => JsonSerializer.Serialize(row, Json)));
+            Assert.Equal(priorReferences, referenceHistory.Take(priorReferences.Length).Select(row => JsonSerializer.Serialize(row, Json)));
+            priorEntries = history.Select(row => JsonSerializer.Serialize(row, Json)).ToArray();
+            priorMovements = movements.Select(row => JsonSerializer.Serialize(row, Json)).ToArray();
+            priorReferences = referenceHistory.Select(row => JsonSerializer.Serialize(row, Json)).ToArray();
+            Assert.Equal(index, history.Count(row => row.IsStorno));
+            Assert.Equal(index, movements.Count(row => row.IsStorno));
+            Assert.Equal(hours, movements.Sum(row => (row.IsStorno ? -1m : 1m) * row.Values["hours"]));
+            Assert.Equal("Revision " + index, (await references.SliceLastAsync(referenceId, dimensions, DateTime.UtcNow, document.Id))!.Values["condition"]);
+
+            await services.GetRequiredService<IOperationalRegisterFinalizationRunner>().FinalizeRegisterDirtyAsync(registerId);
+            foreach (var period in new[] { september, october })
+            {
+                var turnover = version.Date.Month == period.Month ? hours : 0m;
+                var closing = version.Date.Month <= period.Month ? version.Amount : 0m;
+                var trialBalance = await services.GetRequiredService<ITrialBalanceReader>().GetAsync(period, period);
+                Assert.Equal(closing, trialBalance.Where(row => row.AccountCode == EquipmentServiceDefinitions.ExpenseAccountCode).Sum(row => row.ClosingBalance));
+                var request = new OperationalRegisterMonthlyProjectionPageRequest(registerId, period, period);
+                Assert.Equal(turnover, (await registers.GetTurnoversPageAsync(request)).Lines.Sum(row => row.Values["hours"]));
+                Assert.Equal(closing / 100m, (await registers.GetBalancesPageAsync(request)).Lines.Sum(row => row.Values["hours"]));
+            }
+
+            using var unpost = await ExecuteActionAsync(admin, path, "unpost", posted.DocumentVersion, "cancel-revision-" + index);
+            Assert.Equal(DocumentStatus.Draft, (await ReadActionAsync(unpost)).Document.Status);
+            await AssertNoEffectsAsync(admin, path);
+            Assert.Null(await references.SliceLastAsync(referenceId, dimensions, DateTime.UtcNow, document.Id));
+            Assert.Equal((index + 1) * 2, (await entries.GetByDocumentAsync(document.Id)).Count);
+        }
+    }
+
     [Fact]
     public async Task Setup_preserves_incompatible_or_inactive_accounts_and_requires_an_explicit_correction()
     {
