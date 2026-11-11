@@ -510,6 +510,24 @@ test('keeps catalog lifecycle UI and creation navigation in the orchestration la
   wrapper.unmount()
 })
 
+test('emits saved for an existing catalog item without refreshing document actions', async () => {
+  const wrapper = mount(NgbConfiguredEntityEditor, {
+    props: {
+      kind: 'catalog',
+      typeCode: 'demo.customer',
+      id: 'customer-id',
+      configuration: configuration(),
+    },
+  })
+  await nextTick()
+
+  await mocks.persistenceContext!.onSaved()
+
+  expect(wrapper.emitted('saved')).toEqual([[]])
+  expect(mocks.refreshDocumentActions).not.toHaveBeenCalled()
+  wrapper.unmount()
+})
+
 test('projects field and part validation, focuses actionable errors, and updates document parts', async () => {
   const wrapper = mount(NgbConfiguredEntityEditor, {
     props: {
