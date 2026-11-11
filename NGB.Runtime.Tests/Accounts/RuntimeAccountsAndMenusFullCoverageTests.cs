@@ -84,6 +84,45 @@ public sealed class RuntimeAccountsAndMenusFullCoverageTests
     }
 
     [Fact]
+    public async Task SharedProviderCache_ConcurrentProvidersWaitForOneSnapshotLoad()
+    {
+        var account = Item("1000").Account;
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var repository = new Mock<IChartOfAccountsRepository>(MockBehavior.Strict);
+        repository.Setup(x => x.GetAllAsync(It.IsAny<CancellationToken>()))
+            .Returns(async () =>
+            {
+                entered.TrySetResult();
+                await release.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                return [account];
+            });
+        var cache = new ChartOfAccountsSnapshotCache();
+        var firstProvider = new ChartOfAccountsProvider(repository.Object, cache);
+        var secondProvider = new ChartOfAccountsProvider(repository.Object, cache);
+
+        var first = firstProvider.GetAsync();
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var waiting = secondProvider.GetAsync();
+        try
+        {
+            waiting.IsCompleted.Should().BeFalse("another scope must wait for the in-flight snapshot load");
+            repository.Verify(x => x.GetAllAsync(It.IsAny<CancellationToken>()), Times.Once);
+        }
+        finally
+        {
+            release.TrySetResult();
+        }
+
+        var charts = await Task.WhenAll(first, waiting).WaitAsync(TimeSpan.FromSeconds(5));
+
+        charts[0].Should().BeSameAs(charts[1]);
+        charts[1].Get("1000").Should().BeSameAs(account);
+        (await secondProvider.GetAsync()).Should().BeSameAs(charts[0]);
+        repository.Verify(x => x.GetAllAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
     public async Task SharedProviderCache_ReusesSnapshotAcrossScopesAndReloadsAfterInvalidation()
     {
         var firstAccount = Item("1000").Account;

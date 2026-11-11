@@ -215,10 +215,14 @@ public sealed class HangfireJobLockLifetimeTests(HangfirePostgresFixture fixture
         job.InvocationCount.Should().Be(1);
     }
 
-    [Fact]
-    public async Task ExecutionLocks_InDifferentStorageNamespaces_DoNotConflict()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ExecutionLocks_InDifferentStorageNamespaces_DoNotConflict(bool useUnregisteredStorage)
     {
-        var locks = new PostgresBackgroundJobExecutionLockProvider();
+        // The fixture creates storage directly, outside the NGB factory's configuration registry.
+        // Both it and an omitted storage must use the connection and namespace from the request.
+        var locks = new PostgresBackgroundJobExecutionLockProvider(useUnregisteredStorage ? fixture.JobStorage : null);
         var request = new BackgroundJobExecutionLockRequest(
             fixture.ConnectionString, "first_jobs", "ngb:bgjob:same-job", TimeSpan.Zero);
         await using var first = await locks.TryAcquireAsync(request);
