@@ -6,6 +6,12 @@ and [candidate release notes](../../docs/guides/ai-development-kit-release-3-4.m
 Historical investigation and implementation evidence is in [implementation.md](implementation.md);
 an earlier successful run does not qualify a changed candidate.
 
+The [11 November reporting refresh](findings/reporting-refresh-2026-11-11.md)
+records the SDK optimizations, package synchronization, current verification
+receipts and the owner's disposition of the September 320-VU performance finding.
+Canonical/template parity alone does not establish that the SDK archives contain
+the current implementation.
+
 ## Inputs and execution
 
 Use Node 24.19.0 and .NET SDK 10.0.401, a local Docker engine and the pinned tools

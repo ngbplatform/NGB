@@ -2,13 +2,13 @@
   "schemaVersion": 1,
   "package": "NGB.Platform.PostgreSql",
   "version": "3.4.0",
-  "packageSha256": "ec432e2bb7925957494723442c3b1da8cb399269534f6021a8dba971b4c1acfd",
+  "packageSha256": "85e9e6bccfd2194acbd41f77f3ccee96451a84427ebb4b751a59a54edf29c3be",
   "assembly": {
     "name": "NGB.PostgreSql",
     "version": "3.0.0.0",
-    "sha256": "9859e0a6b7f05ec8b253b344b794d3e5bbd9e54759f9b6d61eb20a826aee9918"
+    "sha256": "289c698163d9ea204b37d2b437b6db69fd2106fe650615abd8b1ba5d4434b40f"
   },
-  "contractSha256": "332f83940d5f50d23a12d8bc6a4ea53c414b70021b5de9fec1ce807c7ecf7c97",
+  "contractSha256": "44b5c50fa78c6e6305ed4a4dd9788f31af3cfe71aee800a601907a5ad18bc4a2",
   "types": [
     {
       "name": "NGB.PostgreSql.Accounts.PostgresCashFlowLineRepository",
@@ -164,7 +164,7 @@
     {
       "name": "NGB.PostgreSql.Catalogs.PostgresHeadCatalogTypeStorage",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "ffad5ec0ecc281ee391cf7d11cabe4720e4b7bae276652b6d354bda58ab75fa9",
+      "contractSha256": "7f37ddd7ed0c06af6e415c6b68d58027ebab0be709ae9e81cf63c6ed6d4f4428",
       "methods": [
         ".ctor",
         "DeleteAsync",
@@ -176,7 +176,7 @@
     {
       "name": "NGB.PostgreSql.Catalogs.PostgresHeadCatalogTypeStorage+Column",
       "attributes": "NestedPublic, Sealed, BeforeFieldInit",
-      "contractSha256": "f1429a400fd2f334c7b05434eb683f73878e347675f2a6ed408bbb67e3c49a27",
+      "contractSha256": "ca6fe95fc0989019948e97ced1c49b985eb569ec83997c4623e54d71d87db389",
       "methods": [
         ".ctor",
         "<Clone>$",
@@ -450,7 +450,7 @@
     {
       "name": "NGB.PostgreSql.Documents.PostgresHeadDocumentTypeStorage",
       "attributes": "Public, Sealed, BeforeFieldInit",
-      "contractSha256": "c103946cc1fb4c9520d1e034983b544f1904bacddc5cd5099d49d8024b07ff26",
+      "contractSha256": "3be464170d9e50e0814086d99cc12e1a22f30a4a697d4dc2c3d4b0678605aca9",
       "methods": [
         ".ctor",
         "CreateDraftAsync",
@@ -463,7 +463,7 @@
     {
       "name": "NGB.PostgreSql.Documents.PostgresHeadDocumentTypeStorage+Column",
       "attributes": "NestedPublic, Sealed, BeforeFieldInit",
-      "contractSha256": "e3a5a54f8d32d066150713be25e54c1f3bc5d74a3861c572efb3dcadc0200493",
+      "contractSha256": "bd78e2d488973fbc3e5e8e5a4fa2ed03d76dd6fe5eabd7f7dde134b7b116d5d1",
       "methods": [
         ".ctor",
         "<Clone>$",

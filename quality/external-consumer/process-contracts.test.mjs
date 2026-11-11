@@ -10,6 +10,88 @@ import { digest } from './release-contracts.mjs'
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 
+async function apiCompatibilityFixture(t) {
+  const root = await mkdtemp(join(tmpdir(), 'ngb-api-compatibility-process-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  for (const path of ['packaging/nuget', 'quality/external-consumer', 'bin', 'feed']) {
+    await mkdir(join(root, path), { recursive: true })
+  }
+  for (const path of ['packaging/nuget/verify-api-compatibility.mjs', 'quality/external-consumer/dependency-cache.mjs']) {
+    await cp(join(repository, path), join(root, path))
+  }
+  await writeFile(join(root, 'packaging/nuget/baselines.json'), JSON.stringify({
+    target: '3.4.0', packages: [{ id: 'NGB.Platform.Test', kind: 'runtime', previous: '3.3.0' }],
+  }))
+  await writeFile(join(root, 'feed/NGB.Platform.Test.3.4.0.nupkg'), 'candidate package')
+  const calls = join(root, 'calls.jsonl')
+  const stub = `#!${process.execPath}
+const assert = require('node:assert/strict')
+const { appendFileSync, mkdirSync, writeFileSync } = require('node:fs')
+const { basename, dirname, join } = require('node:path')
+const args = process.argv.slice(2)
+const mode = process.env.NGB_TEST_MODE
+appendFileSync(process.env.NGB_TEST_CALLS, JSON.stringify(args) + '\\n')
+if (args[0] === 'restore') {
+  const version = basename(process.cwd())
+  const archive = join(process.cwd(), 'packages/ngb.platform.test', version, 'ngb.platform.test.' + version + '.nupkg')
+  mkdirSync(dirname(archive), { recursive: true })
+  writeFileSync(archive, 'baseline package')
+} else if (args[0] === 'msbuild') {
+  assert.ok(args.includes('-getProperty:TargetFrameworkMoniker'))
+  const graph = {
+    Properties: { TargetFrameworkMoniker: mode === 'missing-moniker' ? '' : '.NETCoreApp,Version=v10.0' },
+    Items: { ReferencePath: mode === 'missing-references' ? [] : [{ FullPath: '/reference/System.Runtime.dll' }] },
+  }
+  console.log(JSON.stringify(graph))
+} else {
+  assert.equal(args[0], 'package')
+  for (const flag of ['--package-assembly-references', '--baseline-package-assembly-references']) {
+    assert.equal(args[args.indexOf(flag) + 1], '.NETCoreApp,Version=v10.0|/reference/System.Runtime.dll')
+  }
+  if (mode === 'stdout-diagnostic') console.log('CP1003: Could not find a reference directory.')
+  if (mode === 'stderr-diagnostic') console.error('CP1003: Could not find a reference directory.')
+  if (mode === 'unresolved-reference') console.error('Referenced assembly could not be resolved.')
+  if (mode === 'package-diagnostic') console.log('PKV0001: Package validation diagnostic.')
+  if (mode === 'nonzero') process.exit(23)
+  console.log('APICompat ran successfully without finding any breaking changes.')
+}
+`
+  for (const name of ['dotnet', 'apicompat']) {
+    await writeFile(join(root, 'bin', name), stub, { mode: 0o700 })
+  }
+  const run = mode => spawnSync(process.execPath, ['packaging/nuget/verify-api-compatibility.mjs', 'feed'], {
+    cwd: root, encoding: 'utf8',
+    env: { ...process.env, PATH: join(root, 'bin'), TMPDIR: root,
+      NGB_APICOMPAT: join(root, 'bin/apicompat'), NGB_TEST_CALLS: calls, NGB_TEST_MODE: mode },
+  })
+  return { root, run, calls }
+}
+
+test('API compatibility passes resolved framework monikers and records actual package identities', async t => {
+  const { root, run } = await apiCompatibilityFixture(t)
+  const result = run('passed')
+  assert.equal(result.status, 0, result.stderr)
+  const report = JSON.parse(await readFile(join(root, 'feed/api-compatibility.json'), 'utf8'))
+  assert.deepEqual(report.results, [{ package: 'NGB.Platform.Test', baseline: '3.3.0',
+    baselineSha256: digest('baseline package'), candidateSha256: digest('candidate package'), status: 'passed' }])
+})
+
+test('API compatibility rejects missing references, failed processes and zero-exit diagnostics on either stream', async t => {
+  for (const mode of ['missing-moniker', 'missing-references', 'stdout-diagnostic', 'stderr-diagnostic',
+    'unresolved-reference', 'package-diagnostic', 'nonzero']) {
+    const { root, run, calls } = await apiCompatibilityFixture(t)
+    const result = run(mode)
+    assert.notEqual(result.status, 0, mode)
+    assert.match(result.stderr, /Missing resolved|Unresolved compatibility diagnostic|API compatibility failed/, mode)
+    assert.ok(!result.stdout.includes('Compatible:'), mode)
+    await assert.rejects(readFile(join(root, 'feed/api-compatibility.json')), { code: 'ENOENT' })
+    if (mode.startsWith('missing-')) {
+      const commands = (await readFile(calls, 'utf8')).trim().split('\n').map(line => JSON.parse(line))
+      assert.ok(!commands.some(args => args[0] === 'package'))
+    }
+  }
+})
+
 async function releaseFixture(t) {
   const root = await mkdtemp(join(tmpdir(), 'ngb-seal-process-'))
   t.after(() => rm(root, { recursive: true, force: true }))

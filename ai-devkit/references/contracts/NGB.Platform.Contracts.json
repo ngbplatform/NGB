@@ -2,11 +2,11 @@
   "schemaVersion": 1,
   "package": "NGB.Platform.Contracts",
   "version": "3.4.0",
-  "packageSha256": "4bc02b2742e5a9065bea07303351d902a423c24a434c39e9356125aed333117d",
+  "packageSha256": "11d78d15abf0ef64533ffe24557a4c5d52d958726ac061ad139b51cf7a068504",
   "assembly": {
     "name": "NGB.Contracts",
     "version": "3.0.0.0",
-    "sha256": "9b31c8a5b54565315c926feb4ebd70057043af46a521965bf2eaf128f7fb7013"
+    "sha256": "66db17c45eba261cebc31195f3a91bb165623674c39e64374e647ebfc0463222"
   },
   "contractSha256": "fb8bcf9a434756b7377507c294343a96d5a555b296041573350c7977eab7b5fa",
   "types": [

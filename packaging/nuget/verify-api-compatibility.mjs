@@ -1,4 +1,5 @@
-import { execFileSync } from 'node:child_process'
+import assert from 'node:assert/strict'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -44,8 +45,15 @@ ${packages.map(item => `    <PackageReference Include="${item.id}" Version="[${v
 </configuration>\n`)
   const env = { ...process.env, NUGET_PACKAGES: join(directory, 'packages'), NUGET_HTTP_CACHE_PATH: dependencyCache(directory, version).nugetHttp }
   execFileSync('dotnet', ['restore', 'ReferenceGraph.csproj', '--configfile', 'NuGet.Config', '--verbosity', 'quiet'], { cwd: directory, env, stdio: 'inherit' })
-  const resolved = JSON.parse(execFileSync('dotnet', ['msbuild', 'ReferenceGraph.csproj', '-nologo', '-target:ResolveReferences', '-getItem:ReferencePath', '-nodeReuse:false'], { cwd: directory, env, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 }))
-  return { directory, references: resolved.Items.ReferencePath.map(item => item.FullPath).join(',') }
+  const resolved = JSON.parse(execFileSync('dotnet', ['msbuild', 'ReferenceGraph.csproj', '-nologo',
+    '-target:ResolveReferences', '-getProperty:TargetFrameworkMoniker', '-getItem:ReferencePath', '-nodeReuse:false'],
+  { cwd: directory, env, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 }))
+  const moniker = resolved.Properties.TargetFrameworkMoniker
+  const references = resolved.Items.ReferencePath.map(item => item.FullPath)
+  assert.ok(typeof moniker === 'string' && moniker.length > 0, 'Missing resolved target framework moniker.')
+  assert.ok(references.length > 0 && references.every(path => typeof path === 'string' && path.length > 0),
+    'Missing resolved API compatibility references.')
+  return { directory, references: `${moniker}|${references.join(',')}` }
 }
 
 const candidate = await restoreReferences(inventory.target, runtimes, true)
@@ -57,15 +65,19 @@ for (const version of versions) {
     const oldArchive = join(baseline.directory, 'packages', id, version, `${id}.${version}.nupkg`)
     const newArchive = join(candidateFeed, `${item.id}.${inventory.target}.nupkg`)
     const args = ['package', newArchive, '--baseline-package', oldArchive,
-      '--package-assembly-references', `net10.0|${candidate.references}`,
-      '--baseline-package-assembly-references', `net10.0|${baseline.references}`,
+      '--package-assembly-references', candidate.references,
+      '--baseline-package-assembly-references', baseline.references,
       '--exclude-attributes-file', join(repository, 'packaging/nuget/api-compatibility-excluded-attributes.txt'),
       '--enable-rule-cannot-change-parameter-name', '--enable-rule-attributes-must-match']
     const tool = process.env.NGB_APICOMPAT
-    const output = execFileSync(tool ?? 'dotnet', tool ? args : ['tool', 'run', 'apicompat', '--', ...args], {
+    const result = spawnSync(tool ?? 'dotnet', tool ? args : ['tool', 'run', 'apicompat', '--', ...args], {
       cwd: repository, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024,
     })
-    if (/Could not resolve|could not be resolved|warning\s+(?:CP|PKV)/i.test(output)) {
+    const output = `${result.stdout ?? ''}${result.stderr ?? ''}`
+    if (result.error || result.status !== 0) {
+      throw new Error(`API compatibility failed for ${item.id}: ${result.error?.message ?? result.status}\n${output}`)
+    }
+    if (/Could not resolve|could not be resolved|Could not find a reference|\b(?:CP|PKV)\d{4}\b/i.test(output)) {
       throw new Error(`Unresolved compatibility diagnostic for ${item.id}: ${output}`)
     }
     const sha256 = async filename => createHash('sha256').update(await readFile(filename)).digest('hex')

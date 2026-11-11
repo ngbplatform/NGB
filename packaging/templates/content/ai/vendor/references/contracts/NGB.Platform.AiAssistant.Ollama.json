@@ -2,11 +2,11 @@
   "schemaVersion": 1,
   "package": "NGB.Platform.AiAssistant.Ollama",
   "version": "3.4.0",
-  "packageSha256": "c9033f96fe862a334f90123ca4989668a5e057512e03790c9769545d61d5684e",
+  "packageSha256": "a248cac5d176111abd80136a5ab1a75d14fe354c7f73081b8b978f3245612d02",
   "assembly": {
     "name": "NGB.AiAssistant.Ollama",
     "version": "3.0.0.0",
-    "sha256": "6cd6c024d12c73b1e53dde8aefd93078968803d65d9b2d7bb97f04a26826c833"
+    "sha256": "7a38ac5ecb85f2e2b1fbd0dbf847f04a37ce9c927141b099993dc8d8b91abd4c"
   },
   "contractSha256": "750b704314434bd368f9a31aa45efade72f6bb661195aaf5773fe2a111b97f7a",
   "types": [
