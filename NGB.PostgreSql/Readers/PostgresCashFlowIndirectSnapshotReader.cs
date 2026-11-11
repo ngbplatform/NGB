@@ -351,23 +351,18 @@ public sealed class PostgresCashFlowIndirectSnapshotReader(IUnitOfWork uow)
                           combined.AccountId,
                           SUM(combined.ClosingBalance) AS ClosingBalance
                       FROM (
-                          SELECT
-                              r.debit_account_id AS AccountId,
-                              SUM(r.amount) AS ClosingBalance
-                          FROM accounting_register_main r
-                          WHERE r.period >= @DeltaFromUtc
-                            AND r.period < @ToExclusiveUtc
-                          GROUP BY r.debit_account_id
-
-                          UNION ALL
-
-                          SELECT
-                              r.credit_account_id AS AccountId,
-                              SUM(-r.amount) AS ClosingBalance
-                          FROM accounting_register_main r
-                          WHERE r.period >= @DeltaFromUtc
-                            AND r.period < @ToExclusiveUtc
-                          GROUP BY r.credit_account_id
+                          SELECT side.AccountId, side.ClosingBalance
+                          FROM (
+                              SELECT debit_account_id, credit_account_id, SUM(amount) AS amount
+                              FROM accounting_register_main
+                              WHERE period >= @DeltaFromUtc AND period < @ToExclusiveUtc
+                                AND period_month >= @FromMonth AND period_month <= @ToMonth
+                              GROUP BY debit_account_id, credit_account_id
+                          ) entries
+                          CROSS JOIN LATERAL (VALUES
+                              (entries.debit_account_id, entries.amount),
+                              (entries.credit_account_id, -entries.amount)
+                          ) side(AccountId, ClosingBalance)
                       ) combined
                       GROUP BY combined.AccountId
                   ),
@@ -402,6 +397,8 @@ public sealed class PostgresCashFlowIndirectSnapshotReader(IUnitOfWork uow)
                 SnapshotPeriod = snapshotPeriod,
                 DeltaFromUtc = StartOfNextMonthUtc(snapshotPeriod),
                 ToExclusiveUtc = ToExclusiveUtc(asOfDate),
+                FromMonth = StartOfMonth(snapshotPeriod).AddMonths(1),
+                ToMonth = StartOfMonth(asOfDate),
                 RelevantRoles = BalanceRoles
             },
             ct);
@@ -421,6 +418,7 @@ public sealed class PostgresCashFlowIndirectSnapshotReader(IUnitOfWork uow)
                       FROM accounting_register_main r
                       WHERE r.period >= @FromUtc
                         AND r.period < @ToExclusiveUtc
+                        AND r.period_month >= @FromMonth AND r.period_month <= @ToMonth
                         AND NOT EXISTS (
                             SELECT 1 FROM accounting_posting_state close
                             WHERE close.document_id = r.document_id AND close.operation = @ClosingOperation
@@ -436,6 +434,7 @@ public sealed class PostgresCashFlowIndirectSnapshotReader(IUnitOfWork uow)
                       FROM accounting_register_main r
                       WHERE r.period >= @FromUtc
                         AND r.period < @ToExclusiveUtc
+                        AND r.period_month >= @FromMonth AND r.period_month <= @ToMonth
                         AND NOT EXISTS (
                             SELECT 1 FROM accounting_posting_state close
                             WHERE close.document_id = r.document_id AND close.operation = @ClosingOperation
@@ -469,6 +468,8 @@ public sealed class PostgresCashFlowIndirectSnapshotReader(IUnitOfWork uow)
             {
                 FromUtc = StartOfDayUtc(fromInclusive),
                 ToExclusiveUtc = ToExclusiveUtc(toInclusive),
+                FromMonth = StartOfMonth(fromInclusive),
+                ToMonth = StartOfMonth(toInclusive),
                 ProfitAndLossSections,
                 ClosingOperation = (short)PostingOperation.CloseFiscalYear
             },
@@ -588,6 +589,7 @@ public sealed class PostgresCashFlowIndirectSnapshotReader(IUnitOfWork uow)
                        AND counter.is_deleted = FALSE
                       WHERE r.period >= @FromUtc
                         AND r.period < @ToExclusiveUtc
+                        AND r.period_month >= @FromMonth AND r.period_month <= @ToMonth
                         AND counter.statement_section = ANY(@NonPnlSections::smallint[])
                         AND counter.cash_flow_role NOT IN (@CashEquivalentRole, @WorkingCapitalRole, @InvestingCounterpartyRole, @FinancingCounterpartyRole)
                       GROUP BY counter.code, counter.name
@@ -608,6 +610,7 @@ public sealed class PostgresCashFlowIndirectSnapshotReader(IUnitOfWork uow)
                        AND counter.is_deleted = FALSE
                       WHERE r.period >= @FromUtc
                         AND r.period < @ToExclusiveUtc
+                        AND r.period_month >= @FromMonth AND r.period_month <= @ToMonth
                         AND counter.statement_section = ANY(@NonPnlSections::smallint[])
                         AND counter.cash_flow_role NOT IN (@CashEquivalentRole, @WorkingCapitalRole, @InvestingCounterpartyRole, @FinancingCounterpartyRole)
                       GROUP BY counter.code, counter.name
@@ -630,6 +633,8 @@ public sealed class PostgresCashFlowIndirectSnapshotReader(IUnitOfWork uow)
             {
                 FromUtc = fromUtc,
                 ToExclusiveUtc = toExclusiveUtc,
+                FromMonth = StartOfMonth(fromInclusive),
+                ToMonth = StartOfMonth(toInclusive),
                 NonPnlSections,
                 CashEquivalentRole = (short)CashFlowRole.CashEquivalent,
                 WorkingCapitalRole = (short)CashFlowRole.WorkingCapital,

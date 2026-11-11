@@ -28,8 +28,8 @@ public sealed class AccountingLedgerAnalysisPostgresDatasetSource_P0Tests
         var source = AccountingLedgerAnalysisPostgresDatasetSource.SelectAccountAggregateSource(request);
 
         source.Should().NotBeNull();
-        source!.FromSql.Should().Contain("GROUP BY debit_account_id, period")
-            .And.Contain("GROUP BY credit_account_id, period");
+        source!.FromSql.Should().Contain("GROUP BY debit_account_id, credit_account_id, period")
+            .And.Contain("entries.period");
     }
 
     [Fact]

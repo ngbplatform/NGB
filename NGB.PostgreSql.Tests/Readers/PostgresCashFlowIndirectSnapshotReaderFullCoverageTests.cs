@@ -168,6 +168,39 @@ public sealed class PostgresCashFlowIndirectSnapshotReaderFullCoverageTests
             .WithMessage("*Cash flow line definition is missing for account '1100'*");
     }
 
+    [Theory]
+    [InlineData(2026, 8, 15, 2026, 9, 15)]
+    [InlineData(2026, 12, 31, 2027, 1, 1)]
+    [InlineData(2028, 2, 29, 2028, 3, 1)]
+    public async Task Month_bounds_supplement_exact_utc_bounds_for_partial_and_cross_year_ranges(
+        int fromYear, int fromMonth, int fromDay, int toYear, int toMonth, int toDay)
+    {
+        var from = new DateOnly(fromYear, fromMonth, fromDay);
+        var to = new DateOnly(toYear, toMonth, toDay);
+        var closed = new DateOnly(fromYear, fromMonth, 1).AddMonths(-2);
+        var scenario = new CashFlowScenario(
+            LatestClosed(closed, closed), LineDefinitions(),
+            deltaRows: [BalanceRows(), BalanceRows()],
+            pnlRows: ProfitAndLossRows(), cashMovementRows: CashMovementRows(),
+            unclassifiedRows: UnclassifiedRows());
+
+        await new PostgresCashFlowIndirectSnapshotReader(scenario.UnitOfWork).GetAsync(from, to);
+
+        var bounded = scenario.Commands.Where(command => command.CommandText.Contains("@FromMonth", StringComparison.Ordinal)).ToArray();
+        bounded.Should().HaveCount(4);
+        foreach (var command in bounded)
+        {
+            object? Parameter(string name) => command.ParametersSnapshot.Single(p => p.ParameterName == name).Value;
+            var delta = command.CommandText.Contains("WITH snapshot_rows", StringComparison.Ordinal);
+            var end = delta && command == bounded[0] ? from.AddDays(-1) : to;
+            Parameter("FromMonth").Should().Be(delta ? closed.AddMonths(1) : new DateOnly(fromYear, fromMonth, 1));
+            Parameter("ToMonth").Should().Be(new DateOnly(end.Year, end.Month, 1));
+            Parameter("ToExclusiveUtc").Should().Be(DateTime.SpecifyKind(end.AddDays(1).ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc));
+            if (!delta)
+                Parameter("FromUtc").Should().Be(DateTime.SpecifyKind(from.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc));
+        }
+    }
+
     private sealed class CashFlowScenario
     {
         private readonly DataTable _endpointRows;

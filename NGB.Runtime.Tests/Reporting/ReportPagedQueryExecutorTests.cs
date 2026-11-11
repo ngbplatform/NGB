@@ -123,7 +123,8 @@ public sealed class ReportPagedQueryExecutorTests
     public async Task Pivot_rejects_cells_or_totals_outside_selected_keys(bool totals)
     {
         var source = new Source { CellOverflow = !totals, TotalsOverflow = totals };
-        var action = () => Executor(source).ExecuteAsync(Definition(), Plan(true) with { Shape = new(true, true, false, true, true) }, new(), default);
+        var action = () => Executor(source).ExecuteAsync(Definition(), Plan(true) with { Shape = new(true, true, false, true, true) },
+            new(Cursor: totals ? "continuation" : null), default);
         await action.Should().ThrowAsync<NgbInvariantViolationException>();
     }
 

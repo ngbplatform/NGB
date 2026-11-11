@@ -162,47 +162,76 @@ public sealed class ReportPagedQueryExecutor(IReportPageDataSource source, IDocu
                 Sorts = []
             };
 
-            var completeAdditiveGroups = !pivot && group.Length > 0
+            var completeAdditiveGroups = group.Length > 0
                 && string.IsNullOrEmpty(request.Cursor)
                 && group.All(g => !g.IncludeDescendants)
-                && plan.Measures.All(m => m.Aggregation == ReportAggregationKind.Sum);
+                && plan.Measures.All(m => m.Aggregation == ReportAggregationKind.Sum)
+                && (!pivot || columnRows.Length > 0
+                    && rawRows.Rows.Count > 0
+                    && plan.ColumnGroups.All(g => !g.IncludeDescendants)
+                    && plan.Measures.All(m => m.DataType == "decimal"));
 
             if (completeAdditiveGroups)
             {
-                var totals = new ReportSubtotalAccumulator(plan.Measures);
-                foreach (var row in rawRows.Rows)
+                try
                 {
-                    totals.Add(row.Values);
-                }
-
-                grand = new ReportDataRow(plan.Measures.ToDictionary(
-                    m => m.OutputCode,
-                    m =>
+                    var totals = new ReportSubtotalAccumulator(plan.Measures);
+                    foreach (var row in rawRows.Rows)
                     {
-                        totals.TryGetValue(m.OutputCode, out var value);
-                        return value;
-                    }));
+                        if (pivot && plan.Measures.Any(m => !CanSumExactly(totals, row, m.OutputCode)))
+                        {
+                            completeAdditiveGroups = false;
+                            break;
+                        }
+
+                        totals.Add(row.Values);
+                    }
+
+                    grand = new ReportDataRow(plan.Measures.ToDictionary(
+                        m => m.OutputCode,
+                        m =>
+                        {
+                            totals.TryGetValue(m.OutputCode, out var value);
+                            return value;
+                        }));
+                }
+                catch (OverflowException) when (pivot)
+                {
+                    // PostgreSQL numeric can sum cancelling groups whose intermediate
+                    // total exceeds decimal. Preserve that behavior through the SQL path.
+                    completeAdditiveGroups = false;
+                }
             }
-            else
+
+            if (!completeAdditiveGroups)
             {
                 grand = (await ReadAsync(grandPlan, new(0, 1), null, ct)).Rows.SingleOrDefault();
             }
 
             if (pivot && columnRows.Length > 0)
             {
-                var totalCells = await ReadAsync(
-                    grandPlan with
-                    {
-                        ColumnGroups = plan.ColumnGroups
-                    },
-                    new(0, columnRows.Length),
-                    null,
-                    ct);
+                if (completeAdditiveGroups)
+                {
+                    // The column-axis query already aggregated the complete root scope.
+                    // Reuse those exact values, including support IDs, for column totals.
+                    grandCells = columnRows;
+                }
+                else
+                {
+                    var totalCells = await ReadAsync(
+                        grandPlan with
+                        {
+                            ColumnGroups = plan.ColumnGroups
+                        },
+                        new(0, columnRows.Length),
+                        null,
+                        ct);
 
-                if (totalCells.HasMore)
-                    throw new NgbInvariantViolationException("Pivot column axis changed within a read session.");
+                    if (totalCells.HasMore)
+                        throw new NgbInvariantViolationException("Pivot column axis changed within a read session.");
 
-                grandCells = totalCells.Rows;
+                    grandCells = totalCells.Rows;
+                }
             }
         }
 
@@ -350,6 +379,28 @@ public sealed class ReportPagedQueryExecutor(IReportPageDataSource source, IDocu
             "date" or "datetime" or "datetimeoffset" => value.ValueKind == JsonValueKind.String,
             _ => true
         };
+    }
+
+    private static bool CanSumExactly(ReportSubtotalAccumulator totals, ReportDataRow row, string code)
+    {
+        var raw = row.Values.GetValueOrDefault(code);
+
+        if (raw is null)
+            return true;
+
+        if (raw is not decimal value)
+            return false;
+
+        totals.TryGetValue(code, out var accumulated);
+        var previous = accumulated is decimal amount ? amount : 0m;
+        var sum = previous + value;
+        var requiredScale = Math.Max(
+            (decimal.GetBits(previous)[3] >> 16) & 0xff,
+            (decimal.GetBits(value)[3] >> 16) & 0xff);
+
+        // Decimal addition may reduce scale instead of throwing on a large sum.
+        // Let PostgreSQL calculate totals whenever that could discard precision.
+        return ((decimal.GetBits(sum)[3] >> 16) & 0xff) >= requiredScale;
     }
 
     private Task<ReportDataPage> ReadAsync(

@@ -92,6 +92,9 @@ public sealed class AccountingLedgerAnalysisPostgresDatasetSource : IPostgresRep
 
     public static PostgresReportSqlSource? SelectAccountAggregateSource(PostgresReportExecutionRequest request)
     {
+        if (SupportsOrderedDetails(request))
+            return OrderedDetailSource;
+
         // Sum-only account/period shapes can aggregate before joining account labels.
         // Keep exact timestamps so time grains, predicates and selections retain their semantics.
         // Details, dimensions and non-additive measures still use raw observations.
@@ -123,21 +126,90 @@ public sealed class AccountingLedgerAnalysisPostgresDatasetSource : IPostgresRep
                        SUM(r.debit_amount) AS debit_amount, SUM(r.credit_amount) AS credit_amount,
                        SUM(r.debit_amount - r.credit_amount) AS net_amount
                 FROM (
-                    SELECT debit_account_id AS account_id, SUM(amount) AS debit_amount, 0::numeric AS credit_amount
-                    FROM accounting_register_main
-                    WHERE period >= @from_utc AND period < @to_utc_exclusive
-                    GROUP BY debit_account_id
-                    UNION ALL
-                    SELECT credit_account_id AS account_id, 0::numeric AS debit_amount, SUM(amount) AS credit_amount
-                    FROM accounting_register_main
-                    WHERE period >= @from_utc AND period < @to_utc_exclusive
-                    GROUP BY credit_account_id
+                    SELECT side.account_id, side.debit_amount, side.credit_amount
+                    FROM (
+                        SELECT debit_account_id, credit_account_id, SUM(amount) AS amount
+                        FROM accounting_register_main
+                        WHERE period >= @from_utc AND period < @to_utc_exclusive
+                          AND period_month >= date_trunc('month', @from_utc AT TIME ZONE 'UTC')::date
+                          AND period_month <= date_trunc('month', (@to_utc_exclusive - INTERVAL '1 microsecond') AT TIME ZONE 'UTC')::date
+                        GROUP BY debit_account_id, credit_account_id
+                    ) entries
+                    CROSS JOIN LATERAL (VALUES
+                        (entries.debit_account_id, entries.amount, 0::numeric),
+                        (entries.credit_account_id, 0::numeric, entries.amount)
+                    ) side(account_id, debit_amount, credit_amount)
                 ) r
                 JOIN accounting_accounts a ON a.account_id = r.account_id AND a.is_deleted = FALSE
                 GROUP BY a.account_id, a.code, a.name
             ) x
             """);
     }
+
+    private static bool SupportsOrderedDetails(PostgresReportExecutionRequest request)
+    {
+        if (request.Paging.DisablePaging
+            || request.RowGroups.Count != 0
+            || request.ColumnGroups.Count != 0
+            || request.Predicates.Count != 0
+            || request.Selection is not null
+            || request.DistinctGroups
+            || request.DetailFields.Count != 3
+            || request.Measures.Count == 0
+            || request.Measures.Any(m => m.Aggregation != ReportAggregationKind.Sum
+                || m.MeasureCode is not ("debit_amount" or "credit_amount" or "net_amount")))
+        {
+            return false;
+        }
+
+        var fields = request.DetailFields
+            .Select(f => f.FieldCode)
+            .ToHashSet(StringComparer.Ordinal);
+
+        if (!fields.SetEquals(["period_utc", "account_display", "document_display"]))
+            return false;
+
+        if (request.Sorts.Count == 0)
+            return request.DetailFields[0].FieldCode == "period_utc";
+
+        return request.Sorts[0] is
+               {
+                   FieldCode: "period_utc",
+                   MeasureCode: null,
+                   Direction: ReportSortDirection.Asc,
+                   TimeGrain: null
+               }
+            && request.Sorts.All(s => s.MeasureCode is null
+                && s.TimeGrain is null
+                && !s.AppliesToColumnAxis
+                && fields.Contains(s.FieldCode));
+    }
+
+    // Preserve the period prefix so PostgreSQL can incrementally sort a page instead of
+    // sorting the entire range. The outer builder still groups equal labels and applies
+    // the original cursor/order; a raw-row LIMIT here would change accounting results.
+    private static readonly PostgresReportSqlSource OrderedDetailSource = new("""
+        (
+            SELECT entries.period, entries.document_id, side.account_id,
+                   a.code || ' — ' || a.name AS account_display,
+                   COALESCE(d.number, LEFT(entries.document_id::text, 8)) AS document_display,
+                   side.debit_amount, side.credit_amount,
+                   side.debit_amount - side.credit_amount AS net_amount
+            FROM (
+                SELECT period, entry_id, document_id, debit_account_id, credit_account_id, amount
+                FROM accounting_register_main
+                WHERE period >= @from_utc AND period < @to_utc_exclusive
+                ORDER BY period, entry_id
+                OFFSET 0
+            ) entries
+            CROSS JOIN LATERAL (VALUES
+                (entries.debit_account_id, entries.amount, 0::numeric(18,4)),
+                (entries.credit_account_id, 0::numeric(18,4), entries.amount)
+            ) side(account_id, debit_amount, credit_amount)
+            JOIN accounting_accounts a ON a.account_id = side.account_id AND a.is_deleted = FALSE
+            LEFT JOIN documents d ON d.id = entries.document_id
+        ) x
+        """);
 
     private static readonly PostgresReportSqlSource AccountPeriodAggregateSource = new("""
         (
@@ -146,15 +218,19 @@ public sealed class AccountingLedgerAnalysisPostgresDatasetSource : IPostgresRep
                    SUM(r.debit_amount) AS debit_amount, SUM(r.credit_amount) AS credit_amount,
                    SUM(r.debit_amount - r.credit_amount) AS net_amount
             FROM (
-                SELECT debit_account_id AS account_id, period, SUM(amount) AS debit_amount, 0::numeric AS credit_amount
-                FROM accounting_register_main
-                WHERE period >= @from_utc AND period < @to_utc_exclusive
-                GROUP BY debit_account_id, period
-                UNION ALL
-                SELECT credit_account_id AS account_id, period, 0::numeric AS debit_amount, SUM(amount) AS credit_amount
-                FROM accounting_register_main
-                WHERE period >= @from_utc AND period < @to_utc_exclusive
-                GROUP BY credit_account_id, period
+                SELECT side.account_id, entries.period, side.debit_amount, side.credit_amount
+                FROM (
+                    SELECT debit_account_id, credit_account_id, period, SUM(amount) AS amount
+                    FROM accounting_register_main
+                    WHERE period >= @from_utc AND period < @to_utc_exclusive
+                      AND period_month >= date_trunc('month', @from_utc AT TIME ZONE 'UTC')::date
+                      AND period_month <= date_trunc('month', (@to_utc_exclusive - INTERVAL '1 microsecond') AT TIME ZONE 'UTC')::date
+                    GROUP BY debit_account_id, credit_account_id, period
+                ) entries
+                CROSS JOIN LATERAL (VALUES
+                    (entries.debit_account_id, entries.amount, 0::numeric),
+                    (entries.credit_account_id, 0::numeric, entries.amount)
+                ) side(account_id, debit_amount, credit_amount)
             ) r
             JOIN accounting_accounts a ON a.account_id = r.account_id AND a.is_deleted = FALSE
             GROUP BY a.account_id, a.code, a.name, r.period

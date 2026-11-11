@@ -20,6 +20,61 @@ public sealed class CashFlowIndirect_Semantics_P1Tests(PostgresTestFixture fixtu
     : IntegrationTestBase(fixture)
 {
     [Theory]
+    [InlineData(2035, 9, 1, 2035, 9, 30)]
+    [InlineData(2035, 9, 15, 2035, 10, 15)]
+    [InlineData(2035, 12, 31, 2036, 1, 1)]
+    [InlineData(2036, 2, 29, 2036, 3, 1)]
+    public async Task Snapshot_roll_forward_matches_inception_for_partial_ranges_storno_and_cash_transfers(
+        int fromYear, int fromMonth, int fromDay, int toYear, int toMonth, int toDay)
+    {
+        using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
+        await using var scope = host.Services.CreateAsyncScope();
+        var services = scope.ServiceProvider;
+        await SeedCashFlowCoAAsync(services);
+        await services.GetRequiredService<IChartOfAccountsManagementService>().CreateAsync(new CreateAccountRequest(
+            Code: "1001",
+            Name: "Bank",
+            Type: AccountType.Asset,
+            StatementSection: StatementSection.Assets,
+            CashFlowRole: CashFlowRole.CashEquivalent));
+        var from = new DateOnly(fromYear, fromMonth, fromDay);
+        var to = new DateOnly(toYear, toMonth, toDay);
+        var closed = new DateOnly(fromYear, fromMonth, 1).AddMonths(-1);
+        await PostAsync(services, Guid.NewGuid(), Utc(closed), "1000", "4000", 100m);
+        await PostAsync(services, Guid.NewGuid(), Utc(from.AddDays(-1)), "1000", "4000", 7m);
+        await PostAsync(services, Guid.NewGuid(), Utc(from), "1000", "4000", 10m);
+        await PostAsync(services, Guid.NewGuid(), Utc(to), "1000", "1100", 2m);
+        await PostAsync(services, Guid.NewGuid(), Utc(to.AddDays(1)), "1000", "4000", 900m);
+        var uow = services.GetRequiredService<IUnitOfWork>();
+        await uow.EnsureConnectionOpenAsync();
+        await uow.Connection.ExecuteAsync("""
+            INSERT INTO accounting_register_main(document_id, period, debit_account_id, credit_account_id, amount, is_storno)
+            SELECT @document, @period, revenue.account_id, cash.account_id, 1.25, TRUE
+            FROM accounting_accounts cash CROSS JOIN accounting_accounts revenue
+            WHERE cash.code = '1000' AND revenue.code = '4000';
+            INSERT INTO accounting_register_main(document_id, period, debit_account_id, credit_account_id, amount)
+            SELECT @transfer, @period, cash.account_id, bank.account_id, 3
+            FROM accounting_accounts cash CROSS JOIN accounting_accounts bank
+            WHERE cash.code = '1000' AND bank.code = '1001';
+            """, new { document = Guid.NewGuid(), transfer = Guid.NewGuid(), period = Utc(from) });
+        var reader = services.GetRequiredService<ICashFlowIndirectSnapshotReader>();
+        var expected = await reader.GetAsync(from, to);
+
+        await services.GetRequiredService<IPeriodClosingService>().CloseMonthAsync(closed, "test");
+        var actual = await reader.GetAsync(from, to);
+
+        actual.Should().BeEquivalentTo(expected, options => options
+            .Excluding(value => value.BeginningLatestClosedPeriod)
+            .Excluding(value => value.EndingLatestClosedPeriod)
+            .Excluding(value => value.BeginningRollForwardPeriods)
+            .Excluding(value => value.EndingRollForwardPeriods));
+        actual.BeginningCash.Should().Be(107m);
+        actual.EndingCash.Should().Be(117.75m);
+        actual.NetIncome.Should().Be(8.75m);
+        actual.EndingLatestClosedPeriod.Should().Be(closed);
+    }
+
+    [Theory]
     [InlineData(false, false)]
     [InlineData(true, false)]
     [InlineData(false, true)]
