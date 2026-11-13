@@ -4,7 +4,7 @@ title: Platform Overview
 
 # Platform Overview
 
-NGB Platform is a reusable foundation for building accounting-centric business applications on .NET and PostgreSQL.
+NGB Platform is a reusable foundation for building document-driven business applications on .NET and PostgreSQL.
 
 It is not a generic CRUD scaffold and not a boxed ERP product. The platform is designed for applications where the difficult parts are first-class concerns:
 
@@ -15,6 +15,13 @@ It is not a generic CRUD scaffold and not a boxed ERP product. The platform is d
 - metadata-driven UI and APIs;
 - report execution, drilldowns, and exports;
 - long-lived vertical solutions that share one platform core.
+
+Accounting, operational registers and reference registers are peer capabilities.
+An application composes the engines its business rules need, alongside documents,
+actions, reports, permissions and shared services. A workflow does not need
+accounting entries merely to use the platform.
+
+<YouTubeVideo video-id="jeZZZaD8OoM" title="NGB Platform Intro: Document-Driven Business Apps" />
 
 ## Why the platform exists
 

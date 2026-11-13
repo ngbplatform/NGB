@@ -2,6 +2,8 @@
 
 Attachments and plain-text notes belong to a stable business object identity, independently of the object's payload, document version, workflow and posting state. The editor header exposes enabled features under **More → Attachments & Notes**, with paperclip/note icons, positive-count badges and on-demand right drawers. In documents, this group follows Output and History & share. Catalog page and drawer headers use the same group. Missing read permission disables the corresponding menu item. New, unsaved objects have no content actions. Catalogs, ordinary documents and General Journal Entries use the same implementation in Property Management, Trade, Agency Billing and CRM.
 
+<YouTubeVideo video-id="QTo0E_4zKjE" title="Attachments and Notes" />
+
 ## Identity and access
 
 `BusinessObjectRef` contains `kind`, canonical `typeCode` and `id`. Supported kinds are `CatalogItem`, `Document` and `GeneralJournalEntry`. GJE must use `general_journal_entry` with its dedicated kind; the ordinary Document alias is rejected. Type aliases, arbitrary tables, chart-of-accounts items and registers are unsupported.

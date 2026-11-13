@@ -13,6 +13,8 @@ The platform's [AI Assistant](/guides/ai-assistant) is a built-in MCP client wit
 a shared conversation panel. It adds a model provider and a separate opt-in
 feature flag; external MCP clients do not require the assistant to be enabled.
 
+<YouTubeVideo video-id="_qfsOtC5R6c" title="MCP Server + AI Assistant" />
+
 ## Quick start: local Property Management
 
 For the existing PM Compose stack, set these values in `.env.pm`:

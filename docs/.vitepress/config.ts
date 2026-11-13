@@ -90,6 +90,7 @@ export default defineConfig({
           page('Architecture Overview', '/architecture/overview'),
           page('External Applications and Upgrades', '/architecture/external-app-upgrades'),
           page('AI Development Kit', '/guides/ai-development-kit'),
+          page('AI Kit Application Verification', '/guides/ai-development-kit-verification'),
           page('Layering and Dependencies', '/architecture/layering-and-dependencies'),
           page('Definitions and Metadata', '/architecture/definitions-and-metadata'),
           page('Runtime Request Flow', '/architecture/runtime-request-flow'),
@@ -204,6 +205,7 @@ export default defineConfig({
           page('Platform Extension Points', '/guides/platform-extension-points'),
           page('Extend an External Application', '/guides/extend-external-application'),
           page('AI Development Kit', '/guides/ai-development-kit'),
+          page('AI Kit Application Verification', '/guides/ai-development-kit-verification'),
           page('MCP Server', '/guides/mcp-server'),
           page('AI Assistant', '/guides/ai-assistant'),
           page('Document Actions and Work Center', '/guides/document-actions-and-work-center'),
@@ -212,7 +214,6 @@ export default defineConfig({
           page('Add a Composable Report', '/guides/add-composable-report-workflow')
         ]),
         section('Upgrade and Migration', [
-          page('AI Development Kit 3.4.0 Candidate', '/guides/ai-development-kit-release-3-4'),
           page('Migrate 2.0.0 to 3.0.0', '/guides/migrating-to-3.0'),
           page('Migrate 1.3.1 to 2.0.0', '/guides/migrating-to-2.0')
         ]),

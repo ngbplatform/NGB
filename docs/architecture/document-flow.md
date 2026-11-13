@@ -16,6 +16,8 @@ Typical relationships include:
 - settled by;
 - operational follow-up document.
 
+<YouTubeVideo video-id="ua44kdbpszA" title="Document → Action → Effects → Report: How NGB Models Business Flows" />
+
 ## Why document flow matters
 
 Without document flow, a business system becomes a collection of disconnected records.

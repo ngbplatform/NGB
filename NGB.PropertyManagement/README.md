@@ -52,7 +52,7 @@ The demo uses platform metadata and definitions to describe catalogs, documents,
 ### Document-centered workflows
 The solution models business processes through documents instead of ad hoc tables and services. This makes lifecycle, posting, audit, and user-facing explainability much more coherent.
 
-### Accounting-centric architecture
+### Integrated accounting
 The demo highlights one of the core strengths of NGB: building operational applications that are tightly integrated with accounting rather than bolting accounting on later.
 
 ### Reporting and drilldowns
@@ -94,7 +94,7 @@ This demo is intended for:
 
 - software architects evaluating NGB as a platform;
 - developers who want to understand how to build vertical solutions on top of NGB;
-- product teams exploring accounting-centric business software architecture;
+- product teams exploring document-driven business software architecture;
 - prospective customers or partners who want to see a realistic example of the platform in action.
 
 ## What this demo is not

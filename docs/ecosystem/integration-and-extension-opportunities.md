@@ -80,7 +80,7 @@ const integrationOpportunitiesChart6 = String.raw`flowchart TD
 
 # Integration and Extension Opportunities
 
-NGB Platform is designed as an accounting-first foundation for vertical business applications. It can be evaluated in more than one way: as a standalone platform core, a vertical solution accelerator, a document/workflow layer, a reporting and auditability model, or a source of integration patterns around existing business systems.
+NGB Platform is designed as a document-driven foundation for vertical business applications. It can be evaluated in more than one way: as a standalone platform core, a vertical solution accelerator, a document/workflow layer, a reporting and auditability model, or a source of integration patterns around existing business systems.
 
 This page does not claim that every integration path already exists as a finished packaged connector. Instead, it describes practical fit patterns and extension surfaces that can guide architecture discussions.
 
@@ -306,7 +306,7 @@ Potential import scenarios include:
 - reference data
 - configuration and policies
 
-Import strategy should preserve business meaning. For accounting-centric systems, importing “just rows” is often not enough.
+Import strategy should preserve business meaning. For business systems with accounting requirements, importing “just rows” is often not enough.
 
 ### Data export
 

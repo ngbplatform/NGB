@@ -1,6 +1,6 @@
 ---
 title: NGB for ERP and Accounting Software Ecosystem Teams
-description: How ERP, accounting software, ISV, and ecosystem teams can evaluate NGB Platform as an open-source accounting-first architecture foundation.
+description: How ERP, accounting software, ISV, and ecosystem teams can evaluate NGB Platform as an open-source document-driven architecture foundation.
 ---
 
 <script setup>
@@ -88,7 +88,7 @@ const ecosystemTeamsChart5 = String.raw`flowchart TD
 
 This page is for ERP platform teams, accounting software teams, ISV ecosystem teams, consultants, solution architects, and technical product evaluators who want to understand where NGB Platform may fit.
 
-NGB is an open-source, accounting-first platform foundation for building vertical business applications. It focuses on documents, catalogs, durable posting, accounting effects, operational registers, reference registers, audit history, metadata-driven UI, and reporting.
+NGB is an open-source, document-driven platform foundation for building vertical business applications. It focuses on documents, catalogs, durable posting, accounting effects, operational registers, reference registers, audit history, metadata-driven UI, and reporting.
 
 ::: info Positioning note
 NGB should be read as an open-source platform foundation and reference architecture, not as a finished one-size-fits-all replacement for established ERP products.
@@ -96,7 +96,7 @@ NGB should be read as an open-source platform foundation and reference architect
 
 ## Why this may be relevant
 
-ERP and accounting-centric software has a recurring architectural challenge: serious business systems need more than forms and tables.
+ERP and accounting software have a recurring architectural challenge: serious business systems need more than forms and tables.
 
 They need to preserve business intent, produce durable effects, support auditability, and explain reporting results later.
 
@@ -196,7 +196,7 @@ Read more: [Accounting and Posting](/architecture/accounting-posting)
 
 ### Append-only correction model
 
-Accounting-centric systems need durable history. NGB favors explicit reversals or new effects over silent mutation of posted state.
+Business systems need durable history. NGB favors explicit reversals or new effects over silent mutation of posted state.
 
 Read more: [Append-only and Storno](/architecture/append-only-and-storno)
 
@@ -229,7 +229,7 @@ NGB may be relevant to teams exploring:
 
 Possible use cases include:
 
-- evaluating architecture patterns for accounting-centric systems
+- evaluating architecture patterns for business systems with accounting requirements
 - exploring vertical business application foundations
 - prototyping new industry solutions
 - studying document-to-effect flows

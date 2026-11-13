@@ -8,6 +8,8 @@ NGB uses Keycloak as the identity provider and keeps application authorization m
 
 Keycloak owns authentication, SSO sessions, external user identity, and enabled/disabled identity-provider users. NGB owns application roles, permission assignments, effective access snapshots, access-version invalidation, menu filtering, metadata capabilities, report access, and security audit records.
 
+<YouTubeVideo video-id="zaW638VhoT8" title="User Roles &amp; Permissions" />
+
 ## Core Model
 
 The authorization model is deny-by-default.

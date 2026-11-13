@@ -13,6 +13,8 @@ The platform supports two complementary reporting styles:
 
 These two styles share one broader reporting architecture rather than existing as unrelated subsystems.
 
+<YouTubeVideo video-id="euqMDpjEcsM" title="Reports" />
+
 ## Why NGB needs both
 
 Business software needs both kinds of reports.

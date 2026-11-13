@@ -2,7 +2,7 @@
 
 The specification is [SPECIFICATION.md](../../ai-devkit/SPECIFICATION.md).
 Application users start with the [developer guide](../../docs/guides/ai-development-kit.md)
-and [candidate release notes](../../docs/guides/ai-development-kit-release-3-4.md).
+and [application verification guide](../../docs/guides/ai-development-kit-verification.md).
 Historical investigation and implementation evidence is in [implementation.md](implementation.md);
 an earlier successful run does not qualify a changed candidate.
 

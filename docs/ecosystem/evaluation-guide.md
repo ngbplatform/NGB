@@ -66,7 +66,7 @@ This guide is useful if you are:
 In a short first pass, you should be able to answer:
 
 1. What is NGB?
-2. Why is it accounting-first?
+2. How does its document-driven model support different business domains?
 3. What are the main platform concepts?
 4. How do documents become durable effects?
 5. How do verticals reuse the same platform core?

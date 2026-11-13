@@ -16,6 +16,8 @@ The panel, loading indicator, resizing and conversation behavior belong to
 `@ngbplatform/ui`; verticals supply page context and existing business capabilities.
 They do not maintain separate assistant interfaces.
 
+<YouTubeVideo video-id="_qfsOtC5R6c" title="MCP Server + AI Assistant" />
+
 ## Enable native Ollama
 
 Install Ollama natively on the host. On Apple Silicon it uses Metal. There is no

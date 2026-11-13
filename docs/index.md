@@ -1,7 +1,7 @@
 # NGB Platform Documentation
 
 <div class="doc-lead">
-This site is the consolidated platform documentation for <strong>NGB Platform</strong> — a reusable foundation for accounting-centric business applications on <strong>.NET</strong> and <strong>PostgreSQL</strong>.
+This site is the consolidated platform documentation for <strong>NGB Platform</strong> — a reusable foundation for document-driven business applications on <strong>.NET</strong> and <strong>PostgreSQL</strong>.
 </div>
 
 ## Start here
@@ -15,17 +15,17 @@ This site is the consolidated platform documentation for <strong>NGB Platform</s
 - [Host composition](/start-here/host-composition)
 - [Reading path](/start-here/reading-path)
 
-## AI Development Kit 3.4.0 candidate
+## AI Development Kit
 
 The AI Development Kit supplies versioned Codex and Claude Code guidance, public
 SDK references, application tests and a shared CLI for independent applications.
-Registry installation requires the matching 3.4.0 packages to be published.
+The Kit includes application-owned customization, update and recovery workflows.
 
 - [AI Development Kit guide](/guides/ai-development-kit)
-- [3.4.0 candidate release notes](/guides/ai-development-kit-release-3-4)
+- [Verify an application](/guides/ai-development-kit-verification)
 - [Upgrade from 3.3.0 to 3.4.0](/architecture/external-app-upgrades#migrate-3-3-0-to-3-4-0)
 
-## MCP Server and AI Assistant in 3.3.0
+## MCP Server and AI Assistant
 
 MCP exposes the hosting application's authorized business reads as the current user. It runs in the existing API process and is enabled with `FeatureManagement:Mcp`.
 

@@ -15,6 +15,8 @@ description: "Layered architecture of NGB Platform and how hosts, runtime, defin
 > - [API Source Map](/platform/api-source-map)
 > - [Source-Anchored Class Maps](/platform/source-anchored-class-maps)
 
+<YouTubeVideo video-id="Kbi38e7yUf4" title="Architecture: Documents, Posting, Registers, Reporting" />
+
 ## How to read this page
 
 - Treat this page as the **platform map**.

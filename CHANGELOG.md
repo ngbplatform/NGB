@@ -7,8 +7,8 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
-Target release: **3.4.0**. This is a release candidate; publication and complete
-release certification are pending.
+Target release: **3.4.0**. Publication is pending. Local certification results
+are recorded against their exact source and package identities.
 
 ### Added
 
@@ -22,11 +22,28 @@ release certification are pending.
 ### Changed
 
 - Coordinated SDK, UI, template, CLI, Kit and private workspace versions at 3.4.0.
-- Release verification binds Kit checks, real-agent evaluations and full platform
-  backend/frontend coverage to the exact release candidate.
+- Release verification binds Kit checks and real-agent evaluations to the exact
+  release candidate. The maintainer runs full Backend/Frontend tests and coverage
+  separately; FULL Certification and GitHub Actions do not repeat those suites.
+- Ledger Analysis and Cash Flow reuse existing aggregates for eligible complete
+  decimal-sum pivots, retaining the original SQL calculation when completeness or
+  exact decimal arithmetic cannot be established. Public APIs, report results,
+  continuation tokens and admission limits are preserved. These optimizations
+  require updated SDK packages and no schema or application configuration change.
+  Measured capacity remains specific to the tested application and dataset.
 
 ### Fixed
 
+- Accounting refuses writes in open months before a later closed month, preserving
+  downstream balances until an authorized reopening.
+- Operational-register cancellation reverses unmatched effects without duplicating
+  prior history; changed dates invalidate subsequent tracked projection months.
+- Draft saves advance the version used by subsequent document actions. Generic
+  Draft/catalog saves still do not enforce an expected-version check.
+- PostgreSQL background jobs retain execution ownership beyond the Hangfire lease
+  and signal cancellation when that ownership is lost.
+- Operational balance checks include earlier open-month activity; profit-and-loss
+  activity excludes synthetic fiscal-year closing entries.
 - Reference-register fallback Unpost traverses recorder history, including future
   effective dates and multiple versions across pages, without cancelling a key twice.
 - Periodic reference registers subordinate to a recorder distinguish automatic
@@ -45,10 +62,11 @@ release certification are pending.
   retained; previously incorrect states are not automatically reconstructed.
   See the [RR storage upgrade procedure](docs/architecture/external-app-upgrades.md#reference-register-storage-update).
 
-- Follow the [3.3.0 → 3.4.0 upgrade guide](docs/architecture/external-app-upgrades.md#migrate-330-to-340)
+- Follow the [3.3.0 → 3.4.0 upgrade guide](docs/architecture/external-app-upgrades.md#migrate-3-3-0-to-3-4-0)
   for target CLI acquisition, preview/apply and preservation of custom instructions.
-- See the [candidate release notes](docs/guides/ai-development-kit-release-3-4.md)
-  for supported execution, validation and known release prerequisites.
+- Use the [AI Development Kit guide](docs/guides/ai-development-kit.md) for
+  development and ownership, and the [application verification guide](docs/guides/ai-development-kit-verification.md)
+  for validation, test profiles and recovery.
 
 ## [3.3.0] - 2026-10-24
 

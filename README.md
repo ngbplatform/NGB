@@ -598,7 +598,7 @@ See the [application guide](docs/architecture/external-app-upgrades.md#create-an
 
 ### Upgrade an existing application
 
-Follow the [3.3.0 → 3.4.0 upgrade guide](docs/architecture/external-app-upgrades.md#migrate-330-to-340)
+Follow the [3.3.0 → 3.4.0 upgrade guide](docs/architecture/external-app-upgrades.md#migrate-3-3-0-to-3-4-0)
 for the current transition, preview/apply commands, application validation, backups
 and database migration. The guide also retains the registered 3.1.0 → 3.2.0 and
 3.2.0 → 3.3.0 paths; it does not define a direct 3.1.0 → 3.4.0 upgrade. Installing

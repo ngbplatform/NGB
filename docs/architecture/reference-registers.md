@@ -14,6 +14,8 @@ They are useful when the system needs durable, time-aware reference values such 
 - exchange or factor tables;
 - contract terms that are read as effective state rather than as operational balances.
 
+<YouTubeVideo video-id="Ej0iDW3zyic" title="Reference Registers" />
+
 ## Why Reference Registers exist
 
 Not all business facts are transactional quantities or ledger entries.

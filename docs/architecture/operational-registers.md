@@ -17,6 +17,8 @@ Examples include:
 - service capacity consumption;
 - quantity on order.
 
+<YouTubeVideo video-id="Ra54WlrXSJU" title="Operational Registers" />
+
 ## Why Operational Registers exist
 
 Business systems often need projections like:

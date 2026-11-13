@@ -2,6 +2,8 @@
 
 This guide describes the 2.0 extension path used by the four sample verticals. Existing 1.3.1 verticals must first follow the [2.0 migration guide](./migrating-to-2.0.md).
 
+<YouTubeVideo video-id="2l_7sQvYfJs" title="Document Actions + Work Center" />
+
 ## Register an action
 
 Implement `IDocumentActionDefinitionsContributor` and add definitions through `DocumentActionDefinitionsBuilder`.

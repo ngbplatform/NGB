@@ -55,7 +55,7 @@ The same platform foundation can be used to build a different business applicati
 Trade workflows are modeled through first-class business documents rather than isolated endpoint logic.
 
 ### Accounting integration from the start
-The demo highlights NGB’s accounting-centric approach by showing how operational transactions and financial consequences are designed together.
+The demo shows how Trade combines operational workflows with NGB’s accounting capabilities to keep transactions and their financial consequences consistent.
 
 ### Metadata-driven extensibility
 Definitions, metadata, and runtime orchestration make it possible to extend the solution in a structured and reusable way.

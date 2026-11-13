@@ -1,6 +1,6 @@
 ---
 title: NGB Platform Architecture Brief
-description: A concise architecture overview of NGB Platform as an accounting-first foundation for vertical business applications.
+description: A concise architecture overview of NGB Platform as a document-driven foundation for vertical business applications.
 ---
 
 <script setup>
@@ -136,11 +136,11 @@ const architectureBriefChart6 = String.raw`flowchart TD
 
 # NGB Platform Architecture Brief
 
-NGB Platform is an open-source, accounting-first foundation for building vertical business applications with durable business documents, catalogs, append-only effects, operational registers, reference registers, audit history, and reporting.
+NGB Platform is an open-source, document-driven foundation for building vertical business applications with durable business documents, catalogs, append-only effects, operational registers, reference registers, audit history, and reporting.
 
-It is designed for systems where business data cannot be treated as simple CRUD rows. In accounting-centric domains, a user action often has long-lived consequences: documents are posted, effects become durable, reports must remain explainable, and later corrections should be modeled as explicit reversals or new business events rather than silent data mutation.
+It is designed for systems where business data cannot be treated as simple CRUD rows. In document-driven business domains, a user action often has long-lived consequences: documents are posted, effects become durable, reports must remain explainable, and later corrections should be modeled as explicit reversals or new business events rather than silent data mutation.
 
-NGB is built around that premise.
+NGB is built around that premise. Accounting, operational registers and reference registers are peer engines. Applications compose them according to their business rules; document workflows can also produce no movements when explicitly configured that way.
 
 It uses .NET and PostgreSQL as the backend foundation, Vue for the web client, and deployment patterns that are intended to fit modern containerized and Kubernetes-oriented environments.
 
@@ -148,9 +148,11 @@ It uses .NET and PostgreSQL as the backend foundation, Vue for the web client, a
 This page is the short architecture entry point. It is intentionally higher-level than the deep source maps and subsystem chapters. For implementation details, follow the links in [What to read next](#what-to-read-next).
 :::
 
+<YouTubeVideo video-id="bgMmbLHz3M8" title="Why CRUD Is Not Enough for Serious Business Apps" />
+
 ## What NGB is
 
-NGB is a reusable platform core for building accounting-aware vertical business systems.
+NGB is a reusable platform core for building document-driven vertical business systems.
 
 The platform provides common primitives that many business applications need:
 

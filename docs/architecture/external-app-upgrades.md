@@ -4,13 +4,12 @@ Use the official template to create an independent application, then update its
 NuGet/npm dependencies through supported upgrade transitions. This page covers
 application creation, extension boundaries and the upgrade contract.
 
-The current candidate targets **3.4.0**, with **3.3.0 → 3.4.0** as its registered
-upgrade transition and the [AI Development Kit](../guides/ai-development-kit.md).
-The historical 3.2.0 → 3.3.0 procedure remains below. Registry commands require the target to be published;
-use local packages before publication. A transition is certified only when its
-candidate evidence passes and registry verification subsequently permits promotion.
-Merely updating a version in this repository does not establish a published or
-certified release.
+The examples target **3.4.0**, including the **3.3.0 → 3.4.0** upgrade transition
+and the [AI Development Kit](../guides/ai-development-kit.md). The historical
+3.2.0 → 3.3.0 procedure remains below. Registry commands require published target
+packages; use the local package procedure before publication. Local certification
+validates an exact source/package set. Publication and verification of the packages
+downloaded from registries are separate release operations.
 
 ## Create an application
 

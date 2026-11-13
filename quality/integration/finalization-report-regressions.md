@@ -22,7 +22,7 @@ All paths below are relative to the repository root, under `NGB.Runtime.Integrat
 | `ProgressAndCalendar` | 2 | Two/four continuously committing writers remain running through four successful finalization passes. Each pass performs one prefix preparation. Final sums match independent per-writer commit counts. |
 | `ProgressAndCalendar` | 4 | UTC month start, last representable microsecond before month end, next-month midnight, leap February, ordinary February, a 30-day month and December/January rollover. Both prefix and tail contribute exact expected values. |
 
-The prior `CatchupConcurrency`, `CatchupProgress` and `CatchupEdges` cases additionally cover accounting-first lock order, dirty predecessor snapshots, eight concurrent finalizers, pending allocation commit/rollback, ID gaps, signed storno, zero-row pruning, zero-resource registers, a real database-detected deadlock, cancellation during publication, SQL failure between projection updates, bounded publication retries and prepared-object lifetime.
+The prior `CatchupConcurrency`, `CatchupProgress` and `CatchupEdges` cases additionally cover lock order with accounting locks acquired before operational-register locks, dirty predecessor snapshots, eight concurrent finalizers, pending allocation commit/rollback, ID gaps, signed storno, zero-row pruning, zero-resource registers, a real database-detected deadlock, cancellation during publication, SQL failure between projection updates, bounded publication retries and prepared-object lifetime.
 
 ## Added HTTP coverage
 
