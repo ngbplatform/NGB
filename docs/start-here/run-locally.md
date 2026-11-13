@@ -122,6 +122,7 @@ From the repository root on macOS/Linux or in WSL2:
 
 ```bash
 npm --prefix ui ci
+npm --prefix quality ci
 npm --prefix ui run pack:platform-ui -- --local-candidate
 bash packaging/nuget/pack-platform.sh
 ```
@@ -130,7 +131,8 @@ The UI archive must exist first. NuGet packing includes the application template
 whose lockfile preparation reads that archive. `pack-platform.sh` packages the
 complete set from `packaging/nuget/projects.txt`, refreshes `artifacts/nuget`,
 invalidates replaced versions in `artifacts/nuget-cache`, and restores `NGB.sln`.
-It also regenerates template and CRM lockfile data against the package set.
+It selects the pinned tools, refreshes Kit package identities after checking the
+public contracts, regenerates consumer lockfiles and packs the matching CLI.
 
 CRM's local web image uses `artifacts/npm/ngbplatform-ui-local.tgz`. Re-run package
 preparation after changing the platform. `--local-candidate` permits npm packing
