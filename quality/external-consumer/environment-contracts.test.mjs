@@ -5,7 +5,7 @@ import { toolchain } from './environment.mjs'
 
 test('host tools, CI and Linux quality image use one version contract', async () => {
   const dockerfile = await readFile(new URL('./Dockerfile.quality', import.meta.url), 'utf8')
-  const workflow = await readFile(new URL('../../.github/workflows/external-app-certification.yml', import.meta.url), 'utf8')
+  const workflow = await readFile(new URL('../../.github/workflows/platform-packages.yml', import.meta.url), 'utf8')
   assert.ok(dockerfile.includes(`dotnet/sdk:${toolchain.dotnet}`))
   assert.ok(dockerfile.includes(`node:${toolchain.node}`))
   assert.ok(dockerfile.includes(`grafana/k6:${toolchain.k6}@sha256:`))

@@ -78,7 +78,9 @@ async function bootstrap(): Promise<void> {
   app.mount('#app')
 }
 
-void bootstrap().catch((error: unknown) => {
-  const root = document.getElementById('app')
-  if (root) root.textContent = error instanceof Error ? error.message : 'Application startup failed.'
-})
+export function startApplication(): Promise<void> {
+  return bootstrap().catch((error: unknown) => {
+    const root = document.getElementById('app')
+    if (root) root.textContent = error instanceof Error ? error.message : 'Application startup failed.'
+  })
+}

@@ -45,7 +45,7 @@ public sealed class TypedDocumentGuardTests
         {
             var equipment = await PostAsync<CatalogItemDto>(admin, "/api/catalogs/example.equipment",
                 Payload(("display", "Guarded inspection equipment")));
-            payload = Payload(("equipment_id", equipment.Id), ("result", "Passed"));
+            payload = CompleteInspectionPayload(equipment.Id);
         }
 
         var draft = await PostAsync<DocumentDto>(admin, "/api/documents/" + typeCode, payload);

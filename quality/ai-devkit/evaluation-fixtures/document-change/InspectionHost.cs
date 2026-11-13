@@ -14,9 +14,10 @@ using NGB.Definitions.Documents.Actions;
 using NGB.Persistence.AuditLog;
 using NGB.Persistence.Security;
 using NGB.Persistence.UnitOfWork;
+using NGB.Runtime.Catalogs;
+using NGB.Runtime.Documents;
 using NGB.Runtime.Security;
 using NGB.Runtime.UnitOfWork;
-using Testcontainers.PostgreSql;
 using Xunit;
 
 namespace EquipmentInspection.IntegrationTests;
@@ -32,20 +33,22 @@ internal sealed class InspectionHost(
 {
     public const string AdministratorRoleCode = ApplicationRoles.Administrator;
 
-    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine").Build();
+    private TestDatabase? _database;
     private readonly TestIdentity _identity = new(browserOrigin);
     private WebApplicationFactory<global::Program>? _app;
     private Uri? _origin;
 
     public IServiceProvider Services => _app!.Services;
 
-    public string ConnectionString => _postgres.GetConnectionString();
+    public string ConnectionString => _database?.ConnectionString
+        ?? throw new InvalidOperationException("Start the test host first.");
     public string IdentityIssuer => _identity.Issuer;
 
     public async Task StartAsync()
     {
-        await _postgres.StartAsync();
-        var connection = _postgres.GetConnectionString();
+        var infrastructure = await TestInfrastructure.GetAsync();
+        _database = await infrastructure.CreateDatabaseAsync();
+        var connection = _database.ConnectionString;
         if (prepareDatabase is not null)
         {
             await prepareDatabase(connection);
@@ -89,6 +92,11 @@ internal sealed class InspectionHost(
         var origin = _app.Services.GetRequiredService<IServer>().Features
             .Get<IServerAddressesFeature>()!.Addresses.Single();
         _origin = new Uri(origin);
+
+        // Validate migrated metadata before exercising the generated HTTP behavior.
+        await using var scope = _app.Services.CreateAsyncScope();
+        await scope.ServiceProvider.GetRequiredService<ICatalogSchemaValidationService>().ValidateAllAsync();
+        await scope.ServiceProvider.GetRequiredService<IDocumentSchemaValidationService>().ValidateAllAsync();
     }
 
     public object BrowserSettings => new
@@ -161,7 +169,8 @@ internal sealed class InspectionHost(
             }
             finally
             {
-                await _postgres.DisposeAsync();
+                if (_database is not null)
+                    await _database.DisposeAsync();
             }
         }
     }

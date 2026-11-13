@@ -23,6 +23,11 @@ internal static class InspectionRequests
             field => JsonSerializer.SerializeToElement(field.Value)));
     }
 
+    internal static RecordPayload CompleteInspectionPayload(Guid equipmentId, string result = "Passed")
+    {
+        return Payload(("equipment_id", equipmentId), ("result", result));
+    }
+
     internal static async Task<T> PostAsync<T>(HttpClient client, string path, object payload)
     {
         using var response = await client.PostAsJsonAsync(path, payload);
@@ -63,6 +68,15 @@ internal static class InspectionRequests
         Assert.Equal(code, error.GetProperty("error").GetProperty("code").GetString());
     }
 
+    internal static async Task AssertEquivalentJsonAsync(HttpResponseMessage expected, HttpResponseMessage actual)
+    {
+        await EnsureSuccessAsync(expected);
+        await EnsureSuccessAsync(actual);
+        using var expectedJson = JsonDocument.Parse(await expected.Content.ReadAsByteArrayAsync());
+        using var actualJson = JsonDocument.Parse(await actual.Content.ReadAsByteArrayAsync());
+        Assert.True(JsonElement.DeepEquals(expectedJson.RootElement, actualJson.RootElement), "JSON response values differ.");
+    }
+
     internal static async Task AssertNoEffectsAsync(HttpClient client, string path)
     {
         var effects = await client.GetFromJsonAsync<DocumentEffectsDto>(path + "/effects", Json);
@@ -76,7 +90,7 @@ internal static class InspectionRequests
         var equipment = await PostAsync<CatalogItemDto>(client, "/api/catalogs/example.equipment",
             Payload(("display", "Lifecycle inspection unit")));
         var draft = await PostAsync<DocumentDto>(client, "/api/documents/example.inspection",
-            Payload(("equipment_id", equipment.Id), ("result", "Passed")));
+            CompleteInspectionPayload(equipment.Id));
         var path = $"/api/documents/example.inspection/{draft.Id}";
         var state = await client.GetFromJsonAsync<DocumentEditorStateDto>(path + "/editor-state", Json);
         return (path, state!.DocumentVersion);

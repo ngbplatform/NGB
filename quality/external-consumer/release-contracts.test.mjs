@@ -133,8 +133,9 @@ test('matrix binds all mandatory gates, stages, exact versions and profiles', as
     incomplete.profiles[id].assertions = incomplete.profiles[id].assertions.filter(value => value !== 'coordinatedCliKitUpgrade')
     assert.throws(() => validateMatrix(incomplete), /Missing coordinated CLI\/Kit upgrade assertion/)
   }
-  assert.equal(matrix.gates.filter(gate => gate.blocks === 'candidate').length, 30)
-  for (const id of ['backend-quality', 'frontend-quality', 'regression-quality']) {
+  assert.equal(matrix.gates.filter(gate => gate.blocks === 'candidate').length, 24)
+  for (const id of ['backend-quality', 'frontend-quality', 'regression-quality', 'browser-quality',
+    'mcp-contract', 'mcp-verticals', 'full-backend-coverage', 'full-frontend-coverage', 'full-quality']) {
     assert.ok(!matrix.gates.some(gate => gate.id === id))
     const stale = structuredClone(matrix)
     stale.gates.push({ id, blocks: 'candidate', command: 'bash run-full-quality.sh', assertions: ['passed'] })
@@ -142,6 +143,9 @@ test('matrix binds all mandatory gates, stages, exact versions and profiles', as
   }
   for (const mutate of [
     value => { value.source = '^3.1.0' },
+    value => { value.schemaVersion = 3 },
+    value => { delete value.scope.manualRegressionOnly },
+    value => { value.scope.manualRegressionOnly.pop() },
     value => { value.source = value.target },
     value => { delete value.profiles['clean-starter'] },
     value => { value.gates.pop() },
@@ -172,14 +176,16 @@ test('historical 3.2 certification retains all original gates and 3.3 cannot dro
   assert.throws(() => validateMatrix(current), /MCP gates are mandatory/)
 })
 
-test('AI Kit releases require both npm artifacts and all Kit and complete regression gates', async () => {
+test('AI Kit releases require both npm artifacts and Kit gates with platform regression kept manual', async () => {
   assert.equal(includesAiKit('3.3.0'), false)
   assert.equal(includesAiKit('2.9.0'), false)
   assert.equal(includesAiKit('3.4.0'), true)
   assert.equal(includesAiKit('4.0.0'), true)
   const matrix = JSON.parse(await readFile(new URL('./matrix.json', import.meta.url), 'utf8'))
   validateMatrix(matrix)
-  assert.throws(() => validateMatrix({ ...matrix, schemaVersion: 2 }), /AI Kit and full regression/)
+  assert.throws(() => validateMatrix({ ...matrix, schemaVersion: 2 }), /separate manual regression scope/)
+  assert.deepEqual(matrix.scope.manualRegressionOnly, ['platform-backend-tests', 'platform-frontend-tests',
+    'full-backend-coverage', 'full-frontend-coverage'])
   const inventory = { target: '3.4.0', packages: [{ id: 'T', kind: 'template' }] }
   const manifest = { schemaVersion: 1, version: '3.4.0', artifacts: [
     'nuget-release/T.3.4.0.nupkg', 'npm/ngbplatform-ui-3.4.0.tgz', 'npm/ngbplatform-cli-3.4.0.tgz',

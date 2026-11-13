@@ -1,6 +1,5 @@
 using System.Net;
 using System.Net.Http.Json;
-using System.Text.Json;
 using NGB.Contracts.Documents;
 using NGB.Contracts.Metadata;
 using Xunit;
@@ -27,9 +26,7 @@ public sealed class InspectionLifecycleTests
 
         using var retry = await ExecutePostAsync(admin, path, version, "post-inspection");
         var replayed = await ReadActionAsync(retry);
-        Assert.True(JsonElement.DeepEquals(
-            JsonSerializer.SerializeToElement(posted, Json),
-            JsonSerializer.SerializeToElement(replayed, Json)));
+        await AssertEquivalentJsonAsync(response, retry);
         Assert.Equal(posted.ExecutionId, replayed.ExecutionId);
         Assert.Equal(posted.DocumentVersion, replayed.DocumentVersion);
 

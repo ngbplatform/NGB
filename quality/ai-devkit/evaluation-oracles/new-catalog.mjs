@@ -7,10 +7,12 @@ export const harnessSha256 = {
   'AgentAcceptance.csproj': '278434490d506d1be70eab74a6944d4a1614ea51661e00bc8ca5140e4be42c6d',
   'Controllers.cs': '81ce3d09eeae2a1db236373792ce45afd49e43e8aa02aa80b4ea26ed977cf7b9',
   'CatalogAcceptance.cs': '85f0dc8374bb9e1516d416ebdde3d5e16e1b246e86b86e9818080d74daf56c76',
-  'InspectionHost.cs': '5883a1caaf1fecaa7a1997f8eeed6cde376241d1afc1d23e3cc77579170e95f4',
+  'InspectionHost.cs': '308d11ba72002e3fe2e48a916a017f8276bdc20369ed06342ca4081481043929',
   'InspectionPermissionSource.cs': '0f1355c5f82d4d9f549ec47cb54a170ba26e98864a6f63ac1d49d088b453f115',
   'InspectionRequests.cs': '6d29f0826cdb6be7b7c87fb7732ef078e93038cd124d81cb07b38764cbcd1d59',
-  'TestIdentity.cs': '1ea714b3727d846b9a455ab1f0a49eb1931b8bda6fde54cac2b696173fa76466',
+  'TestInfrastructure.cs': '7888db0e65288a191869e051d93e5c2f80bf2b949394d09596398a283230e311',
+  'InspectionTestFramework.cs': 'a3886e817857ecbf234eb1bd67c7436a2e967a3d316825f1a9326e507ee973d4',
+  'TestIdentity.cs': 'fbe9350164e3d66abb762bc4ad087435baa553f52a7b237804da4d3e2464fe2b',
   'xunit.runner.json': 'ebeeae03ee3082c11aeb2729d9d0c4bd489a1c86a2a45078c63016c3da3bb66c',
 }
 

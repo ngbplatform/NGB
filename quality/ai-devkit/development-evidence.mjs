@@ -12,6 +12,16 @@ export function reviewFrontendTests(changed, reviewed) {
   assert.deepEqual(reviewed, tests, 'Review every changed frontend test source before executing it.')
 }
 
+export function frontendUnitFailure(report) {
+  const failures = (report?.testResults ?? []).flatMap(file => {
+    const assertions = (file.assertionResults ?? []).filter(result => result.status === 'failed')
+    return assertions.map(result => result.fullName || result.title || file.name)
+  }).filter(name => typeof name === 'string' && name.length > 0)
+  return failures.length
+    ? `${failures.length} frontend test(s) failed: ${failures.slice(0, 3).map(name => name.replace(/\s+/g, ' ').slice(0, 240)).join('; ')}`
+    : null
+}
+
 export function verifyAuthoredFrontend({ files, webRoot, unit, coverage, browser }) {
   const prefix = webRoot.replaceAll('\\', '/').replace(/\/$/, '') + '/'
   const paths = Object.keys(files).filter(path => path.startsWith('web/')).map(path => path.slice(4)).sort()

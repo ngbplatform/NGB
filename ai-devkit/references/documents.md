@@ -46,7 +46,8 @@ effects. Inspect its resolved signature before implementing an endpoint.
 
 Idempotent replay returns the original action result, including its original
 document version; a client must refresh editor state before issuing a new action.
-Compare JSON values semantically rather than relying on object-property order.
+Compare the complete JSON values using `InspectionRequests.AssertEquivalentJsonAsync`
+in the example. A stored replay can serialize object properties in a different order.
 Reusing a key for a different request returns `document_action.idempotency_conflict`;
 a new request with a stale expected version returns `document.version_conflict`.
 
@@ -171,14 +172,6 @@ and update. Register it as that interface in DI; `AddDraftValidator<T>` is for t
 registry validator, not the payload validator. Missing parts on update are not a
 request to clear them.
 
-Do not assume that a metadata `MaxLength` alone produces an HTTP validation
-error before persistence. Enforce application input limits in a payload validator
-for both create and update, while keeping incomplete Draft fields nullable.
-For example, an optional completion note can reject more than 2000 characters
-in Draft input and require nonwhitespace persisted text separately at Post.
-Test the exact boundary, rejected updates and unchanged saved state; a database
-column length constraint is not a substitute for a useful API validation error.
-
 `ChecklistPostValidator` checks persisted completeness: at least one check must
 have a description and a result, and every supplied check must be complete. A
 false result is a completed observation, so it does not prevent recording the
@@ -195,6 +188,41 @@ authorized transitions and persisted state through supported contracts. The
 example exercises both administrator kinds without manual grants. It exposes the
 checklist through the generic API; its web fixture does not implement a tabular
 checklist editor.
+
+### Draft text limits
+
+In SDK 3.4.0, document metadata `MaxLength` describes the field and checks schema
+compatibility; the generic Draft writer does not enforce that length on input.
+Map `ColumnType.String` to PostgreSQL `text`, even when metadata has `MaxLength`.
+`varchar(n)` fails the SDK's physical schema validation. Enforce a database length
+limit with `CHECK (char_length(column) <= limit)`. That constraint alone can produce
+HTTP 500 for an oversized value, so also reject invalid input before persistence.
+See [physical schema validation](persistence.md#typed-schema-validation-and-posted-document-guards).
+
+Use `NGB.Runtime.Documents.Validation.IDocumentDraftPayloadValidator` in the
+application Runtime project. Implement **both** `ValidateCreateDraftPayloadAsync`
+and `ValidateUpdateDraftPayloadAsync`, expose the document's exact `TypeCode`, and
+register it with `services.AddScoped<IDocumentDraftPayloadValidator, YourValidator>()`.
+This interface is resolved from DI; `AddDraftValidator<T>` binds a different
+contract for common registry fields and does not register a payload validator.
+
+The working [ChecklistPayloadValidator](../examples/equipment-inspection/EquipmentInspection.Runtime/ChecklistPayloadValidator.cs)
+validates optional head and part text on both paths. Its limit comes from the
+same Definitions constant as metadata. Head `payload.Fields` values are raw
+`JsonElement`s; match names case-insensitively, preserve omitted fields on partial
+updates, and allow null/empty/whitespace when Draft permits them. The generic
+String conversion accepts other JSON values as text; validate that converted
+representation too. Part rows supplied to the validator are already typed.
+Throw `NgbArgumentInvalidException` with the field name for HTTP 400; do not
+truncate or silently normalize saved text.
+
+Post completeness remains separate: an optional completion note may have a Draft
+length limit and require nonwhitespace persisted text only at Post. A Post
+validator cannot protect Draft create/update. Run HTTP tests for the exact limit,
+one character over it on **both** create and update, nullable Draft values and
+omitted-field updates. Rejected writes must leave saved fields, parts, version,
+audit and document count unchanged. See
+[ChecklistHttpTests](../examples/equipment-inspection/EquipmentInspection.IntegrationTests/ChecklistHttpTests.cs).
 
 ## Database protection of posted typed records
 

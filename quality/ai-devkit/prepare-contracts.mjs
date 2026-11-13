@@ -10,25 +10,35 @@ import { readNpmArchive } from '../../packaging/templates/content/infrastructure
 import { digest, portablePath } from '../../packaging/templates/content/infrastructure/ngb/kit-contracts.mjs'
 import { assemblyMetadata } from '../../packaging/templates/content/infrastructure/ngb/resolved-data.mjs'
 import { executionEnvironment, runTool } from '../../packaging/templates/content/infrastructure/ngb/process.mjs'
+import { assertReferenceIdentityRefresh } from './contract-references.mjs'
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
-const { values } = parseArgs({ options: { packages: { type: 'string' }, write: { type: 'boolean' } } })
-assert.ok(values.packages, 'Use --packages <sealed-candidate>; --write explicitly refreshes generated contract references.')
-const candidate = resolve(values.packages)
-const manifest = JSON.parse(await readFile(join(candidate, 'release-manifest.json'), 'utf8'))
+const { values } = parseArgs({ options: {
+  packages: { type: 'string' }, feed: { type: 'string' }, write: { type: 'boolean' },
+  'refresh-identities': { type: 'boolean' },
+} })
+assert.ok(Boolean(values.packages) !== Boolean(values.feed), 'Use either --packages <sealed-candidate> or --feed <runtime-package-directory>.')
+assert.ok(!(values.write && values['refresh-identities']), 'Choose --write or --refresh-identities.')
 const inventory = JSON.parse(await readFile(join(repository, 'packaging/nuget/baselines.json'), 'utf8'))
-assertArtifactInventory(manifest, inventory)
+const candidate = values.packages ? resolve(values.packages) : null
+const manifest = candidate ? JSON.parse(await readFile(join(candidate, 'release-manifest.json'), 'utf8')) : null
+if (manifest) assertArtifactInventory(manifest, inventory)
+const version = manifest?.version ?? inventory.target
 const canonical = JSON.parse(await readFile(join(repository, 'ai-devkit/kit-source.json'), 'utf8'))
-assert.equal(manifest.version, canonical.version)
+assert.equal(version, canonical.version)
 const stage = await mkdtemp(join(tmpdir(), 'ngb-contract-reference-'))
 const generated = new Map()
 const artifacts = new Map()
 const load = async path => {
-  const identity = manifest.artifacts.find(item => item.path === path)
-  assert.ok(identity, `Missing sealed artifact: ${path}`)
-  const bytes = await readFile(join(candidate, path))
-  assertArtifactIdentity(identity, bytes)
-  artifacts.set(path, identity.sha256)
+  const source = candidate ? join(candidate, path)
+    : path.startsWith('nuget-release/') ? join(resolve(values.feed), basename(path)) : join(repository, 'artifacts', path)
+  const bytes = await readFile(source)
+  if (manifest) {
+    const identity = manifest.artifacts.find(item => item.path === path)
+    assert.ok(identity, `Missing sealed artifact: ${path}`)
+    assertArtifactIdentity(identity, bytes)
+  }
+  artifacts.set(path, digest(bytes))
   return bytes
 }
 try {
@@ -39,15 +49,16 @@ try {
     return result.output
   }
   assert.equal((await invoke(['--version'])).trim(), '10.0.401', 'Reference generation uses the pinned .NET SDK.')
-  const template = unzipSync(await load(`nuget-release/NGB.Platform.Templates.${manifest.version}.nupkg`), {
+  const template = candidate ? unzipSync(await load(`nuget-release/NGB.Platform.Templates.${version}.nupkg`), {
     filter: entry => entry.name.startsWith('content/infrastructure/validation/'),
-  })
+  }) : null
   const helper = join(stage, 'helper')
   await mkdir(helper)
   for (const name of ['Ngb.Validation.csproj', 'AssemblyInspector.cs', 'Program.cs', 'packages.lock.json']) {
-    const bytes = template[`content/infrastructure/validation/${name}`]
+    const source = await readFile(join(repository, 'packaging/templates/content/infrastructure/validation', name))
+    const bytes = template ? template[`content/infrastructure/validation/${name}`] : source
     assert.ok(bytes, `Template metadata helper is incomplete: ${name}`)
-    assert.deepEqual(Buffer.from(bytes), await readFile(join(repository, 'packaging/templates/content/infrastructure/validation', name)),
+    assert.deepEqual(Buffer.from(bytes), source,
       'Repack the template after changing the metadata helper.')
     await writeFile(join(helper, name), bytes)
   }
@@ -58,7 +69,7 @@ try {
   const inspector = join(helper, 'bin/Release/net10.0/Ngb.Validation.dll')
   const packages = []
   for (const item of inventory.packages.filter(item => item.kind === 'runtime').sort((a, b) => a.id.localeCompare(b.id, 'en'))) {
-    const artifact = `nuget-release/${item.id}.${manifest.version}.nupkg`
+    const artifact = `nuget-release/${item.id}.${version}.nupkg`
     const bytes = await load(artifact)
     const entries = unzipSync(bytes, { filter: entry => {
       if (!/^lib\/net10\.0\/[^/]+\.dll$/.test(entry.name)) return false
@@ -79,18 +90,18 @@ try {
         methods: [...new Set(members.filter(member => member.kind === 'method').map(member => member.name))].sort(),
         fields: [...new Set(members.filter(member => member.kind === 'field').map(member => member.name))].sort(),
       })).sort((a, b) => a.name.localeCompare(b.name, 'en'))
-    const snapshot = { schemaVersion: 1, package: item.id, version: manifest.version,
+    const snapshot = { schemaVersion: 1, package: item.id, version,
       packageSha256: artifacts.get(artifact), assembly: { name: contract.name, version: contract.version, sha256: contract.sha256 },
       contractSha256: digest(JSON.stringify(contract.publicContracts)), types }
     const reference = `references/contracts/${item.id}.json`
     generated.set(reference, `${JSON.stringify(snapshot, null, 2)}\n`)
     packages.push({ package: item.id, reference, types: types.length, contractSha256: snapshot.contractSha256 })
   }
-  const uiArtifact = `npm/ngbplatform-ui-${manifest.version}.tgz`
+  const uiArtifact = `npm/ngbplatform-ui-${version}.tgz`
   const ui = readNpmArchive(await load(uiArtifact))
   const metadata = JSON.parse(ui.get('package/package.json').toString('utf8'))
   assert.equal(metadata.name, '@ngbplatform/ui')
-  assert.equal(metadata.version, manifest.version)
+  assert.equal(metadata.version, version)
   const exports = []
   for (const [subpath, target] of Object.entries(metadata.exports)) {
     const paths = typeof target === 'string' ? [target] : Object.values(target)
@@ -105,7 +116,7 @@ try {
   }
   generated.set('references/contracts/ui.json', `${JSON.stringify({ schemaVersion: 1,
     package: metadata.name, version: metadata.version, packageSha256: artifacts.get(uiArtifact), exports }, null, 2)}\n`)
-  generated.set('references/contracts/index.json', `${JSON.stringify({ schemaVersion: 1, version: manifest.version,
+  generated.set('references/contracts/index.json', `${JSON.stringify({ schemaVersion: 1, version,
     purpose: 'Artifact-derived public symbol and export inventory. Public visibility alone does not establish a supported extension workflow.',
     generator: 'quality/ai-devkit/prepare-contracts.mjs', sdk: '10.0.401',
     packages, ui: 'references/contracts/ui.json',
@@ -113,11 +124,18 @@ try {
   for (const [path, text] of generated) {
     assert.ok(Buffer.byteLength(text) <= 1024 * 1024, `Generated reference exceeds the Kit file limit: ${path}`)
     const destination = join(repository, 'ai-devkit', path)
-    if (values.write) {
+    if (values['refresh-identities']) {
+      assertReferenceIdentityRefresh(JSON.parse(await readFile(destination, 'utf8')), JSON.parse(text))
+    } else if (!values.write) {
+      assert.equal(digest(await readFile(destination)), digest(text),
+        `Public contract drift: ${path}. Run bash packaging/nuget/pack-platform.sh to refresh package identities; review contract changes before --write.`)
+    }
+  }
+  if (values.write || values['refresh-identities']) {
+    for (const [path, text] of generated) {
+      const destination = join(repository, 'ai-devkit', path)
       await mkdir(dirname(destination), { recursive: true })
       await writeFile(destination, text)
-    } else {
-      assert.equal(await readFile(destination, 'utf8'), text, `Public contract drift: ${path}. Review affected capabilities before --write.`)
     }
   }
   console.log(`Verified ${packages.length} package assemblies, ${packages.reduce((count, item) => count + item.types, 0)} public types and ${exports.length} npm entry points.`)

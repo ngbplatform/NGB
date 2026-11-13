@@ -3,6 +3,11 @@
 set -euo pipefail
 
 repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+if [[ "${1:-}" != "--prepared-toolchain" ]]; then
+  exec node "${repository_root}/packaging/nuget/pack-platform.mjs" "$@"
+fi
+shift
+
 output_directory="${repository_root}/artifacts/nuget-release"
 local_feed_directory="${repository_root}/artifacts/nuget"
 local_package_cache="${repository_root}/artifacts/nuget-cache"
@@ -10,6 +15,7 @@ project_list="${repository_root}/packaging/nuget/projects.txt"
 solution_file="${repository_root}/NGB.sln"
 project_version="$(dotnet msbuild "${repository_root}/NGB.Tools/NGB.Tools.csproj" -nologo -getProperty:PackageVersion)"
 version="${1:-${project_version}}"
+package_timestamp="$(git -C "${repository_root}" log -1 --format=%ct)"
 
 if [[ ! "${version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$ ]]; then
   echo "Invalid package version: ${version}" >&2
@@ -30,6 +36,8 @@ while IFS= read -r project; do
 
   package_kind="$(dotnet msbuild "${repository_root}/${project}" -nologo -getProperty:NgbPlatformPackageKind)"
   if [[ "${package_kind}" == "template" ]]; then
+    node "${repository_root}/quality/ai-devkit/prepare-contracts.mjs" --feed "${output_directory}" --refresh-identities
+    node "${repository_root}/ai-devkit/prepare.mjs" --write
     node "${repository_root}/packaging/templates/prepare-locks.mjs" "${output_directory}" "${version}"
   fi
 
@@ -40,8 +48,11 @@ while IFS= read -r project; do
     -nodeReuse:false \
     -p:UseSharedCompilation=false \
     -p:ContinuousIntegrationBuild=true \
+    -p:DeterministicTimestamp="${package_timestamp}" \
     -p:PackageVersion="${version}"
 done < "${project_list}"
+
+node "${repository_root}/packaging/cli/pack.mjs"
 
 expected_count="$(grep -cve '^[[:space:]]*$' "${project_list}")"
 package_count="$(find "${output_directory}" -maxdepth 1 -type f -name '*.nupkg' ! -name '*.snupkg' | wc -l | tr -d ' ')"

@@ -46,7 +46,9 @@ export async function evaluationInputs(repository, candidate) {
     const preparer = family === 'development' ? 'prepare-development-fixture.mjs' : 'prepare-upgrade-evaluation.mjs'
     inputs.fixturePreparers[family] = digest(await readFile(join(root, preparer)))
   }
-  for (const path of ['evaluation-data.mjs', 'evaluation-inputs.mjs', 'example-evidence.mjs', 'development-evidence.mjs', 'verify-agents.mjs']) {
+  for (const path of ['evaluation-data.mjs', 'evaluation-inputs.mjs', 'example-evidence.mjs', 'development-evidence.mjs',
+    'verify-agents.mjs', 'run-agent-evaluations.mjs', 'evaluation-state.mjs', 'evaluation-worker.mjs', 'agent-clients.mjs',
+    'review-agent-source.mjs', 'review-contracts.mjs', 'review-source-context.mjs', 'agent-availability.mjs', 'source-review-profile.json']) {
     inputs.acceptanceSupport[path] = digest(await readFile(join(root, path)))
   }
   return { matrix, inputs }

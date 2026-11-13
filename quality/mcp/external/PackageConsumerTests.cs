@@ -293,25 +293,67 @@ public sealed class PackageConsumerTests
 
     private static async Task VerifyReadPerformanceAsync(McpClient client, Guid id, int recordCount)
     {
-        var operations = new (string Tool, Dictionary<string, object?> Arguments)[]
+        var operations = new (string Name, string Tool, Dictionary<string, object?> Arguments)[]
         {
-            ("ngb_list_records", new() { ["kind"] = "catalog", ["typeCode"] = CheckpointDefinitions.Code, ["limit"] = 100 }),
-            ("ngb_get_record", new() { ["kind"] = "catalog", ["typeCode"] = CheckpointDefinitions.Code, ["id"] = id }),
-            ("ngb_search", new() { ["query"] = "Scale checkpoint", ["limit"] = 50 }),
-            ("custom_current_user", new())
+            ("ngb_list_records", "ngb_list_records", new()
+            {
+                ["kind"] = "catalog",
+                ["typeCode"] = CheckpointDefinitions.Code,
+                ["limit"] = 100
+            }),
+            ("ngb_get_record", "ngb_get_record", new()
+            {
+                ["kind"] = "catalog",
+                ["typeCode"] = CheckpointDefinitions.Code,
+                ["id"] = id
+            }),
+            ("ngb_search", "ngb_search", new() { ["query"] = "Scale checkpoint", ["limit"] = 50 }),
+            ("ngb_search_catalogs", "ngb_search", new()
+            {
+                ["query"] = "Scale checkpoint",
+                ["limit"] = 50,
+                ["kind"] = "catalog",
+                ["typeCode"] = CheckpointDefinitions.Code
+            }),
+            ("ngb_search_journal", "ngb_search", new()
+            {
+                ["query"] = "Scale checkpoint",
+                ["limit"] = 50,
+                ["kind"] = "generalJournalEntry"
+            }),
+            ("custom_current_user", "custom_current_user", new())
         };
-        foreach (var (tool, arguments) in operations)
+        foreach (var (name, tool, arguments) in operations)
         {
+            var maximumCommands = PerformanceBudgets.GetProperty("maxSqlCommands").GetProperty(name).GetInt32();
             foreach (var concurrency in new[] { 1, 4 })
             {
                 for (var batch = 0; batch < PerformanceBudgets.GetProperty("samplesPerScenario").GetInt32() / concurrency; batch++)
                 {
                     await Task.WhenAll(Enumerable.Range(0, concurrency).Select(async _ =>
                     {
-                        using var probe = new McpQueryProbe($"{tool}-records-{recordCount}-concurrency-{concurrency}");
+                        var scenario = $"{name}-records-{recordCount}-concurrency-{concurrency}";
+                        using var probe = new McpQueryProbe(scenario);
                         var result = await CallAsync(client, tool, arguments);
                         Assert.Equal(JsonValueKind.Object, result.ValueKind);
-                        Assert.InRange(probe.CommandCount, 1, PerformanceBudgets.GetProperty("maxSqlCommands").GetProperty(tool).GetInt32());
+                        Assert.True(probe.CommandCount >= 1 && probe.CommandCount <= maximumCommands,
+                            $"{scenario}: observed {probe.CommandCount} SQL commands; expected 1–{maximumCommands}.");
+
+                        if (tool == "ngb_search")
+                        {
+                            Assert.Empty(result.GetProperty("unavailableSources").EnumerateArray());
+                            var items = result.GetProperty("items").EnumerateArray().ToArray();
+                            if (name == "ngb_search_journal")
+                            {
+                                Assert.Empty(items);
+                            }
+                            else
+                            {
+                                Assert.NotEmpty(items);
+                                Assert.All(items, item => Assert.Equal(CheckpointDefinitions.Code,
+                                    item.GetProperty("typeCode").GetString()));
+                            }
+                        }
                     }));
                 }
             }

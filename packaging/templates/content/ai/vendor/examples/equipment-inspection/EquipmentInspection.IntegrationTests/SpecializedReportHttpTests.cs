@@ -36,7 +36,7 @@ public sealed class SpecializedReportHttpTests
         foreach (var result in new[] { "Passed", "Passed", "Passed", "Rejected", "Follow-up" })
         {
             var document = await PostAsync<DocumentDto>(admin, "/api/documents/example.inspection",
-                Payload(("equipment_id", equipment.Id), ("result", result)));
+                CompleteInspectionPayload(equipment.Id, result));
             var path = "/api/documents/example.inspection/" + document.Id;
             var state = await admin.GetFromJsonAsync<DocumentEditorStateDto>(path + "/editor-state", Json);
             using var posted = await ExecutePostAsync(admin, path, state!.DocumentVersion, document.Id.ToString());

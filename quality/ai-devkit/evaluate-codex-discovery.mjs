@@ -16,8 +16,8 @@ import { assertConsumerIsolation } from '../external-consumer/contracts.mjs'
 import { responseSchema, verifySkillDiscovery } from './evaluation-oracles/skill-discovery.mjs'
 import { codexFinalAnswer, redactAgentOutput } from './agent-output.mjs'
 
-assert.equal(process.argv.length, 5,
-  'Usage: node evaluate-codex-discovery.mjs <sealed-candidate> <new-evidence-directory> <installed-codex-binary>')
+assert.ok([5, 6].includes(process.argv.length),
+  'Usage: node evaluate-codex-discovery.mjs <sealed-candidate> <new-evidence-directory> <installed-codex-binary> [root|subdirectory]')
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const candidate = await loadCandidate(resolve(process.argv[2]))
 const output = resolve(process.argv[3])
@@ -28,6 +28,8 @@ const oracleBytes = await readFile(new URL('./evaluation-oracles/skill-discovery
 const runnerBytes = await readFile(fileURLToPath(import.meta.url))
 const redactorBytes = await readFile(new URL('./agent-output.mjs', import.meta.url))
 const matrix = JSON.parse(matrixBytes)
+const workingDirectories = process.argv[5] ? [process.argv[5]] : matrix.workingDirectories
+assert.ok(workingDirectories.every(value => matrix.workingDirectories.includes(value)))
 const profile = JSON.parse(profileBytes)
 const task = matrix.tasks.find(value => value.id === 'skill-discovery')
 assert.equal(process.platform, matrix.platform)
@@ -130,7 +132,7 @@ try {
   await save('frozen/matrix.json', matrixBytes.toString('utf8'))
   await save('frozen/response-schema.json', responseSchema)
   await dotnet('install', ['new', 'install', template, '--debug:custom-hive', hive])
-  for (const workingDirectory of matrix.workingDirectories) {
+  for (const workingDirectory of workingDirectories) {
     abort.signal.throwIfAborted()
     const root = join(stage, workingDirectory)
     await dotnet(`create-${workingDirectory}`, ['new', 'ngb', '-n', 'KitDiscovery', '-o', root, '--debug:custom-hive', hive])
@@ -227,7 +229,7 @@ try {
       console.log(`Codex discovery ${workingDirectory}: ${attempt.state}.`)
     }
   }
-  assert.ok(report.attempts.length === matrix.workingDirectories.length
+  assert.ok(report.attempts.length === workingDirectories.length
     && report.attempts.every(attempt => attempt.state === 'passed'), 'One or more discovery attempts failed.')
   report.status = 'passed'
 } catch (error) {

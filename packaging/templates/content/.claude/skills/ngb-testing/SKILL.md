@@ -12,6 +12,11 @@ Do not infer complete certification from one passing suite or lower a failing ga
    checks, and `test --profile unit|integration|e2e|all` for the needed execution.
 3. Define expected business/security outcomes independently of implementation.
    Use actual hosts/storage for persistence and permission claims.
+   Compare JSON response values, including action replays, with semantic equality;
+   serialized object property order is not an application contract.
+   In browser bootstrap tests, call and await `startApplication` from
+   `src/bootstrap.ts` per case; resetting Vitest modules does not reset native
+   browser imports. See the working starter/example tests.
 4. Inspect `.ngb/reports/<run-id>/report.json`, test discovery, missing/skipped checks,
    coverage inventory and report hashes. Diagnose gaps rather than hiding sources.
 5. Rerun affected checks after fixes. Require `test --profile all` for complete

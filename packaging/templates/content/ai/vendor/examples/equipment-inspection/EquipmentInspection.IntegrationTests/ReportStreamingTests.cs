@@ -125,7 +125,7 @@ public sealed class ReportStreamingTests
     private static async Task AddInspectionAsync(HttpClient admin, Guid equipmentId, string result)
     {
         var document = await PostAsync<DocumentDto>(admin, "/api/documents/example.inspection",
-            Payload(("equipment_id", equipmentId), ("result", result)));
+            CompleteInspectionPayload(equipmentId, result));
         var path = "/api/documents/example.inspection/" + document.Id;
         var state = await admin.GetFromJsonAsync<DocumentEditorStateDto>(path + "/editor-state", Json);
         using var posted = await ExecutePostAsync(admin, path, state!.DocumentVersion, document.Id.ToString());

@@ -125,7 +125,7 @@ async function configureToolchain() {
   return { node, env }
 }
 
-export async function prepareEnvironment(candidate) {
+export async function verifyHostEnvironment() {
   assert.equal(process.versions.node, toolchain.node, 'Certification must use the prepared Node runtime.')
   assert.equal(await command('dotnet', ['--version'], { capture: true }), toolchain.dotnet)
   for (const name of ['NGB_FRONTEND_COVERAGE_SKIP_E2E', 'NGB_BACKEND_COVERAGE_NO_BUILD', 'NGB_BACKEND_COVERAGE_NO_RESTORE']) {
@@ -137,6 +137,10 @@ export async function prepareEnvironment(candidate) {
   for (const name of ['NGB_BACKEND_COVERAGE_JOBS', 'NGB_FRONTEND_COVERAGE_JOBS']) {
     assert.match(process.env[name] ?? '1', /^[1-9][0-9]*$/, `${name} must be a positive integer.`)
   }
+}
+
+export async function prepareEnvironment(candidate) {
+  await verifyHostEnvironment()
   const matrix = JSON.parse(await readFile(new URL('./matrix.json', import.meta.url), 'utf8'))
   const { unzipSync } = await import('fflate')
   const template = unzipSync(await readFile(join(candidate, 'nuget-release', `NGB.Platform.Templates.${matrix.target}.nupkg`)))

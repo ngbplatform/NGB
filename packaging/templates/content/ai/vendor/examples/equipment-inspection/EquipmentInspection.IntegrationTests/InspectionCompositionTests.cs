@@ -44,7 +44,7 @@ public sealed class InspectionCompositionTests
         Assert.Equal(draft.Number, (await admin.GetFromJsonAsync<DocumentDto>(path, Json))!.Number);
         var equipment = await PostAsync<CatalogItemDto>(admin, "/api/catalogs/example.equipment",
             Payload(("display", "Numbering bench")));
-        using var completed = await admin.PutAsJsonAsync(path, Payload(("equipment_id", equipment.Id), ("result", "Passed")));
+        using var completed = await admin.PutAsJsonAsync(path, CompleteInspectionPayload(equipment.Id));
         await EnsureSuccessAsync(completed);
         state = await admin.GetFromJsonAsync<DocumentEditorStateDto>(path + "/editor-state", Json);
         foreach (var action in new[] { "post", "repost", "unpost", "post" })

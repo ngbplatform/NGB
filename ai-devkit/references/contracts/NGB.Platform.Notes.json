@@ -2,11 +2,11 @@
   "schemaVersion": 1,
   "package": "NGB.Platform.Notes",
   "version": "3.4.0",
-  "packageSha256": "8da71f1d3dd7470bbe906585771b74977641f8492affaeb9a1748e4829e73568",
+  "packageSha256": "8545e19e6e7f57ac455cfd7ef052dc48e1f04b79f5ff8f0e1e0f14582d7ae9a1",
   "assembly": {
     "name": "NGB.Notes",
     "version": "3.0.0.0",
-    "sha256": "27ef37ae9b533eb699b39980ce08af29fd2fe72b5fe187267e89f6ea2a09bf7e"
+    "sha256": "aba69f2418c4f937c5494a460de81459b9b73c524d2c101193f333203370b2ee"
   },
   "contractSha256": "44507d8f15b8ed6d57f832515e26df8bdadd6c0fd695d869f531cb5e25248ce2",
   "types": [

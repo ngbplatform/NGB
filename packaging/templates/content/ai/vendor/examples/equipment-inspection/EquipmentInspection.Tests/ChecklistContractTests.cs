@@ -1,3 +1,4 @@
+using System.Text.Json;
 using EquipmentInspection.Definitions;
 using EquipmentInspection.Runtime;
 using NGB.Contracts.Common;
@@ -121,6 +122,54 @@ public sealed class ChecklistContractTests
     }
 
     [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData(" \t\r\n")]
+    [InlineData("Valid text")]
+    public async Task Draft_text_validation_allows_incomplete_values_on_both_paths(string? text)
+    {
+        var validator = new ChecklistPayloadValidator();
+        var payload = TextPayload(text);
+        var parts = TextParts(text);
+        await validator.ValidateCreateDraftPayloadAsync(payload, parts, CancellationToken.None);
+        await validator.ValidateUpdateDraftPayloadAsync(Guid.CreateVersion7(), payload, parts, CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task Draft_text_validation_accepts_the_metadata_limit_and_omitted_head_fields()
+    {
+        var validator = new ChecklistPayloadValidator();
+        var text = new string('x', ChecklistDefinitions.TextMaxLength);
+        await validator.ValidateCreateDraftPayloadAsync(TextPayload(text), TextParts(text), CancellationToken.None);
+        await validator.ValidateUpdateDraftPayloadAsync(Guid.CreateVersion7(), TextPayload(text), TextParts(text), CancellationToken.None);
+        await validator.ValidateUpdateDraftPayloadAsync(Guid.CreateVersion7(),
+            new RecordPayload(new Dictionary<string, JsonElement>()), TextParts(text), CancellationToken.None);
+    }
+
+    [Theory]
+    [InlineData("head")]
+    [InlineData("head-uppercase")]
+    [InlineData("head-json")]
+    [InlineData("part")]
+    public async Task Draft_text_validation_rejects_oversized_values_on_both_paths(string location)
+    {
+        var validator = new ChecklistPayloadValidator();
+        var text = new string('x', ChecklistDefinitions.TextMaxLength + 1);
+        var payload = location switch
+        {
+            "head-uppercase" => TextPayload(text, "DISPLAY"),
+            "head-json" => TextPayload(new { value = text }),
+            "head" => TextPayload(text),
+            _ => new RecordPayload()
+        };
+        var parts = TextParts(location == "part" ? text : null);
+        await Assert.ThrowsAsync<NgbArgumentInvalidException>(() =>
+            validator.ValidateCreateDraftPayloadAsync(payload, parts, CancellationToken.None));
+        await Assert.ThrowsAsync<NgbArgumentInvalidException>(() =>
+            validator.ValidateUpdateDraftPayloadAsync(Guid.CreateVersion7(), payload, parts, CancellationToken.None));
+    }
+
+    [Theory]
     [InlineData(ReferenceRegisterWriteOperation.Post)]
     [InlineData(ReferenceRegisterWriteOperation.Repost)]
     [InlineData(ReferenceRegisterWriteOperation.Unpost)]
@@ -152,6 +201,25 @@ public sealed class ChecklistContractTests
         {
             [ChecklistDefinitions.ChecksPartCode] = lines.Select(line =>
                 (IReadOnlyDictionary<string, object?>)new Dictionary<string, object?> { ["line_no"] = line }).ToArray()
+        };
+    }
+
+    private static RecordPayload TextPayload(object? text, string field = "display")
+    {
+        return new RecordPayload(new Dictionary<string, JsonElement>
+        {
+            [field] = JsonSerializer.SerializeToElement(text)
+        });
+    }
+
+    private static IReadOnlyDictionary<string, IReadOnlyList<IReadOnlyDictionary<string, object?>>> TextParts(string? text)
+    {
+        return new Dictionary<string, IReadOnlyList<IReadOnlyDictionary<string, object?>>>
+        {
+            [ChecklistDefinitions.ChecksPartCode] =
+            [
+                new Dictionary<string, object?> { ["line_no"] = 1, ["description"] = text }
+            ]
         };
     }
 

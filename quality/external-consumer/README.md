@@ -5,11 +5,12 @@ Use the [platform publishing runbook](../../packaging/PUBLISHING.md) for operato
 external account configuration and release requirements. Application users
 start with [External applications and upgrades](../../docs/architecture/external-app-upgrades.md).
 The executable matrix is [matrix.json](matrix.json); it contains exact versions,
-five external-consumer profiles, five Kit profiles, 30 candidate gates and two
+five external-consumer profiles, five Kit profiles, 24 candidate gates and two
 post-publication gates, infrastructure images and subsystem scope.
 
 The approved [v3.4.0 release requirements](v3.4.0-release-requirements.md) retain
-full platform and application regressions outside the AI Development Kit.
+full platform and application regressions as manual maintainer checks, outside
+FULL Certification, the AI Development Kit and GitHub Actions.
 Readiness requires successful evidence for each mandatory gate of the assessed candidate.
 
 Run from the NGB repository root on macOS/Linux or in WSL2, with Node and local
@@ -17,8 +18,8 @@ Docker Compose available. Packaging also needs .NET 10. Certification uses the
 exact versions in [toolchain.json](toolchain.json): Node 24.19.0 and .NET 10.0.401.
 When a host version differs, the runner downloads official archives, verifies their
 published checksums and installs private copies under `artifacts/certification-tools`.
-It does not replace system tools. k6 and the complete browser matrix run in the
-prepared Linux quality image on both macOS and Linux.
+It does not replace system tools. Offline k6 tooling checks run in the prepared
+Linux quality image on both macOS and Linux.
 Profiles use ports 5180–5185 and must run sequentially on an otherwise unused host.
 Every profile creates a new temporary consumer, private secrets and package extraction
 directories. Download caches may be reused only within the same sealed candidate;
@@ -28,7 +29,7 @@ Disposable profile infrastructure is removed in `finally`; private diagnostics s
 in the reported temporary directory. Never upload those secrets or complete directories.
 On failure, bounded container logs and status are saved before teardown under
 `certification/diagnostics/<profile>/` in the candidate. Generated secrets are redacted;
-CI includes these files in its failure diagnostics artifact. Realm import files contain
+These diagnostics remain local and are not uploaded to GitHub. Realm import files contain
 environment placeholders and are readable by the container user on Linux. Secret values
 remain in the private `.env` file.
 
@@ -51,8 +52,6 @@ ngb_candidate="artifacts/release-candidate-local-$(date +%Y%m%d-%H%M%S)"
   node ui/scripts/pack-platform-ui.mjs --local-candidate
   bash packaging/nuget/pack-platform.sh
   bash packaging/nuget/verify-platform-packages.sh
-  node ai-devkit/prepare.mjs
-  node packaging/cli/pack.mjs
   node quality/external-consumer/release.mjs seal "$ngb_candidate"
   node quality/external-consumer/release.mjs certify "$ngb_candidate" \
     2>&1 | tee "${ngb_candidate}.log"
@@ -61,16 +60,55 @@ ngb_candidate="artifacts/release-candidate-local-$(date +%Y%m%d-%H%M%S)"
 ```
 
 Success ends with both `Release certify: passed` and `Release verify-candidate: passed`.
-For v3.4.0, certification runs the complete backend/frontend coverage suites and
-requires their exact candidate-bound reports at the unchanged 100% thresholds.
-The legacy `--certification` quality mode excludes full coverage and cannot
-satisfy the v3.4.0 full-quality gate. Local `run-full-quality.sh` results are useful
-development evidence but do not replace the candidate-bound run.
+For v3.4.0, FULL Certification does not run platform/application Backend tests,
+`npm run test:all`, framework component browser suites, or either full-coverage
+script. The maintainer runs these independently. Certification neither imports
+nor requires their reports and does not claim their coverage results. The manual
+coverage thresholds remain 100%. MCP platform and vertical API tests are also
+manual; the independent package-only MCP consumer remains a certification gate.
 
 The npm archive must exist before NuGet template packing. `pack-platform.sh`
-generates the template and CRM lockfiles from the candidate; review and commit
+uses the pinned certification tools and Git commit timestamp, refreshes Kit package
+identities after checking the public contracts, and packs the template and CLI.
+It generates the template and CRM lockfiles from the candidate; review and commit
 those changes before a release PR. In `platform-packages`, the NuGet job waits for
 the npm job and downloads its validated archive by artifact ID before packing.
+`seal` checks the public references against the built packages before creating
+the candidate, so stale hashes are reported before infrastructure and test runs.
+
+## Execution order
+
+FULL Certification stops at the first failure and runs the following phases:
+
+1. Host tool/settings checks, frozen upgrade-fixture integrity, Kit package parity,
+   public references, Kit tooling tests and Codex/Claude access/checkpoint checks. These
+   checks run before container downloads/builds or integration scenarios.
+2. Container/browser preparation, followed by Linux quality preflight: tooling and
+   generated-helper tests, performance-tool type checking and metric tests. These
+   are offline checks, not a live load run.
+3. Template build and NuGet/npm API compatibility checks.
+4. Compose, package-only MCP, independent-application and upgrade scenarios, including the Kit
+   reference application and its capability acceptance.
+5. Automatic Codex/Claude matrix, source review and independent acceptance.
+6. Final evidence completeness, candidate identity and integrity verification.
+
+The normal `seal` → `certify` → `verify-candidate` block needs no extra agent commands.
+`certify` discovers authenticated pinned clients and automatically creates the full
+24-scenario evidence inventory. Client access is checked in phase 1; model calls
+run after deterministic checks. Their separate inference/review/test checkpoints
+live in `artifacts/ai-devkit/evaluation-runs/<manifest-sha256>/`. Completed calls are
+reused across stops and across candidate directory names with identical contents.
+Source review is a bounded independent Claude call without tools; behavioral
+acceptance remains mandatory. See [agent execution and resume](../ai-devkit/README.md#real-agents-and-independent-acceptance).
+To reuse previously exported local evidence, explicitly set
+`NGB_AI_EVALUATION_EVIDENCE`; it is verified in phase 1 instead of starting models.
+
+The internal `--certification --preflight` quality mode writes
+`quality-preflight.json` with hashes of tooling/performance reports for this candidate.
+There is no later platform regression stage. Successful preflight checkpoints can
+be reused after their identities and output hashes are verified. The standalone
+`run-full-quality.sh` utility still runs tooling, offline performance, browser and
+full coverage suites when explicitly invoked; FULL Certification never calls it.
 
 ## Resume after a failure
 
@@ -87,7 +125,9 @@ For a different candidate, pass a new, nonexistent directory as the final argume
 Do not edit an old candidate or re-seal it under the same identity. After a transient
 failure during certification, keep `ngb_candidate` set to that existing directory
 and run the following. In a new terminal, set it to the path printed by the failed
-run first. Do not rerun the packaging/sealing block to retry certification:
+run first. This reuses all successful certification checkpoints. Repeating the
+original sealing block also works and reuses agent results for identical contents,
+but other candidate-local certification stages may run again:
 
 ```sh
 (
@@ -99,16 +139,18 @@ run first. Do not rerun the packaging/sealing block to retry certification:
 )
 ```
 
-The runner prepares required container images and Chromium before any certification
-stage. Docker pulls and tool downloads have at most three attempts with backoff;
+The bounded host/fixture/Kit preflight runs on every invocation, including resume.
+Only after it passes does the runner prepare required container images and Chromium.
+Docker pulls and tool downloads have at most three attempts with backoff;
 package managers retry HTTP acquisition internally. Build, migration and test failures
 are not retried automatically. The quality container runs in CI mode; Vitest and
 Playwright gates reject focused tests and explicitly disable failure retries.
 A `[resume]` line identifies a reused successful stage;
 `[start]` and `[passed]`/`[failed]` show execution and elapsed time.
 
-`run-state.json` records atomic checkpoints bound to the sealed manifest, exact tools,
-OS/architecture, Docker engine/images, browser and relevant environment settings.
+For the remaining phases, `run-state.json` records atomic checkpoints bound to the
+sealed manifest, exact tools, OS/architecture, Docker engine/images, browser and
+relevant environment settings.
 Before skipping a stage, the runner verifies its output hashes and predecessor.
 Missing or changed evidence reruns that stage and everything after it. Changed input
 or environment rejects resume and requires a new candidate. Failed or interrupted
@@ -133,25 +175,19 @@ local package acquisition is part of the public app tool. Upgrade profiles use t
 public `ngb.mjs upgrade --apply` command against the frozen consumer copy.
 
 `release.mjs certify` runs compatibility, all five external-consumer profiles,
-performance-tooling contracts and the framework component matrix in Chromium,
-Firefox and WebKit. For v3.4.0 it also runs the five Kit profiles and invokes
-`run-backend-full-coverage.sh` and `run-frontend-full-coverage.sh` through full quality.
+performance-tooling contracts, the package-only MCP consumer and five Kit profiles.
 `test-tooling.mjs` adds measured 100% coverage
 for the explicit helper inventory plus negative process tests. A numeric result
-for process launching is never manufactured. The prepared Linux image supplies
-Chromium, Firefox, WebKit and their operating-system dependencies.
+for process launching is never manufactured.
 The release runner uses `Dockerfile.quality` and a private source copy to run the
-checks on Linux through `full-quality.mjs`. The legacy `--certification` mode
-remains separate from the v3.4.0 full-quality path.
-Tooling, the browser matrix and performance contracts have separate checkpoints,
-so a later failure does not repeat earlier gates. Full-quality results are written
-to `certification/full-quality.json` with separately hashed backend/frontend
-reports. Legacy `certification/certification-quality.json` contains no full-coverage
-claims and is not accepted in their place.
+tooling checks on Linux through `full-quality.mjs --certification --preflight`.
+Tooling and performance contracts have separate checkpoints, so a later failure
+does not repeat earlier checks. Their candidate-bound aggregate is
+`certification/quality-preflight.json`; its report identities are validated during
+certification and `verify-candidate`. No platform coverage reports are required.
 It never copies host `node_modules`, `bin`, `obj` or registry caches. The private Linux
 workspace and its own caches are retained for the same candidate's retries. Its path
-is in `quality-workspace.json` (or `certification-quality-workspace.json` for the
-legacy mode). If unfinished checks must run again after
+is in `certification-quality-workspace.json`. If unfinished checks must run again after
 that workspace was deleted, it starts its stages from scratch.
 Final evidence is written only after all profiles and required stages pass; neither
 a partial checkpoint nor a cached package is sufficient to authorize publication.
@@ -164,35 +200,44 @@ when changing those paths. Performance checks here cover diagnostic tooling and 
 contracts; volume regression tests remain in the local backend suite. Certification
 does not run live k6 load profiles.
 
+Upgrade profiles preserve every previously applied migration row, including its
+checksum and installation metadata. They read the candidate platform assembly's
+embedded migration inventory through Evolve and require the upgraded platform
+history to match those names, versions and checksums. Successful new versioned
+migrations may append to that history. The frozen application's own migration
+history must remain identical. A second migrator run still requires exact equality
+of the complete application snapshot, including all migration histories.
+
 ## Publication boundary
 
-After successful trusted-main certification, publication automatically selects the
-exact upstream run and artifact ID, waits for environment approval and uses the saved
-artifacts. Configure required reviewers on `platform-release`; a missing review rule
-blocks publication. Manual dispatch needs no run ID and matches the dispatch commit.
-Successful publication automatically triggers `container-images`. That workflow
-verifies publication/promotion evidence before building the complete image set,
-and uses the manifest source commit for checkout, image tags and the deployment PR.
-Evidence is archived as `ngb-publication-evidence-attempt-<run_attempt>`. Selection
-uses the successful publication attempt, so diagnostics from failed attempts cannot
-authorize images or make a retry ambiguous. Legacy archives with the shared name
-are matched to the successful attempt's upload-step timestamps before content verification.
-Failed publication or any failed image build blocks the deployment PR. Ordinary
-pushes do not race package publication. Container retries use the original release
-run; a manual dispatch from `main` requires evidence for that exact commit.
-The old NuGet/UI workflow names are wrappers around the full unified publication,
-not independently runnable package-family stages.
-`verify-registry.mjs` is a post-publication gate, so it cannot pass for an unpublished
-candidate. It never reuses the candidate feed for its registry-only consumer.
-NuGet/npm downloads share a 20-minute propagation deadline for the whole package set,
-including npm metadata and archives. Retryable HTTP/connection failures wait 15 seconds
-between requests and honor longer `Retry-After` values without extending the deadline.
-Each request is limited to 30 seconds or the remaining budget. Progress identifies
-the URL, retry and remaining time; ready packages do not incur a fixed wait.
-Identity, signature and runtime checks are not retried. A timeout leaves promotion
-blocked and requires a retry with the same certified artifacts after registry recovery.
-`release.mjs verify-promotion` requires the registry receipt in addition to the
-complete candidate evidence. See the [upgrade guide](../../docs/architecture/external-app-upgrades.md).
+GitHub runs `platform-packages` to build NuGet/npm packages from the release commit.
+`publish-platform-release` selects the successful main build and exact attempt,
+waits for the existing `platform-release` environment approval, then publishes
+those saved archives. PR builds cannot authorize publication. Manual dispatch
+matches the dispatch commit and needs no operator-supplied run/artifact IDs.
+Backend/Frontend suites, coverage, FULL Certification and real agent evaluations
+remain local prerequisites. GitHub does not receive local packages or reports.
+
+The build manifest has scope `github-package-build` and binds the commit, Git tree,
+repository, workflow run/attempt and complete package inventory. `build-release.mjs`
+verifies these identities without claiming candidate certification. The local
+`release.mjs seal/certify/verify-candidate` contract remains unchanged.
+
+`publish.mjs --ci-build` and `verify-registry.mjs --ci-build` verify this build
+manifest. Registry checks download published archives, compare NuGet canonical
+payloads and signatures and npm integrity. They do not run a consumer application,
+Docker, Playwright, Codex or Claude. Downloads share a 20-minute propagation budget;
+retryable failures honor `Retry-After`. Identity/signature mismatches fail immediately.
+Without `--ci-build`, these tools retain local candidate verification and the
+registry-only clean-starter check.
+
+Successful publication triggers `container-images`. It validates the CI publication
+and promotion receipts with `build-release.mjs` before building the released commit.
+Evidence is archived as `ngb-publication-evidence-attempt-<run_attempt>` and contains
+only GitHub-produced packages and registry receipts. Failed attempts cannot authorize
+images. Checkout, image tags and the infrastructure PR identify the released commit.
+The NuGet/UI workflow names remain wrappers around the unified publisher.
+See the [publishing runbook](../../packaging/PUBLISHING.md) for retry procedures.
 
 ## Diagnostics and cleanup
 
@@ -216,8 +261,8 @@ Unused `ngb-template-compose-*` images are rebuildable test application images.
 `ngb-certification-quality:local` is the reusable quality environment. Removing it
 does not delete source, database volumes or saved reports, but rebuilding costs time;
 if the resulting image ID changes, existing checkpoints cannot be resumed. Avoid
-deleting images or workspaces during an active run. A fresh hosted GitHub runner
-does not inherit a previous runner's local checkpoints.
+deleting images or workspaces during an active run. Checkpoints are local and are
+not transferred to GitHub.
 
 ## Audit findings that drive this release
 
@@ -234,7 +279,8 @@ does not inherit a previous runner's local checkpoints.
 - Runtime baselines needed explicit first-publication versions for the three
   content packages. The content-only template is classified separately.
 - Previous publication workflows rebuilt packages independently. The unified
-  pipeline now publishes only the certified bytes and verifies registry identity.
+  pipeline now publishes the selected GitHub build bytes and verifies registry identity.
+  The maintainer completes certification locally before releasing.
 - Tailwind 3 build dependencies have outstanding upstream advisories, recorded in
   [Build dependency advisory](#build-dependency-advisory). Their audit is not
   silently waived or reported as clean.

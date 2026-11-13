@@ -8,6 +8,8 @@ import { digest } from '../../packaging/templates/content/infrastructure/ngb/kit
 import { assetPaths, readBytes } from '../../packaging/templates/content/infrastructure/ngb/kit-files.mjs'
 import { executionEnvironment, runTool } from '../../packaging/templates/content/infrastructure/ngb/process.mjs'
 import { atomicJson, lockRun } from '../external-consumer/checkpoints.mjs'
+import { command } from '../external-consumer/execution.mjs'
+import { redactAgentOutput } from './agent-output.mjs'
 import { certificationChecks, validateCertification } from './certification-data.mjs'
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
@@ -28,12 +30,29 @@ process.once('SIGTERM', cancel)
 const result = { schemaVersion: 1, profile, status: 'not-ready', artifactManifestSha256: digest(manifestBytes),
   startedAt: new Date().toISOString(), checks: [], files: {} }
 const run = async (id, args) => {
-  const processResult = await runTool('node', args, { cwd: repository, env, signal: abort.signal,
-    timeoutMs: 3600000, maxBytes: 16 * 1024 * 1024 })
+  let processResult
+  if (profile === 'agents' && id === 'evaluations') {
+    const started = performance.now()
+    try {
+      abort.signal.throwIfAborted()
+      // Native agents need the user's subscription login. Each evaluator builds
+      // its own restricted environment; propagate cancellation before cleanup.
+      const output = await command('node', args, { cwd: repository, env: process.env, timeout: 24 * 60 * 60_000 })
+      processResult = { state: 'passed', exitCode: 0, output: redactAgentOutput(output) }
+    } catch (error) {
+      processResult = { state: 'failed', exitCode: null, reason: redactAgentOutput(error.message),
+        output: redactAgentOutput(error.message) }
+    }
+    processResult.elapsedMs = Math.round(performance.now() - started)
+  } else {
+    processResult = await runTool('node', args, { cwd: repository, env, signal: abort.signal,
+      timeoutMs: 3600000, maxBytes: 16 * 1024 * 1024 })
+  }
   await writeFile(join(output, `${id}.log`), processResult.output, { mode: 0o600 })
   result.checks.push({ id, state: processResult.state, exitCode: processResult.exitCode,
     reason: processResult.reason, elapsedMs: processResult.elapsedMs })
   console.log(`[${processResult.state}] ai-kit/${profile}/${id}`)
+  if (processResult.state !== 'passed') console.error(`Details: ${join(output, `${id}.log`)}\n${processResult.reason ?? ''}`)
   return processResult.state === 'passed'
 }
 try {
@@ -49,17 +68,17 @@ try {
       }
     } else if (profile === 'application') {
       await run('starter', ['quality/ai-devkit/verify-starter.mjs', candidate, join(output, 'starter')])
-      await run('examples', ['quality/ai-devkit/verify-examples.mjs', '--packages', candidate, '--output', join(output, 'examples')])
-      await run('capabilities', ['quality/ai-devkit/verify-capabilities.mjs', '--packages', candidate,
-        '--examples', join(output, 'examples'), '--output', join(output, 'capabilities.json')])
+      if (await run('examples', ['quality/ai-devkit/verify-examples.mjs', '--packages', candidate, '--output', join(output, 'examples')])) {
+        await run('capabilities', ['quality/ai-devkit/verify-capabilities.mjs', '--packages', candidate,
+          '--examples', join(output, 'examples'), '--output', join(output, 'capabilities.json')])
+      }
     } else if (profile === 'upgrade') {
       await run('source-fixture', ['quality/upgrade-certification/verify-source.mjs'])
       await run('coordinated-upgrade', ['quality/ai-devkit/verify-upgrade.mjs', candidate, join(output, 'upgrade')])
       await run('failure-recovery', ['--test', 'quality/ai-devkit/transaction.test.mjs',
         'quality/ai-devkit/upgrade-process.test.mjs', 'quality/ai-devkit/resources.test.mjs'])
     } else {
-      await run('evaluations', ['quality/ai-devkit/verify-agents.mjs', candidate, join(output, 'agents'),
-        ...process.env.NGB_AI_EVALUATION_EVIDENCE ? [resolve(process.env.NGB_AI_EVALUATION_EVIDENCE)] : []])
+      await run('evaluations', ['quality/ai-devkit/run-agent-evaluations.mjs', candidate, join(output, 'agents')])
     }
   }
   await run('candidate.after', ['quality/external-consumer/release.mjs', 'verify', candidate])

@@ -16,7 +16,6 @@ using NGB.Persistence.Security;
 using NGB.Persistence.UnitOfWork;
 using NGB.Runtime.Security;
 using NGB.Runtime.UnitOfWork;
-using Testcontainers.PostgreSql;
 using Xunit;
 
 namespace EquipmentInspection.IntegrationTests;
@@ -32,20 +31,22 @@ internal sealed class InspectionHost(
 {
     public const string AdministratorRoleCode = ApplicationRoles.Administrator;
 
-    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine").Build();
+    private TestDatabase? _database;
     private readonly TestIdentity _identity = new(browserOrigin);
     private WebApplicationFactory<global::Program>? _app;
     private Uri? _origin;
 
     public IServiceProvider Services => _app!.Services;
 
-    public string ConnectionString => _postgres.GetConnectionString();
+    public string ConnectionString => _database?.ConnectionString
+        ?? throw new InvalidOperationException("Start the test host first.");
     public string IdentityIssuer => _identity.Issuer;
 
     public async Task StartAsync()
     {
-        await _postgres.StartAsync();
-        var connection = _postgres.GetConnectionString();
+        var infrastructure = await TestInfrastructure.GetAsync();
+        _database = await infrastructure.CreateDatabaseAsync();
+        var connection = _database.ConnectionString;
         if (prepareDatabase is not null)
         {
             await prepareDatabase(connection);
@@ -71,7 +72,14 @@ internal sealed class InspectionHost(
                 foreach (var (key, value) in configuration)
                     builder.UseSetting(key, value);
             }
-            builder.ConfigureLogging(logging => logging.ClearProviders());
+            builder.ConfigureLogging(logging =>
+            {
+                logging.ClearProviders();
+                logging.AddConsole();
+                logging.AddFilter((category, level) => level >= LogLevel.Warning &&
+                    (category == "NGB.Api.Sso.Keycloak" ||
+                     category == "Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerHandler"));
+            });
             builder.ConfigureServices(services =>
             {
                 services.AddControllers().AddApplicationPart(typeof(InspectionAccessController).Assembly);
@@ -170,7 +178,8 @@ internal sealed class InspectionHost(
             }
             finally
             {
-                await _postgres.DisposeAsync();
+                if (_database is not null)
+                    await _database.DisposeAsync();
             }
         }
     }

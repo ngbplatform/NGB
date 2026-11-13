@@ -9,6 +9,46 @@ const secondHash = 'b'.repeat(64)
 const harnessFiles = Object.fromEntries(await Promise.all(Object.keys(harnessSha256).map(async path =>
   [path, await readFile(new URL(`./evaluation-fixtures/${harnessSources[path]}`, import.meta.url))])))
 
+test('the report seed extends shared example sources only with its category prerequisite', async () => {
+  const additions = {
+    'EquipmentInspection.Definitions/EquipmentDefinitions.cs': source => source.replace(
+      ',\n                        new("category_id", ColumnType.Guid, UiLabel: "Category",\n'
+        + '                            Lookup: new CatalogLookupSourceMetadata(EquipmentCategoryDefinitions.TypeCode))', ''),
+    'EquipmentInspection.Runtime/EquipmentRuntime.cs': source => source.replace(
+      '        services.AddSingleton<IDefinitionsContributor, EquipmentCategoryDefinitions>();\n'
+        + '        services.AddSingleton<IDefinitionsContributor, EquipmentCategoryRuntimeDefinitions>();\n'
+        + '        services.AddScoped<EquipmentCategoryValidator>();\n'
+        + '        services.AddScoped<ICatalogUpsertValidator>(services =>\n'
+        + '            services.GetRequiredService<EquipmentCategoryValidator>());\n', ''),
+    'EquipmentInspection.PostgreSql/EquipmentPersistence.cs': source => source.replace(
+      '        services.AddScoped<ICatalogTypeStorage>(provider => new PostgresHeadCatalogTypeStorage(\n'
+        + '            provider.GetRequiredService<IUnitOfWork>(),\n'
+        + '            EquipmentCategoryDefinitions.TypeCode,\n'
+        + '            "cat_example_equipment_category",\n'
+        + '            [\n'
+        + '                PostgresHeadCatalogTypeStorage.Column.DraftString("code", "code"),\n'
+        + '                PostgresHeadCatalogTypeStorage.Column.DraftString("name", "name")\n'
+        + '            ]));\n', ''),
+  }
+  const manifest = JSON.parse(await readFile(new URL('./evaluation-fixtures/report-seed.json', import.meta.url)))
+  const shared = []
+  for (const path of Object.keys(manifest.files)) {
+    const example = await readFile(new URL(`../../ai-devkit/examples/equipment-inspection/${path}`, import.meta.url), 'utf8')
+      .catch(error => {
+        if (error.code !== 'ENOENT') throw error
+        return null
+      })
+    if (example === null) continue
+    shared.push(path)
+    assert.ok(Object.hasOwn(additions, path), `Review the new shared report-seed override: ${path}`)
+    const source = await readFile(new URL(`./evaluation-fixtures/report-seed/${path}`, import.meta.url), 'utf8')
+    const baseline = additions[path](source)
+    assert.notEqual(baseline, source, `The category prerequisite is missing: ${path}`)
+    assert.equal(baseline, example, `The report seed lost or changed base application behavior: ${path}`)
+  }
+  assert.deepEqual(shared.sort(), Object.keys(additions).sort())
+})
+
 function inventories() {
   const before = {
     'EquipmentInspection.Definitions/EquipmentDefinitions.cs': firstHash,

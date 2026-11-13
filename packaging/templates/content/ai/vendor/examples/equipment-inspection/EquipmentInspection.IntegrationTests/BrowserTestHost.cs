@@ -12,6 +12,18 @@ internal static class BrowserTestHost
 {
     public static async Task Main()
     {
+        try
+        {
+            await RunAsync();
+        }
+        finally
+        {
+            await TestInfrastructure.ShutdownAsync();
+        }
+    }
+
+    private static async Task RunAsync()
+    {
         var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
         var input = JsonSerializer.Deserialize<Input>((await Console.In.ReadLineAsync())!, options)!;
         await using var storage = new TestAttachmentStorage(input.BrowserOrigin);

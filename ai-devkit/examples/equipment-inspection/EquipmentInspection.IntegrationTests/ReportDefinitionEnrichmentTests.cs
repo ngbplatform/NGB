@@ -18,8 +18,10 @@ public sealed class ReportDefinitionEnrichmentTests
     [Fact]
     public async Task Registered_enrichers_compose_in_order_without_changing_identity_data_or_access()
     {
-        var baseline = new InspectionReportDefinitions().GetDefinitions().Single();
-        var other = new InspectionOutcomeReportDefinition().GetDefinitions().Single();
+        var baseline = Assert.Single(new InspectionReportDefinitions().GetDefinitions(),
+            definition => definition.ReportCode == InspectionReports.Summary);
+        var other = Assert.Single(new InspectionOutcomeReportDefinition().GetDefinitions(),
+            definition => definition.ReportCode == InspectionReports.OutcomeRate);
         await using var host = new InspectionHost(configureServices: services =>
         {
             services.AddSingleton<IReportDefinitionEnricher>(new PresentationEnricher("first", 7));

@@ -35,6 +35,10 @@
         "NotebookEdit",
         "WebFetch",
         "WebSearch",
+        "Read(**/.env)",
+        "Read(**/.env.*)",
+        "Bash(env)",
+        "Bash(printenv)",
         "Agent",
         "mcp__*"
       ]

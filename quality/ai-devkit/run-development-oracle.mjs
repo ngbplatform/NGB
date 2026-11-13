@@ -8,7 +8,8 @@ import { digest } from '../../packaging/templates/content/infrastructure/ngb/kit
 import { executionEnvironment, runTool } from '../../packaging/templates/content/infrastructure/ngb/process.mjs'
 import { assertConsumerIsolation, assertOutsideRepository } from '../external-consumer/contracts.mjs'
 import { passingTestCases } from './example-evidence.mjs'
-import { requiresFrontendAcceptance, reviewFrontendTests, verifyAuthoredFrontend } from './development-evidence.mjs'
+import { frontendUnitFailure, requiresFrontendAcceptance, reviewFrontendTests, verifyAuthoredFrontend } from './development-evidence.mjs'
+import { integrationBatches } from './review-contracts.mjs'
 
 assert.ok([8, 9].includes(process.argv.length),
   'Usage: node run-development-oracle.mjs <task> <candidate> <application> <trusted-before-inventory.json> <new-output> <reviewed-tree-sha256> [reviewed-test-selection.json]')
@@ -37,18 +38,14 @@ assert.equal(inspected.producedTreeSha256, process.argv[7],
   'Review the produced source before executing it; the reviewed tree identity must match.')
 const selectionBytes = process.argv[8] ? await readFile(resolve(process.argv[8])) : null
 const selection = selectionBytes ? JSON.parse(selectionBytes) : null
+let batches = []
 if (selection) {
   if (requiresFrontendAcceptance(task)) reviewFrontendTests(inspected.changed, selection.reviewedFrontendFiles)
   assert.equal(selection.producedTreeSha256, inspected.producedTreeSha256, 'Test review belongs to another source tree.')
   const changedTests = inspected.changed.filter(path => /^EquipmentInspection\.(?:IntegrationTests|Tests)\/.+\.cs$/.test(path))
   assert.ok(changedTests.length > 0, 'The task requires application-authored tests.')
   assert.deepEqual(selection.reviewedTestFiles, changedTests, 'Review every changed application test source.')
-  assert.ok(Array.isArray(selection.integrationClasses) && selection.integrationClasses.length <= 32)
-  assert.equal(new Set(selection.integrationClasses).size, selection.integrationClasses.length)
-  for (const name of selection.integrationClasses) {
-    assert.match(name, /^EquipmentInspection\.IntegrationTests\.[A-Za-z_][A-Za-z0-9_]*$/,
-      'Use reviewed fully qualified integration test class names.')
-  }
+  batches = integrationBatches(selection.integrationClasses, producedFiles, before)
   assert.ok(!changedTests.some(path => path.startsWith('EquipmentInspection.IntegrationTests/'))
     || selection.integrationClasses.length > 0, 'Changed integration tests require an executable review selection.')
 }
@@ -91,12 +88,26 @@ const save = async (path, bytes) => {
   await writeFile(join(output, path), bytes, { mode: 0o600, flag: 'wx' })
   report.artifacts[path] = digest(bytes)
 }
-const invoke = async (name, args, tool = 'dotnet', cwd = harness, env = environment) => {
+const invoke = async (name, args, tool = 'dotnet', cwd = harness, env = environment, timeoutMs = 600000) => {
   const result = await runTool(tool, args, { cwd, env, signal: abort.signal,
-    timeoutMs: 600000, maxBytes: 8 * 1024 * 1024 })
+    timeoutMs, maxBytes: 8 * 1024 * 1024 })
   await save(`${name}.log`, result.output)
-  assert.equal(result.state, 'passed', `Independent ${name} failed: ${result.reason ?? result.exitCode}.`)
+  if (result.state !== 'passed') {
+    const failure = result.output.split('\n').find(line => /^\s*Failed \S/.test(line))
+    throw new Error(`Independent ${name} failed (${result.reason ?? result.exitCode}). ${failure?.trim() ?? ''} Log: ${join(output, `${name}.log`)}`)
+  }
   return result.output
+}
+const authoredFrontend = {}
+const collectFrontend = async (key, path) => {
+  const bytes = await readFile(path).catch(error => {
+    if (error.code !== 'ENOENT') throw error
+    return null
+  })
+  if (bytes) {
+    await save(`authored-frontend-${key}.json`, bytes)
+    authoredFrontend[key] = JSON.parse(bytes)
+  }
 }
 try {
   for (const [path, bytes] of Object.entries(producedFiles)) {
@@ -141,6 +152,35 @@ try {
   const solution = join(testedApplication, 'EquipmentInspection.slnx')
   await invoke('application-restore', ['restore', solution, '--configfile', nuget, ...properties])
   await invoke('application-build', ['build', solution, '--no-restore', '-c', 'Release', ...properties])
+  // Fail fast on compilation/component tests before provisioning HTTP/E2E hosts.
+  if (requiresFrontendAcceptance(task)) {
+    const web = join(testedApplication, 'web')
+    const archive = join(stage, 'ui.tgz')
+    await writeFile(archive, candidate.files[candidate.ui], { mode: 0o400, flag: 'wx' })
+    await invoke('frontend-cache', ['cache', 'add', archive, '--ignore-scripts'], 'npm', web)
+    await invoke('frontend-install', ['ci', '--ignore-scripts', '--no-audit', '--no-fund'], 'npm', web)
+    const installed = JSON.parse(await readFile(join(web, 'node_modules/@ngbplatform/ui/package.json'), 'utf8'))
+    assert.equal(installed.version, candidate.version, 'The application resolved a different UI version.')
+    await invoke('frontend-build', ['run', 'build'], 'npm', web)
+    await invoke('browser-install', ['exec', '--no', '--', 'playwright', 'install', 'chromium'], 'npm', web)
+    if (selection) {
+      try {
+        try {
+          await invoke('authored-frontend-unit', ['run', 'test', '--', '--run', '--coverage',
+            '--reporter=default', '--reporter=json', '--outputFile=' + join(stage, 'authored-frontend-unit.json')], 'npm', web)
+        } finally {
+          await collectFrontend('unit', join(stage, 'authored-frontend-unit.json'))
+          await collectFrontend('coverage', join(testedApplication, '.ngb/coverage/frontend/coverage-summary.json'))
+        }
+      } catch (error) {
+        report.authoredTests.status = 'failed'
+        const detail = frontendUnitFailure(authoredFrontend.unit)
+        if (detail) error.message += ` ${detail}`
+        throw error
+      }
+    }
+    assert.deepEqual(await inventory(testedApplication), produced, 'Frontend preparation/tests changed application source.')
+  }
   await invoke('restore', ['restore', 'AgentAcceptance.csproj', '--configfile', nuget, ...properties])
   await invoke('build', ['build', 'AgentAcceptance.csproj', '--no-restore', '-c', 'Release', ...properties])
   try {
@@ -154,18 +194,46 @@ try {
     })
     if (trx) await save('acceptance.trx', trx)
   }
-  let browserReport
-  if (requiresFrontendAcceptance(task)) {
-    const web = join(testedApplication, 'web')
-    const archive = join(stage, 'ui.tgz')
-    await writeFile(archive, candidate.files[candidate.ui], { mode: 0o400, flag: 'wx' })
-    await invoke('frontend-cache', ['cache', 'add', archive, '--ignore-scripts'], 'npm', web)
-    await invoke('frontend-install', ['ci', '--ignore-scripts', '--no-audit', '--no-fund'], 'npm', web)
-    const installed = JSON.parse(await readFile(join(web, 'node_modules/@ngbplatform/ui/package.json'), 'utf8'))
-    assert.equal(installed.version, candidate.version, 'The application resolved a different UI version.')
-    await invoke('frontend-build', ['run', 'build'], 'npm', web)
-    await invoke('browser-install', ['exec', '--no', '--', 'playwright', 'install', 'chromium'], 'npm', web)
+  if (selection) {
+    const runAuthored = async (name, project, filter, timeoutMs) => {
+      const results = join(stage, `authored-${name}`)
+      try {
+        await invoke(`authored-${name}`, ['test', join(testedApplication, project), '--no-build', '--no-restore',
+          '-c', 'Release', '--logger', 'trx;LogFileName=tests.trx', '--results-directory', results,
+          ...(filter ? ['--filter', filter] : []), ...properties], 'dotnet', harness, environment, timeoutMs)
+      } finally {
+        const bytes = await readFile(join(results, 'tests.trx')).catch(error => {
+          if (error.code !== 'ENOENT') throw error
+          return null
+        })
+        if (bytes) await save(`authored-${name}.trx`, bytes)
+      }
+      return passingTestCases(await readFile(join(output, `authored-${name}.trx`), 'utf8'))
+    }
+    try {
+      report.authoredTests.unit = await runAuthored('unit', 'EquipmentInspection.Tests/EquipmentInspection.Tests.csproj')
+      if (batches.length) {
+        report.authoredTests.integration = []
+        const deadline = performance.now() + 45 * 60_000
+        for (const batch of batches) {
+          const remaining = Math.floor(deadline - performance.now())
+          assert.ok(remaining > 0, 'The reviewed integration tests reached their combined deadline.')
+          const cases = await runAuthored(batch.name, 'EquipmentInspection.IntegrationTests/EquipmentInspection.IntegrationTests.csproj',
+            batch.classes.map(name => `FullyQualifiedName~${name}.`).join('|'), remaining)
+          for (const name of batch.classes) {
+            assert.ok(cases.some(test => test.startsWith(name + '.')), `No passing tests were discovered for reviewed class: ${name}`)
+          }
+          report.authoredTests.integration.push(...cases)
+        }
+        report.authoredTests.integration.sort()
+      }
+    } catch (error) {
+      report.authoredTests.status = 'failed'
+      throw error
+    }
   }
+  assert.deepEqual(await inventory(testedApplication), produced, 'Authored backend tests changed application source.')
+  let browserReport
   if (task === 'permission-correction') {
     const web = join(testedApplication, 'web')
     try {
@@ -189,58 +257,15 @@ try {
     trx: await readFile(join(output, 'acceptance.trx'), 'utf8') })
   report.checks = result.checks
   if (selection) {
-    const runAuthored = async (name, project, filter) => {
-      const results = join(stage, `authored-${name}`)
-      try {
-        await invoke(`authored-${name}`, ['test', join(testedApplication, project), '--no-build', '--no-restore',
-          '-c', 'Release', '--logger', 'trx;LogFileName=tests.trx', '--results-directory', results,
-          ...(filter ? ['--filter', filter] : []), ...properties])
-      } finally {
-        const bytes = await readFile(join(results, 'tests.trx')).catch(error => {
-          if (error.code !== 'ENOENT') throw error
-          return null
-        })
-        if (bytes) await save(`authored-${name}.trx`, bytes)
-      }
-      return passingTestCases(await readFile(join(output, `authored-${name}.trx`), 'utf8'))
-    }
     try {
-      report.authoredTests.unit = await runAuthored('unit', 'EquipmentInspection.Tests/EquipmentInspection.Tests.csproj')
-      if (selection.integrationClasses.length) {
-        report.authoredTests.integration = await runAuthored('integration',
-          'EquipmentInspection.IntegrationTests/EquipmentInspection.IntegrationTests.csproj',
-          selection.integrationClasses.map(name => `FullyQualifiedName~${name}.`).join('|'))
-        for (const name of selection.integrationClasses) {
-          assert.ok(report.authoredTests.integration.some(test => test.startsWith(name + '.')),
-            `No passing tests were discovered for reviewed class: ${name}`)
-        }
-      }
       if (requiresFrontendAcceptance(task)) {
         const web = join(testedApplication, 'web')
-        const raw = {}
-        const collect = async (key, path) => {
-          const bytes = await readFile(path).catch(error => {
-            if (error.code !== 'ENOENT') throw error
-            return null
-          })
-          if (bytes) {
-            await save(`authored-frontend-${key}.json`, bytes)
-            raw[key] = JSON.parse(bytes)
-          }
-        }
-        try {
-          await invoke('authored-frontend-unit', ['run', 'test', '--', '--run', '--coverage',
-            '--reporter=json', '--outputFile=' + join(stage, 'authored-frontend-unit.json')], 'npm', web)
-        } finally {
-          await collect('unit', join(stage, 'authored-frontend-unit.json'))
-          await collect('coverage', join(testedApplication, '.ngb/coverage/frontend/coverage-summary.json'))
-        }
         try {
           await invoke('authored-frontend-browser', ['run', 'test:e2e'], 'npm', web)
         } finally {
-          await collect('browser', join(testedApplication, '.ngb/browser-results/report.json'))
+          await collectFrontend('browser', join(testedApplication, '.ngb/browser-results/report.json'))
         }
-        report.authoredTests.frontend = verifyAuthoredFrontend({ files: produced, webRoot: web, ...raw })
+        report.authoredTests.frontend = verifyAuthoredFrontend({ files: produced, webRoot: web, ...authoredFrontend })
       }
       report.authoredTests.status = 'passed'
     } catch (error) {

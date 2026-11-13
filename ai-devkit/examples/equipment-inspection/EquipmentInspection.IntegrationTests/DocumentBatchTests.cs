@@ -105,7 +105,7 @@ public sealed class DocumentBatchTests
     private static async Task UpdateAsync(HttpClient admin, Guid document, Guid equipment)
     {
         using var response = await admin.PutAsJsonAsync(Path(document),
-            Payload(("equipment_id", equipment), ("result", "Passed")));
+            CompleteInspectionPayload(equipment));
         await EnsureSuccessAsync(response);
     }
 

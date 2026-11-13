@@ -49,13 +49,12 @@ npm --prefix quality ci
 node ui/scripts/pack-platform-ui.mjs --local-candidate
 bash packaging/nuget/pack-platform.sh
 bash packaging/nuget/verify-platform-packages.sh
-node ai-devkit/prepare.mjs
-node packaging/cli/pack.mjs
 node quality/external-consumer/release.mjs seal
 ```
 
-Build the npm archive before NuGet: packing the template generates its lockfiles
-and the CRM npm lockfile against the existing archive. Sealing creates
+Build the npm archive before NuGet. The pack command selects the pinned tools,
+refreshes Kit package identities after public-contract validation, generates
+consumer lockfiles and packages the template and CLI. Sealing creates
 `artifacts/release-candidate/release-manifest.json` and copies the package files.
 This prepares local development; it does not run certification or publish anything.
 
@@ -396,37 +395,42 @@ checks. The generated-extension profile installs the example's DDL separately.
 Normal template creation does not create either checkpoint table. Following the
 extension tutorial intentionally adds them to that application's own database.
 
-The current matrix retains the mandatory `mcp-contract`, `mcp-external` and
-`mcp-verticals` candidate gates introduced in 3.3.0. They check protocol/schema
-behavior, an independent package-only consumer with real Keycloak, and the actual
-four vertical API hosts.
+The current matrix retains `mcp-external`, an independent package-only consumer
+with real Keycloak. MCP platform contract and vertical API host tests belong to
+the maintainer's manual Backend regression. Historical 3.3.0 evidence retains
+its original three MCP gates.
 Upgrade profiles verify explicit MCP opt-in on the preserved application state;
 their assertions do not turn every existing business feature into a certified
 external upgrade scenario.
 
 Documents, relationships, accounting, operational/reference registers, reporting and
-projections retain their broader regression suites. In 3.4.0, full backend/frontend
-tests and coverage for the platform, PM, Trade, Agency Billing and CRM are mandatory
-candidate-bound release gates. These product regressions remain outside the generic
-AI Development Kit. The candidate's Compose
+projections retain their broader regression suites. In 3.4.0, the maintainer runs
+platform and application Backend/Frontend tests and full coverage independently.
+FULL Certification neither invokes these suites nor requires their reports.
+These product regressions also remain outside the generic AI Development Kit. The candidate's Compose
 gate builds the generated starter. It does not build the existing vertical Docker images, including CRM;
 those have a separate container-build gate after package publication.
 
-`quality/external-consumer/matrix.json` binds 30 candidate gates and two
+`quality/external-consumer/matrix.json` binds 24 candidate gates and two
 post-publication gates to commands and assertions. `quality-inventory.json`
 classifies measured executable helpers, generated code, static content and process
-orchestration. Certification retains helper tests, the framework browser matrix and
+orchestration. Certification retains helper tests and
 performance-tooling contracts. Five additional Kit profiles verify artifacts,
 contracts, the independent application, coordinated upgrades and real agent results.
-Full backend/frontend coverage thresholds remain 100%; release certification requires
-the full-quality reports for the exact candidate. The legacy reduced certification
-mode cannot satisfy those gates.
+Manual backend/frontend coverage thresholds remain 100%. Certification validates
+its own candidate-bound tooling/performance and consumer reports without claiming
+full platform regression or coverage.
 Process orchestration uses real behavior and failure tests, not synthetic coverage.
 
 ## Certified package identity
 
 Certification records exact NuGet/npm package identities, the frozen source
 fixture and the upgrade matrix. Registry verification checks published NuGet
-signatures and canonical payloads, npm integrity and a clean starter restoring
-only from registries. A release satisfies the upgrade contract only after both
-certification and registry verification pass.
+signatures and canonical payloads and npm integrity. The optional local registry
+certification also starts a clean consumer restoring only from registries.
+
+The maintainer runs FULL Certification, Backend/Frontend tests and full coverage
+locally before release. GitHub builds NuGet/npm packages from the release commit,
+publishes that build's archives and verifies their registry identities. It does not
+repeat certification or import local packages/reports. Its build manifest records
+CI provenance, not proof that the separately built local archives have identical bytes.

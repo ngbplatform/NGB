@@ -4,15 +4,17 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { digest } from './release-contracts.mjs'
+import { buildScope, publicationOptions } from './build-release-contracts.mjs'
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
-const root = resolve(process.argv[2] ?? join(repository, 'artifacts/release-candidate'))
-execFileSync(process.execPath, ['quality/external-consumer/release.mjs', 'verify-candidate', root], { cwd: repository, stdio: 'inherit' })
+const options = publicationOptions(process.argv.slice(2))
+const root = resolve(options.path ?? join(repository, 'artifacts/release-candidate'))
+execFileSync(process.execPath, [options.verifier, options.command, root], { cwd: repository, stdio: 'inherit' })
 assert.ok(process.env.NUGET_API_KEY, 'A short-lived NuGet credential is required.')
 const bytes = await readFile(join(root, 'release-manifest.json'))
 const manifest = JSON.parse(bytes)
 for (const artifact of manifest.artifacts.filter(item => item.path.endsWith('.nupkg'))) {
-  // The adjacent certified .snupkg is pushed by NuGet with the runtime package.
+  // The adjacent .snupkg is pushed by NuGet with the runtime package.
   const pushed = spawnSync('dotnet', [
     'nuget', 'push', join(root, artifact.path), '--api-key', process.env.NUGET_API_KEY,
     '--source', 'https://api.nuget.org/v3/index.json',
@@ -41,5 +43,6 @@ for (const npm of manifest.artifacts.filter(item => item.path.endsWith('.tgz')))
 }
 await writeFile(join(root, 'upload-receipt.json'), `${JSON.stringify({
   schemaVersion: 1, artifactManifestSha256: digest(bytes), status: 'uploaded-awaiting-registry-verification',
+  ...(options.ciBuild ? { scope: buildScope } : {}),
   artifacts: manifest.artifacts.map(({ path, sha256 }) => ({ path, sha256 })),
 }, null, 2)}\n`)

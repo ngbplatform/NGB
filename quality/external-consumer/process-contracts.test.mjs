@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict'
 import { execFileSync, spawnSync } from 'node:child_process'
-import { chmod, cp, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises'
+import { chmod, cp, mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import test from 'node:test'
 import { strToU8, zipSync } from 'fflate'
 import { digest } from './release-contracts.mjs'
+import { certificationChecks } from '../ai-devkit/certification-data.mjs'
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 
@@ -92,8 +93,9 @@ test('API compatibility rejects missing references, failed processes and zero-ex
   }
 })
 
-async function releaseFixture(t) {
-  const root = await mkdtemp(join(tmpdir(), 'ngb-seal-process-'))
+async function releaseFixture(t, { kit = false } = {}) {
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'ngb-seal-process-')))
+  const version = kit ? '3.4.0' : '3.2.0'
   t.after(() => rm(root, { recursive: true, force: true }))
   const save = async (path, bytes) => {
     const destination = join(root, path)
@@ -103,18 +105,19 @@ async function releaseFixture(t) {
   await mkdir(join(root, 'quality/external-consumer'), { recursive: true })
   for (const name of [
     'release.mjs', 'release-contracts.mjs', 'contracts.mjs', 'checkpoints.mjs',
-    'execution.mjs', 'environment.mjs', 'toolchain.json', 'matrix.json',
+    'execution.mjs', 'environment.mjs', 'toolchain.json', 'matrix.json', 'source-files.mjs',
   ]) {
     const path = `quality/external-consumer/${name}`
-    await cp(join(repository, name === 'matrix.json' ? 'quality/external-consumer/history/matrix-3.2.0.json' : path), join(root, path))
+    const source = name === 'matrix.json' && !kit ? 'quality/external-consumer/history/matrix-3.2.0.json' : path
+    await cp(join(repository, source), join(root, path))
   }
   await save('quality/ai-devkit/certification-data.mjs',
     await readFile(join(repository, 'quality/ai-devkit/certification-data.mjs')))
   await symlink(join(repository, 'quality/node_modules'), join(root, 'quality/node_modules'))
   await save('.gitignore', 'artifacts/\nquality/node_modules\n')
-  await save('quality/upgrade-certification/source-3.1.0.json', '{}')
+  await save(`quality/upgrade-certification/source-${kit ? '3.3.0' : '3.1.0'}.json`, '{}')
   await save('packaging/nuget/baselines.json', JSON.stringify({
-    schemaVersion: 1, target: '3.2.0', packages: [
+    schemaVersion: 1, target: version, packages: [
       { id: 'NGB.Platform.Templates', kind: 'template' },
       { id: 'NGB.Platform.Test', kind: 'runtime' },
     ],
@@ -127,21 +130,23 @@ async function releaseFixture(t) {
     const path = `content/infrastructure/ngb/${name}`
     entries[path] = await readFile(join(repository, 'packaging/templates', path))
   }
-  for (const host of ['Api', 'Migrator', 'BackgroundJobs']) {
+  for (const host of ['Api', 'Migrator', 'BackgroundJobs', ...kit ? ['Tests', 'IntegrationTests'] : []]) {
     entries[`content/NgbApplication.${host}/packages.lock.json`] = strToU8('{"version":1}')
   }
+  if (kit) entries['content/infrastructure/validation/packages.lock.json'] = strToU8('{"version":1}')
   entries['content/web/package-lock.json'] = strToU8('{"lockfileVersion":3}')
   for (const [path, bytes] of Object.entries(entries)) {
     await save(`packaging/templates/${path}`, bytes)
   }
   await save('ui/ngb-crm-web/package-lock.json', '{"lockfileVersion":3}')
   entries['NGB.Platform.Templates.nuspec'] = strToU8('<package />')
-  const template = 'artifacts/nuget-release/NGB.Platform.Templates.3.2.0.nupkg'
+  const template = `artifacts/nuget-release/NGB.Platform.Templates.${version}.nupkg`
   await save(template, zipSync({ ...entries, 'content/README.md': strToU8('Old instructions\n') }))
   const runtime = zipSync({ 'NGB.Platform.Test.nuspec': strToU8('<package />') })
-  await save('artifacts/nuget-release/NGB.Platform.Test.3.2.0.nupkg', runtime)
-  await save('artifacts/nuget-release/NGB.Platform.Test.3.2.0.snupkg', runtime)
-  await save('artifacts/npm/ngbplatform-ui-3.2.0.tgz', 'npm fixture')
+  await save(`artifacts/nuget-release/NGB.Platform.Test.${version}.nupkg`, runtime)
+  await save(`artifacts/nuget-release/NGB.Platform.Test.${version}.snupkg`, runtime)
+  await save(`artifacts/npm/ngbplatform-ui-${version}.tgz`, 'npm fixture')
+  if (kit) await save(`artifacts/npm/ngbplatform-cli-${version}.tgz`, 'CLI fixture')
   execFileSync('git', ['init', '--quiet', '--template='], { cwd: root })
   execFileSync('git', [
     '-c', 'user.name=NGB Test', '-c', 'user.email=ngb@example.invalid',
@@ -183,6 +188,61 @@ test('seal rejects stale template content before creating a candidate and accept
   assert.deepEqual(await readFile(manifestPath), manifestBytes)
 })
 
+test('seal accepts a deleted tracked workflow independently of staging and detects later source changes', async t => {
+  const { root, template, entries } = await releaseFixture(t)
+  await writeFile(join(root, template), zipSync(entries))
+  const workflow = '.github/workflows/external-app-certification.yml'
+  const tracked = 'retained-input.txt'
+  await mkdir(dirname(join(root, workflow)), { recursive: true })
+  await writeFile(join(root, workflow), 'name: deleted-workflow\n')
+  await writeFile(join(root, tracked), 'Tracked source\n')
+  execFileSync('git', ['add', '--', workflow, tracked], { cwd: root })
+  await rm(join(root, workflow))
+  const candidate = join(root, 'artifacts/candidate')
+  const run = action => spawnSync(process.execPath, ['quality/external-consumer/release.mjs', action, candidate], {
+    cwd: root, encoding: 'utf8',
+  })
+  const sealed = run('seal')
+  assert.equal(sealed.status, 0, sealed.stderr)
+  const manifest = await readFile(join(candidate, 'release-manifest.json'))
+  assert.equal(run('verify').status, 0)
+  execFileSync('git', ['add', '-u', '--', workflow], { cwd: root })
+  assert.equal(run('verify').status, 0, 'Staging an existing deletion must not change the source identity.')
+
+  await writeFile(join(root, workflow), 'name: deleted-workflow\n')
+  const restored = run('verify')
+  assert.notEqual(restored.status, 0)
+  assert.match(restored.stderr, /Sources differ from the sealed candidate/)
+  await rm(join(root, workflow))
+  assert.equal(run('verify').status, 0)
+
+  const added = join(root, 'new source.txt')
+  await writeFile(added, 'New untracked input\n')
+  assert.notEqual(run('verify').status, 0, 'New untracked source must invalidate the candidate.')
+  await rm(added)
+  await rm(join(root, tracked))
+  const deleted = run('verify')
+  assert.notEqual(deleted.status, 0, 'Deleting a sealed source must invalidate the candidate.')
+  assert.match(deleted.stderr, /Sources differ from the sealed candidate/)
+  await writeFile(join(root, tracked), 'Tracked source\n')
+  assert.equal(run('verify').status, 0)
+  assert.deepEqual(await readFile(join(candidate, 'release-manifest.json')), manifest)
+})
+
+test('seal does not suppress read errors for source paths still present in Git', async t => {
+  const { root, template, entries } = await releaseFixture(t)
+  await writeFile(join(root, template), zipSync(entries))
+  await symlink('missing-target', join(root, 'broken-source'))
+  execFileSync('git', ['add', '--', 'broken-source'], { cwd: root })
+  const candidate = join(root, 'artifacts/candidate')
+  const result = spawnSync(process.execPath, ['quality/external-consumer/release.mjs', 'seal', candidate], {
+    cwd: root, encoding: 'utf8',
+  })
+  assert.notEqual(result.status, 0)
+  assert.match(result.stderr, /ENOENT.*broken-source/)
+  await assert.rejects(readdir(candidate), { code: 'ENOENT' })
+})
+
 test('invalid profile and release commands fail before infrastructure or publication', () => {
   for (const script of ['certify.mjs', 'release.mjs']) {
     const result = spawnSync(process.execPath, [`quality/external-consumer/${script}`, 'invalid-command'], {
@@ -192,6 +252,233 @@ test('invalid profile and release commands fail before infrastructure or publica
     assert.match(result.stderr, /Usage:/)
     assert.ok(!result.stdout.includes('passed'))
   }
+})
+
+test('seal detects stale Kit contracts before creating a release candidate', async t => {
+  const { root } = await releaseFixture(t)
+  await cp(join(repository, 'quality/external-consumer/matrix.json'), join(root, 'quality/external-consumer/matrix.json'))
+  await cp(join(repository, 'packaging/nuget/baselines.json'), join(root, 'packaging/nuget/baselines.json'))
+  await writeFile(join(root, 'quality/external-consumer/environment.mjs'), `
+export async function prepareToolchain() {
+  return { node: process.execPath, env: process.env }
+}
+export async function prepareEnvironment() {
+  throw new Error('Certification infrastructure must not be started while sealing.')
+}
+export async function verifyHostEnvironment() {}
+`)
+  await writeFile(join(root, 'quality/ai-devkit/prepare-contracts.mjs'), `
+import assert from 'node:assert/strict'
+assert.equal(process.argv[2], '--feed')
+assert.ok(process.argv[3].endsWith('/artifacts/nuget-release'))
+console.error('Public contract drift: package identity changed.')
+process.exit(23)
+`)
+  const candidate = join(root, 'artifacts/candidate')
+  const result = spawnSync(process.execPath, ['quality/external-consumer/release.mjs', 'seal', candidate], {
+    cwd: root, encoding: 'utf8',
+  })
+  assert.notEqual(result.status, 0)
+  assert.match(result.stderr, /Public contract drift/)
+  await assert.rejects(readdir(candidate), { code: 'ENOENT' })
+})
+
+async function certificationOrderFixture(t, kit = true) {
+  const { root, template, entries } = await releaseFixture(t, { kit })
+  const candidate = join(root, 'artifacts/candidate')
+  const calls = join(root, 'artifacts/calls.jsonl')
+  await writeFile(join(root, template), zipSync(entries))
+  await writeFile(join(root, 'quality/ai-devkit/prepare-contracts.mjs'), '')
+  await writeFile(join(root, 'quality/external-consumer/environment.mjs'), `
+import { appendFileSync } from 'node:fs'
+function record(name) {
+  appendFileSync(process.env.NGB_TEST_CALLS, name + '\\n')
+  if (process.env.NGB_TEST_FAIL === name) throw new Error('Test failure: ' + name)
+}
+export async function prepareToolchain() {
+  return { node: process.execPath, env: process.env }
+}
+export async function verifyHostEnvironment() {
+  record('host')
+}
+export async function prepareEnvironment() {
+  record('environment')
+  return { toolchain: 'test-environment' }
+}
+`)
+  await mkdir(join(root, 'bin'))
+  await writeFile(join(root, 'bin/node'), `#!${process.execPath}
+const assert = require('node:assert/strict')
+const { appendFileSync, mkdirSync, readFileSync, writeFileSync } = require('node:fs')
+const { createHash } = require('node:crypto')
+const { dirname, join } = require('node:path')
+const [script, ...args] = process.argv.slice(2)
+const kit = ${kit}
+const workspace = 'certification-quality'
+const candidate = process.env.NGB_TEST_CANDIDATE
+const hash = bytes => createHash('sha256').update(bytes).digest('hex')
+const manifestBytes = readFileSync(join(candidate, 'release-manifest.json'))
+const manifest = JSON.parse(manifestBytes)
+const matrix = JSON.parse(readFileSync('quality/external-consumer/matrix.json'))
+const artifactManifestSha256 = hash(manifestBytes)
+const checks = ${JSON.stringify(certificationChecks)}
+let name
+let outputs = []
+let report = { status: 'passed' }
+if (script === 'quality/upgrade-certification/verify-source.mjs') name = 'source-fixture'
+if (script === 'quality/ai-devkit/run-agent-evaluations.mjs') {
+  assert.equal(args[1], '--check')
+  name = 'ai-kit-agent-access'
+}
+if (script === 'quality/ai-devkit/certify.mjs') {
+  name = 'ai-kit-' + args[0]
+  outputs = ['certification/ai-kit/' + args[0] + '.json']
+  report = { ...report, schemaVersion: 1, profile: args[0], artifactManifestSha256,
+    checks: ['candidate.before', ...checks[args[0]], 'candidate.after'].map(id => ({ id, state: 'passed', exitCode: 0 })),
+    files: { 'release-manifest.json': artifactManifestSha256 } }
+}
+if (script === 'quality/external-consumer/full-quality.mjs') {
+  assert.ok(args.includes('--certification'))
+  if (kit) assert.ok(args.includes('--preflight'), 'Platform regression must never run during certification.')
+  name = args.includes('--preflight') ? 'quality-preflight' : 'certification-quality'
+  outputs = ['certification/quality-preflight.json', 'certification/tooling.json',
+    'certification/performance.json', 'certification/' + workspace + '-preflight-stages.json']
+  if (!args.includes('--preflight')) outputs.push('certification/' + name + '.json',
+    'certification/cross-browser.json', 'certification/' + workspace + '-stages.json')
+}
+const reports = {
+  'quality/external-consumer/verify-template.mjs': ['template', 'certification/template.json'],
+  'packaging/nuget/verify-api-compatibility.mjs': ['nuget-compatibility', 'nuget-release/api-compatibility.json'],
+  'ui/scripts/verify-platform-ui-contracts.mjs': ['npm-compatibility', 'npm/npm-compatibility.json'],
+  'quality/external-consumer/verify-compose.mjs': ['compose', 'certification/compose.json'],
+  'quality/mcp/verify-contract.mjs': ['mcp-contract', 'certification/mcp-contract/contracts.json'],
+  'quality/mcp/verify-external.mjs': ['mcp-external', 'certification/mcp-external/inputs.json'],
+  'quality/mcp/verify-verticals.mjs': ['mcp-verticals', 'certification/mcp-verticals/verticals.json'],
+}
+if (reports[script]) [name, ...outputs] = reports[script]
+if (kit) assert.ok(!['mcp-contract', 'mcp-verticals'].includes(name), 'MCP platform tests belong to manual regression.')
+if (name === 'compose') report.templateSha256 = manifest.artifacts.find(item => item.path.includes('NGB.Platform.Templates.')).sha256
+if (script === 'quality/external-consumer/certify.mjs') {
+  name = args[0]
+  outputs = ['certification/' + name + '.json']
+  report = { ...report, artifactManifestSha256,
+    assertions: Object.fromEntries(matrix.profiles[name].assertions.map(id => [id, true])) }
+}
+if (!name) throw new Error('Unexpected command: ' + script)
+appendFileSync(process.env.NGB_TEST_CALLS, name + '\\n')
+if (process.env.NGB_TEST_FAIL === name) process.exit(23)
+for (const output of outputs) {
+  const path = join(candidate, output)
+  mkdirSync(dirname(path), { recursive: true })
+  writeFileSync(path, JSON.stringify(report))
+}
+if (name === 'quality-preflight') {
+  const reports = Object.fromEntries(['tooling', 'performance'].map(id => [id,
+    { sha256: hash(readFileSync(join(candidate, 'certification', id + '.json'))) }]))
+  writeFileSync(join(candidate, 'certification/quality-preflight.json'),
+    JSON.stringify({ status: 'passed', scope: 'quality-preflight', artifactManifestSha256, reports }))
+}
+`, { mode: 0o700 })
+  const sealed = spawnSync(process.execPath, ['quality/external-consumer/release.mjs', 'seal', candidate], {
+    cwd: root, encoding: 'utf8',
+  })
+  assert.equal(sealed.status, 0, sealed.stderr)
+  const run = fail => spawnSync(process.execPath, [
+    'quality/external-consumer/release.mjs', 'certify', candidate, '--prepared-toolchain',
+  ], {
+    cwd: root, encoding: 'utf8',
+    env: { ...process.env, PATH: `${join(root, 'bin')}:${process.env.PATH}`,
+      NGB_TEST_CALLS: calls, NGB_TEST_CANDIDATE: candidate, NGB_TEST_FAIL: fail },
+  })
+  const readCalls = async () => (await readFile(calls, 'utf8')).trim().split('\n')
+  return { root, candidate, calls, run, readCalls }
+}
+
+test('release rejects failed host, fixture and Kit checks before preparing containers or running suites', async t => {
+  const preflight = ['host', 'source-fixture', 'ai-kit-artifacts', 'ai-kit-contracts', 'ai-kit-agent-access']
+  for (const [index, failed] of preflight.entries()) {
+    const { candidate, run, readCalls } = await certificationOrderFixture(t)
+    const result = run(failed)
+    assert.notEqual(result.status, 0, failed)
+    assert.deepEqual(await readCalls(), preflight.slice(0, index + 1))
+    assert.match(result.stdout, new RegExp(`\\[failed\\] preflight/${failed}`))
+    await assert.rejects(readFile(join(candidate, 'candidate-evidence.json')), { code: 'ENOENT' })
+  }
+})
+
+test('release runs quality and compatibility checks before integrations, then resumes expensive stages', async t => {
+  for (const kit of [true, false]) {
+    const { candidate, calls, run, readCalls } = await certificationOrderFixture(t, kit)
+    const quick = ['host', 'source-fixture', ...kit ? ['ai-kit-artifacts', 'ai-kit-contracts', 'ai-kit-agent-access'] : []]
+    const slow = kit ? 'ai-kit-agents' : 'certification-quality'
+    const expected = [...quick, 'environment', 'quality-preflight', 'template', 'nuget-compatibility', 'npm-compatibility',
+      'compose', ...kit ? ['mcp-external'] : [],
+      'clean-starter', 'generated-extension', 'core-upgrade', 'notes-upgrade', 'attachments-upgrade',
+      ...kit ? ['ai-kit-application', 'ai-kit-upgrade'] : [], slow]
+    // Stop at the final expensive suite and prove that incomplete evidence cannot pass.
+    const first = run(slow)
+    assert.notEqual(first.status, 0)
+    assert.deepEqual(await readCalls(), expected)
+    await assert.rejects(readFile(join(candidate, 'candidate-evidence.json')), { code: 'ENOENT' })
+
+    await writeFile(calls, '')
+    const resumed = run(slow)
+    assert.notEqual(resumed.status, 0)
+    assert.deepEqual(await readCalls(), [...quick, 'environment', slow])
+    assert.match(resumed.stdout, /\[resume\] quality-preflight/)
+    assert.match(resumed.stdout, /\[resume\] attachments-upgrade/)
+  }
+})
+
+test('failed Linux quality preflight blocks compatibility, integrations and agent evaluations', async t => {
+  const { candidate, run, readCalls } = await certificationOrderFixture(t)
+  const result = run('quality-preflight')
+  assert.notEqual(result.status, 0)
+  assert.deepEqual(await readCalls(), [
+    'host', 'source-fixture', 'ai-kit-artifacts', 'ai-kit-contracts', 'ai-kit-agent-access', 'environment', 'quality-preflight',
+  ])
+  const state = JSON.parse(await readFile(join(candidate, 'run-state.json'), 'utf8'))
+  assert.equal(state.stages['quality-preflight'].status, 'failed')
+  assert.deepEqual(Object.keys(state.stages), ['quality-preflight'])
+})
+
+test('current certification completes and verifies without platform tests or manual coverage evidence', async t => {
+  const { root, candidate, run, readCalls } = await certificationOrderFixture(t)
+  const certified = run('none')
+  assert.equal(certified.status, 0, certified.stderr)
+  const verify = () => spawnSync(process.execPath, ['quality/external-consumer/release.mjs', 'verify-candidate', candidate], {
+    cwd: root, encoding: 'utf8',
+  })
+  const verified = verify()
+  assert.equal(verified.status, 0, verified.stderr)
+  const calls = await readCalls()
+  for (const stage of ['mcp-contract', 'mcp-verticals', 'full-quality', 'certification-quality',
+    'cross-browser', 'backend', 'frontend']) assert.ok(!calls.includes(stage), stage)
+  for (const path of ['coverage', 'cross-browser.json', 'full-quality.json', 'mcp-contract', 'mcp-verticals']) {
+    await assert.rejects(readdir(join(candidate, 'certification', path)), { code: 'ENOENT' })
+  }
+  const evidence = JSON.parse(await readFile(join(candidate, 'candidate-evidence.json'), 'utf8'))
+  assert.equal(Object.keys(evidence.results).length, 24)
+  for (const gate of ['mcp-external', 'tooling-quality', 'performance-tooling', 'ai-kit-agents']) {
+    assert.equal(evidence.results[gate].status, 'passed')
+  }
+
+  const path = join(candidate, 'certification/quality-preflight.json')
+  const original = await readFile(path, 'utf8')
+  for (const mutate of [
+    value => { value.artifactManifestSha256 = '0'.repeat(64) },
+    value => { value.status = 'failed' },
+    value => { value.scope = 'full-platform-quality' },
+    value => { value.reports.tooling.sha256 = '0'.repeat(64) },
+    value => { value.reports.backend = { sha256: '0'.repeat(64) } },
+  ]) {
+    const invalid = JSON.parse(original)
+    mutate(invalid)
+    await writeFile(path, JSON.stringify(invalid))
+    assert.notEqual(verify().status, 0, JSON.stringify(invalid))
+  }
+  await writeFile(path, original)
+  assert.equal(verify().status, 0)
 })
 
 test('direct full quality refuses a missing k6 before starting expensive stages', async t => {
@@ -231,7 +518,8 @@ const { appendFileSync, mkdirSync, writeFileSync } = require('node:fs')
 const { basename, dirname, join } = require('node:path')
 const executable = basename(process.argv[1])
 const args = process.argv.slice(2)
-appendFileSync(process.env.NGB_TEST_CALLS, JSON.stringify({ executable, args }) + '\\n')
+const testFilter = process.env.VSTestTestCaseFilter
+appendFileSync(process.env.NGB_TEST_CALLS, JSON.stringify({ executable, args, testFilter }) + '\\n')
 if (args.includes(process.env.NGB_TEST_FAIL)) process.exit(23)
 let report
 if (executable === 'node') report = 'certification/tooling.json'
@@ -253,7 +541,7 @@ if (report) {
   await writeFile(join(root, 'identity.json'), JSON.stringify({ candidate: 'test-candidate' }))
   const run = (args = [], fail = '') => spawnSync(process.execPath, ['quality/external-consumer/quality-suite.mjs', ...args], {
     cwd: root, encoding: 'utf8',
-    env: { ...process.env, PATH: join(root, 'bin'), NGB_TEST_CALLS: calls, NGB_TEST_FAIL: fail },
+    env: { ...process.env, PATH: join(root, 'bin'), NGB_TEST_CALLS: calls, NGB_TEST_FAIL: fail, VSTestTestCaseFilter: undefined },
   })
   const readCalls = async () => (await readFile(calls, 'utf8')).trim().split('\n').map(line => JSON.parse(line))
   return { root, run, readCalls }
@@ -284,18 +572,75 @@ test('local full quality still runs both complete coverage scripts and includes 
   const { root, run, readCalls } = await qualitySuiteFixture(t)
   const result = run()
   assert.equal(result.status, 0, result.stderr)
+  assert.deepEqual([...result.stdout.matchAll(/\[start\] ([a-z-]+)/g)].map(match => match[1]),
+    ['tooling', 'performance', 'cross-browser', 'backend', 'frontend'])
   const coverage = (await readCalls()).filter(call => call.executable === 'bash').map(call => call.args)
   assert.deepEqual(coverage, [['run-backend-full-coverage.sh'], ['run-frontend-full-coverage.sh']])
+  assert.ok((await readCalls()).every(call => call.testFilter === undefined))
   const report = JSON.parse(await readFile(join(root, 'artifacts/certification/full-quality.json'), 'utf8'))
   assert.equal(report.scope, 'full-platform-quality')
+  assert.equal(report.backendTestFilter, undefined)
   assert.deepEqual(Object.keys(report.reports).sort(), ['backend', 'browsers', 'frontend', 'performance', 'tooling'])
   await assert.rejects(readFile(join(root, 'artifacts/certification/certification-quality.json')), { code: 'ENOENT' })
+})
+
+test('release quality applies and reports the live Ollama exclusion only for backend coverage', async t => {
+  const { root, run, readCalls } = await qualitySuiteFixture(t)
+  await writeFile(join(root, 'identity.json'), JSON.stringify({ artifactManifestSha256: 'candidate', excludeNativeOllama: true }))
+  const result = run(['identity.json'])
+  assert.equal(result.status, 0, result.stderr)
+
+  const filtered = (await readCalls()).filter(call => call.testFilter)
+  assert.deepEqual(filtered, [{
+    executable: 'bash', args: ['run-backend-full-coverage.sh'],
+    testFilter: 'FullyQualifiedName!~NGB.AiAssistant.AspNetCore.IntegrationTests.AssistantHttpTests.NativeOllama',
+  }])
+  const report = JSON.parse(await readFile(join(root, 'artifacts/certification/full-quality.json'), 'utf8'))
+  assert.equal(report.backendTestFilter, filtered[0].testFilter)
+})
+
+test('quality preflight emits no full certificate and full execution reuses its verified checkpoints', async t => {
+  for (const mode of [[], ['--certification']]) {
+    const { root, run, readCalls } = await qualitySuiteFixture(t)
+    const first = run([...mode, '--preflight', 'identity.json'])
+    assert.equal(first.status, 0, first.stderr)
+    assert.deepEqual([...first.stdout.matchAll(/\[start\] ([a-z-]+)/g)].map(match => match[1]), ['tooling', 'performance'])
+    assert.ok(!(await readCalls()).some(call => call.executable === 'bash'
+      || call.args.includes('test:browser:framework:cross-browser')))
+    const report = JSON.parse(await readFile(join(root, 'artifacts/certification/quality-preflight.json'), 'utf8'))
+    assert.equal(report.scope, 'quality-preflight')
+    assert.deepEqual(Object.keys(report.reports).sort(), ['performance', 'tooling'])
+    for (const name of ['full-quality.json', 'certification-quality.json', 'cross-browser.json']) {
+      await assert.rejects(readFile(join(root, 'artifacts/certification', name)), { code: 'ENOENT' })
+    }
+
+    const full = run([...mode, 'identity.json'])
+    assert.equal(full.status, 0, full.stderr)
+    for (const name of ['tooling', 'performance']) assert.match(full.stdout, new RegExp(`\\[resume\\] ${name}`))
+    assert.match(full.stdout, /\[start\] cross-browser/)
+    assert.equal((await readCalls()).filter(call => call.args.includes('quality/external-consumer/test-tooling.mjs')).length, 1)
+    const resumed = run([...mode, 'identity.json'])
+    assert.equal(resumed.status, 0, resumed.stderr)
+    assert.ok(!resumed.stdout.includes('[start]'))
+  }
+})
+
+test('changed preflight evidence reruns checks before reusing later coverage results', async t => {
+  const { root, run } = await qualitySuiteFixture(t)
+  assert.equal(run(['identity.json']).status, 0)
+  await writeFile(join(root, 'artifacts/certification/tooling.json'), 'changed')
+  const result = run(['identity.json'])
+  assert.equal(result.status, 0, result.stderr)
+  assert.deepEqual([...result.stdout.matchAll(/\[start\] ([a-z-]+)/g)].map(match => match[1]),
+    ['tooling', 'performance', 'cross-browser', 'backend', 'frontend'])
 })
 
 test('certification and local quality fail on the first failed required command without a success report', async t => {
   for (const [args, commands] of [
     [['--certification'], ['quality/external-consumer/test-tooling.mjs', 'test:browser:framework:cross-browser', 'test:metric-grouping']],
-    [[], ['run-backend-full-coverage.sh', 'run-frontend-full-coverage.sh']],
+    [[], ['quality/external-consumer/test-tooling.mjs', 'typecheck', 'test:metric-grouping',
+      'test:browser:framework:cross-browser', 'run-backend-full-coverage.sh', 'run-frontend-full-coverage.sh']],
+    [['--preflight'], ['quality/external-consumer/test-tooling.mjs', 'typecheck', 'test:metric-grouping']],
   ]) {
     for (const failed of commands) {
       const { root, run, readCalls } = await qualitySuiteFixture(t)
@@ -309,6 +654,7 @@ test('certification and local quality fail on the first failed required command 
       })
       assert.ok(!reports.includes('full-quality.json'))
       assert.ok(!reports.includes('certification-quality.json'))
+      assert.ok(!reports.includes('quality-preflight.json'))
     }
   }
 })

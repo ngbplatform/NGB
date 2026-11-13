@@ -50,7 +50,7 @@ test('missing packages exhaust one twenty-minute budget with an actionable error
   fetch.mock.mockImplementation(async () => new Response(null, { status: 404 }))
   await assert.rejects(fetchRegistryBytes(url), error => {
     assert.match(error.message, /Timed out waiting for registry package/)
-    assert.match(error.message, /same certified artifacts/)
+    assert.match(error.message, /same build artifacts/)
     assert.match(error.cause.message, /404/)
     return true
   })

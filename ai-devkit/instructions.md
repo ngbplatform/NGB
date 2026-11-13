@@ -23,14 +23,14 @@ Keep metadata and Definitions provider-neutral. Put orchestration in Runtime,
 storage and migrations in PostgreSQL adapters, and composition in API/worker/
 migrator hosts. Runtime may use the public Accounting, OperationalRegisters and
 ReferenceRegisters engines; it must not depend on database drivers or HTTP hosts.
-These engines are peers. Post requires a registered handler, but that handler may
-intentionally emit no records: a workflow-only document can become Posted with
-empty effects. Bind the handler in Definitions and register it in DI; keep the
-standard lifecycle actions. Missing every handler is a different configuration,
-described in `ai/vendor/known-limitations.json`. Never invent movements or bypass
-lifecycle checks. Allow incomplete Drafts where the declared contract allows them;
-validate business completeness
-before posting. Preserve reversal history, concurrency and idempotency.
+These engines are peers. For document status, handler requirements and effects,
+see [Standard Post in the document skill](skills/ngb-documents/SKILL.md#standard-post).
+Allow incomplete Drafts where the declared contract allows them and validate
+business completeness before posting. Preserve reversal history, concurrency
+and idempotency.
+For document input limits, follow the document skill's payload validation path:
+metadata `MaxLength` and SQL constraints alone do not provide HTTP 400 validation
+on Draft create/update in SDK 3.4.0.
 
 Enforce permissions in backend services and keep UI behavior consistent. Active
 administrators receive all registered capabilities. Use registered application
@@ -39,12 +39,16 @@ Feature flags remain independent, and inactive accounts stay blocked. MCP and
 Assistant adapters use existing authorized services. They do not authorize new
 business operations or runtime MCP writes.
 
-Use the matching `ngb-*` skill for each task and load only its relevant references.
+The installed Codex and Claude copies of each official `ngb-*` skill contain the
+same guidance as `ai/vendor/skills/<name>/SKILL.md`. Read one copy. For a
+behavior question, use the relevant skill section. Follow its references when
+you need implementation details.
 Do not import monorepo-private implementations or invent missing SDK contracts.
 Report a missing extension point with the affected workflow and current public
 contracts before changing platform behavior.
 
-Run `node infrastructure/ngb.mjs validate`, then the appropriate build/test profile.
+After changing the application, run `node infrastructure/ngb.mjs validate`, then
+the appropriate build/test profile.
 Inspection commands do not run application code. Build and test profiles execute
 trusted project code; use disposable CI environments for untrusted repositories.
 Integration and browser tests use their own infrastructure and credentials.

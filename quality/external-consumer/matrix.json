@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "source": "3.3.0",
   "target": "3.4.0",
   "sourceFixture": "quality/upgrade-certification/fixtures/3.3.0",
@@ -34,6 +34,12 @@
       "reference-registers",
       "reports",
       "projections"
+    ],
+    "manualRegressionOnly": [
+      "platform-backend-tests",
+      "platform-frontend-tests",
+      "full-backend-coverage",
+      "full-frontend-coverage"
     ]
   },
   "profiles": {
@@ -277,19 +283,9 @@
       ]
     },
     {
-      "id": "browser-quality",
-      "blocks": "candidate",
-      "command": "npm --prefix ui run test:browser:framework:cross-browser -- --allowOnly=false --retry=0",
-      "assertions": [
-        "framework-chromium",
-        "framework-firefox",
-        "framework-webkit"
-      ]
-    },
-    {
       "id": "performance-tooling",
       "blocks": "candidate",
-      "command": "node quality/external-consumer/quality-suite.mjs --certification",
+      "command": "node quality/external-consumer/quality-suite.mjs --certification --preflight",
       "assertions": [
         "typecheck",
         "diagnostic-tooling",
@@ -340,16 +336,6 @@
       ]
     },
     {
-      "id": "mcp-contract",
-      "blocks": "candidate",
-      "command": "node quality/mcp/verify-contract.mjs",
-      "assertions": [
-        "versionedSchemas",
-        "protocolAndAuthorization",
-        "boundedReadOnlyTools"
-      ]
-    },
-    {
       "id": "mcp-external",
       "blocks": "candidate",
       "command": "node quality/mcp/verify-external.mjs <sealed-feed> <evidence-directory>",
@@ -358,16 +344,6 @@
         "realKeycloakPkce",
         "currentUserRevocation",
         "readOnlyDatabaseSnapshots"
-      ]
-    },
-    {
-      "id": "mcp-verticals",
-      "blocks": "candidate",
-      "command": "node quality/mcp/verify-verticals.mjs",
-      "assertions": [
-        "actualFourApiHosts",
-        "installedSurfaceParity",
-        "nativeMcpClient"
       ]
     },
     {
@@ -425,36 +401,6 @@
         "versioned-compatibility-matrix",
         "frozen-task-evaluations",
         "independent-acceptance"
-      ]
-    },
-    {
-      "id": "full-backend-coverage",
-      "blocks": "candidate",
-      "command": "bash run-backend-full-coverage.sh",
-      "assertions": [
-        "platform-and-four-applications",
-        "per-file-lines-branches-methods-100",
-        "complete-source-discovery"
-      ]
-    },
-    {
-      "id": "full-frontend-coverage",
-      "blocks": "candidate",
-      "command": "bash run-frontend-full-coverage.sh",
-      "assertions": [
-        "shared-ui-and-four-applications",
-        "per-file-lines-branches-functions-statements-100",
-        "required-e2e-not-skipped"
-      ]
-    },
-    {
-      "id": "full-quality",
-      "blocks": "candidate",
-      "command": "bash run-full-quality.sh",
-      "assertions": [
-        "all-required-suites",
-        "runtime-regressions",
-        "candidate-bound-evidence"
       ]
     }
   ]

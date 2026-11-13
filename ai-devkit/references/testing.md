@@ -86,6 +86,25 @@ behavior before making persistence or security claims. Freeze performance worklo
 runner identity and tolerances before measuring them; separate tooling timings,
 query counts, volume tests and live load results.
 
+When a document gains a Post requirement, update the positive test data as well
+as its new validation tests. The example's `InspectionRequests.CompleteInspectionPayload`
+is the shared valid input for lifecycle, batch posting, reporting and typed-storage
+guard tests; `CreateCompleteInspectionAsync` uses it too. Keep the generic
+`Payload`, `PostAsync` and action helpers transparent: they must not silently add
+fields that would conceal invalid input. Explicit incomplete Drafts, validation
+cases and frozen migration-baseline records retain their own inputs.
+Search all successful Post paths, including tests outside the document's named
+test class, and run the affected regression classes. A guard or report test that
+fails while creating its setup has not exercised the invariant it claims to test.
+
+Compare JSON responses by values, not serialized text. An idempotent action replay
+may read its stored result from PostgreSQL `jsonb`, which can reorder object
+properties. Use `InspectionRequests.AssertEquivalentJsonAsync` or deserialize and
+compare typed fields; `JsonElement.DeepEquals` ignores object property order while
+still checking values, missing members and array order. Keep explicit assertions
+for status, version and side effects. Do not require byte-for-byte response equality
+unless the public contract explicitly promises it.
+
 Create test identities and initial role links before their first request. To test
 changing an existing user's access, use the public user/role management API: it
 updates access versions as well as assignments. Direct repository setup does not
@@ -106,7 +125,22 @@ to 400. Record unsupported error mappings explicitly, as for
 Such a characterization test documents current behavior; it does not establish
 that an unmet application requirement has been implemented.
 
+Vitest Browser Mode uses native ESM caching. `vi.resetModules()` does not make a
+second import of the same startup module execute its side effects again. For
+bootstrap tests, import `startApplication` from `src/bootstrap.ts` and call/await
+it for each case, including parameterized cases. The example and starter keep
+`src/main.ts` as the one-time browser entry point and test that entry separately.
+Use a pending promise only when proving an intermediate state such as waiting
+for access loading; await completion before the test ends. Reset mock state per
+test. Do not repair a missing second startup by increasing waits or by adding
+arbitrary query strings to imports.
+
 Give browser-created lookup records distinct names for each repeated scenario.
+For a view-only editor, wait for the saved field value and assert that Save is
+disabled. When checking API metadata during sign-in, register the response wait
+before the triggering action and read the body before the next full-page
+navigation. Chromium may discard the previous page's response body after
+`page.goto()`. Pair a wait for an editor GET with the navigation that triggers it.
 Keep exact-match selectors and assert both the displayed numeric value and the
 saved API payload. If input is intermittent, retain the failing report and record
 the affected field's input events; a successful repetition alone does not identify

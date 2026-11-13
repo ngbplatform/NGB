@@ -312,7 +312,7 @@ console.log('Native sandbox boundary and pinned toolchains passed.')
       'Use the supplied PATH, DOTNET_CLI_HOME, NUGET_PACKAGES and TMPDIR; do not replace them.',
       'Build the complete EquipmentInspection.slnx with -c Release --no-restore -m:1 -nodeReuse:false -p:UseSharedCompilation=false.',
       'Shell network and Docker are unavailable in this coding profile.',
-      'After building, local backend unit checks can use dotnet test EquipmentInspection.Tests/EquipmentInspection.Tests.csproj --no-build --no-restore -c Release.',
+      'VSTest requires a local listening socket. This editing sandbox denies that operation. Build the tests here and leave execution to independent acceptance.',
       'The application CLI test profiles create fresh isolated environments and may restore packages or require Docker; they are not executable in this offline editing profile.',
       'Independent HTTP/provider/browser acceptance and the authored tests run after source review.',
       'You may inspect installed public package files in NUGET_PACKAGES.',

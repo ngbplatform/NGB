@@ -8,6 +8,18 @@ internal static class PermissionBrowserHost
 {
     public static async Task Main()
     {
+        try
+        {
+            await RunAsync();
+        }
+        finally
+        {
+            await TestInfrastructure.ShutdownAsync();
+        }
+    }
+
+    private static async Task RunAsync()
+    {
         var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
         var input = JsonSerializer.Deserialize<Input>((await Console.In.ReadLineAsync())!, options)!;
         await using var host = new InspectionHost(browserOrigin: input.BrowserOrigin);

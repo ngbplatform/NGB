@@ -4,8 +4,6 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using DotNet.Testcontainers.Builders;
-using DotNet.Testcontainers.Containers;
 using Microsoft.AspNetCore.WebUtilities;
 using Xunit;
 
@@ -15,18 +13,23 @@ internal sealed class TestIdentity : IAsyncDisposable
 {
     private readonly string _realm = "ngb-kit-" + Guid.NewGuid().ToString("N");
     private readonly string _password = Convert.ToHexString(RandomNumberGenerator.GetBytes(24));
-    private readonly IContainer _container;
+    private readonly object _realmDefinition;
+    private TestInfrastructure? _infrastructure;
+    private bool _created;
     private readonly Dictionary<string, string> _subjects = new(StringComparer.Ordinal);
 
     public const string ClientId = "ngb-test-client";
 
     public string Password => _password;
 
-    public string Issuer => $"http://{_container.Hostname}:{_container.GetMappedPublicPort(8080)}/realms/{_realm}";
+    public string Issuer => $"{IdentityOrigin}/realms/{_realm}";
+
+    private string IdentityOrigin => _infrastructure?.IdentityOrigin
+        ?? throw new InvalidOperationException("Start the test identity first.");
 
     public TestIdentity(string? browserOrigin = null)
     {
-        var realm = new
+        _realmDefinition = new
         {
             realm = _realm,
             enabled = true,
@@ -53,17 +56,14 @@ internal sealed class TestIdentity : IAsyncDisposable
                 User("reader", [])
             }
         };
-
-        _container = new ContainerBuilder("quay.io/keycloak/keycloak:26.5.6")
-            .WithPortBinding(8080, true)
-            .WithCommand("start-dev", "--hostname-strict=false", "--import-realm")
-            .WithResourceMapping(JsonSerializer.SerializeToUtf8Bytes(realm), $"/opt/keycloak/data/import/{_realm}.json")
-            .WithWaitStrategy(Wait.ForUnixContainer().UntilHttpRequestIsSucceeded(request => request
-                .ForPort(8080).ForPath($"/realms/{_realm}/.well-known/openid-configuration")))
-            .Build();
     }
 
-    public Task StartAsync() => _container.StartAsync();
+    public async Task StartAsync()
+    {
+        _infrastructure = await TestInfrastructure.GetAsync();
+        await _infrastructure.CreateRealmAsync(_realmDefinition);
+        _created = true;
+    }
 
     public string Subject(string username) => _subjects[username];
 
@@ -147,7 +147,14 @@ internal sealed class TestIdentity : IAsyncDisposable
         return token.GetProperty("access_token").GetString()!;
     }
 
-    public ValueTask DisposeAsync() => _container.DisposeAsync();
+    public async ValueTask DisposeAsync()
+    {
+        if (_created)
+        {
+            await _infrastructure!.DeleteRealmAsync(_realm);
+            _created = false;
+        }
+    }
 
     private object User(string username, string[] roles)
     {

@@ -5,7 +5,9 @@
   "maxSqlCommands": {
     "ngb_list_records": 3,
     "ngb_get_record": 5,
-    "ngb_search": 3,
+    "ngb_search": 4,
+    "ngb_search_catalogs": 3,
+    "ngb_search_journal": 3,
     "custom_current_user": 2
   }
 }

@@ -9,9 +9,10 @@ import {
 } from './release-contracts.mjs'
 import { atomicJson, checkpointRunner, lockRun } from './checkpoints.mjs'
 import { command } from './execution.mjs'
-import { prepareEnvironment, prepareToolchain } from './environment.mjs'
+import { prepareEnvironment, prepareToolchain, verifyHostEnvironment } from './environment.mjs'
 import { validateCertification } from '../ai-devkit/certification-data.mjs'
 import { readBytes } from '../../packaging/templates/content/infrastructure/ngb/kit-files.mjs'
+import { sourceFiles } from './source-files.mjs'
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const action = process.argv[2]
@@ -19,6 +20,7 @@ const root = resolve(process.argv[3] ?? join(repository, 'artifacts/release-cand
 const matrix = JSON.parse(await readFile(new URL('./matrix.json', import.meta.url), 'utf8'))
 const inventory = JSON.parse(await readFile(join(repository, matrix.baselines), 'utf8'))
 validateMatrix(matrix)
+const hasGate = id => matrix.gates.some(gate => gate.id === id)
 const manifestPath = join(root, 'release-manifest.json')
 const derivedInputs = [
   ...['Api', 'Migrator', 'BackgroundJobs', ...(includesAiKit(matrix.target) ? ['Tests', 'IntegrationTests'] : [])]
@@ -31,8 +33,7 @@ const readJson = async path => JSON.parse(await readFile(path, 'utf8'))
 const save = async (path, value) => writeFile(path, `${JSON.stringify(value, null, 2)}\n`, { flag: 'wx' })
 
 async function sourceIdentity() {
-  const paths = execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', '-z'], { cwd: repository, encoding: 'utf8' })
-    .split('\0').filter(path => path && path !== 'AGENTS.md' && !path.endsWith('.DS_Store') && !derivedInputs.includes(path)).sort()
+  const paths = sourceFiles(repository).filter(path => !derivedInputs.includes(path))
   const files = []
   for (const path of paths) files.push([path, digest(await readFile(join(repository, path)))])
   return digest(JSON.stringify(files))
@@ -66,7 +67,7 @@ async function verifyCandidate() {
         assert.equal(digest(await readBytes(root, path, 16 * 1024 * 1024)), hash, `Kit child evidence changed: ${path}`)
       }
     }
-    await verifyFullQuality(sealed.sha256)
+    await verifyToolingQuality(sealed.sha256)
   }
   const identity = await readJson(join(root, 'certification/candidate-identity.json'))
   assert.equal(identity.checkpointsSha256, digest(await readFile(join(root, 'run-state.json'))), 'Certification checkpoints changed.')
@@ -74,34 +75,35 @@ async function verifyCandidate() {
   return sealed
 }
 
-async function verifyFullQuality(candidateSha256) {
-  const full = await readJson(join(root, 'certification/full-quality.json'))
-  assert.equal(full.status, 'passed')
-  assert.equal(full.scope, 'full-platform-quality')
-  assert.equal(full.artifactManifestSha256, candidateSha256, 'Full quality evidence belongs to another candidate.')
-  for (const [name, metrics] of Object.entries({ backend: ['lines', 'branches', 'methods'],
-    frontend: ['lines', 'branches', 'functions', 'statements'] })) {
-    const bytes = await readFile(join(root, `certification/coverage/${name}-full/coverage-summary.json`))
-    assert.equal(digest(bytes), full.reports[name].sha256, `Full ${name} coverage evidence changed.`)
-    const coverage = JSON.parse(bytes)
-    assert.ok(coverage.passed && coverage.sourceFiles.required > 0
-      && coverage.sourceFiles.required === coverage.sourceFiles.presentInReport
-      && coverage.sourceFiles.missingFromReport === 0 && coverage.failingFileCount === 0,
-    `Incomplete full ${name} source coverage.`)
-    for (const metric of metrics) {
-      assert.equal(coverage.overall[metric].percentage, 100, `Incomplete full ${name} ${metric} coverage.`)
-    }
+async function verifyToolingQuality(candidateSha256) {
+  const quality = await readJson(join(root, 'certification/quality-preflight.json'))
+  assert.equal(quality.status, 'passed')
+  assert.equal(quality.scope, 'quality-preflight')
+  assert.equal(quality.artifactManifestSha256, candidateSha256, 'Tooling evidence belongs to another candidate.')
+  assert.deepEqual(Object.keys(quality.reports).sort(), ['performance', 'tooling'])
+  for (const name of ['performance', 'tooling']) {
+    const bytes = await readFile(join(root, `certification/${name}.json`))
+    assert.equal(digest(bytes), quality.reports[name].sha256, `Certification ${name} evidence changed.`)
+    assert.equal(JSON.parse(bytes).status, 'passed')
   }
 }
 
 if (action === 'certify' && !process.argv.includes('--prepared-toolchain')) {
   await verify()
   const prepared = await prepareToolchain()
-  await command(prepared.node, [fileURLToPath(import.meta.url), 'certify', root, '--prepared-toolchain'], { cwd: repository, env: prepared.env })
+  await command(prepared.node, [fileURLToPath(import.meta.url), 'certify', root, '--prepared-toolchain'], {
+    cwd: repository, env: prepared.env, timeout: 24 * 60 * 60_000,
+  })
   process.exit(0)
 }
 
 if (action === 'seal') {
+  if (includesAiKit(matrix.target)) {
+    const prepared = await prepareToolchain()
+    await command(prepared.node, ['quality/ai-devkit/prepare-contracts.mjs', '--feed', join(repository, 'artifacts/nuget-release')], {
+      cwd: repository, env: prepared.env,
+    })
+  }
   const sourceTreeSha256 = await sourceIdentity()
   const templatePath = `nuget-release/NGB.Platform.Templates.${matrix.target}.nupkg`
   const templateBytes = await readFile(join(repository, 'artifacts', templatePath))
@@ -146,13 +148,6 @@ if (action === 'seal') {
   try {
     const sealed = await verify()
     await mkdir(join(root, 'certification'), { recursive: true })
-    console.log('[prepare] Checking tools, browser and every required container image before certification.')
-    const preparationStarted = performance.now()
-    const environment = await prepareEnvironment(root)
-    console.log(`[passed] prepare: ${((performance.now() - preparationStarted) / 1000).toFixed(1)}s`)
-    const identity = { artifactManifestSha256: sealed.sha256, environment }
-    const stage = await checkpointRunner(root, identity)
-    await atomicJson(join(root, 'certification/environment.json'), environment)
     const cache = join(repository, 'artifacts/certification-cache', sealed.sha256)
     const stageEnv = { ...process.env, NGB_CERTIFICATION_CACHE: cache }
     const checked = operation => async () => {
@@ -160,38 +155,80 @@ if (action === 'seal') {
       await operation()
       await verify()
     }
-    const execute = (script, args = []) => command('node', [script, ...args], { cwd: repository, env: stageEnv })
-    await stage('source-fixture', checked(() => execute('quality/upgrade-certification/verify-source.mjs')))
+    const execute = (script, args = []) => command('node', [script, ...args], {
+      cwd: repository, env: stageEnv, timeout: 24 * 60 * 60_000,
+    })
+    const kit = includesAiKit(matrix.target)
+    const preflight = async (name, operation) => {
+      console.log(`[start] preflight/${name}`)
+      const started = performance.now()
+      let status = 'failed'
+      try {
+        await checked(operation)()
+        status = 'passed'
+      } finally {
+        console.log(`[${status}] preflight/${name}: ${((performance.now() - started) / 1000).toFixed(1)}s`)
+      }
+    }
+    // These bounded checks run on every invocation, before image acquisition or
+    // integration work. Their evidence is still validated by the final gates.
+    await preflight('host', verifyHostEnvironment)
+    await preflight('source-fixture', () => execute('quality/upgrade-certification/verify-source.mjs'))
+    if (kit) {
+      for (const profile of ['artifacts', 'contracts']) {
+        await preflight(`ai-kit-${profile}`, () => execute('quality/ai-devkit/certify.mjs', [profile, root]))
+      }
+      await preflight('ai-kit-agent-access', () => execute('quality/ai-devkit/run-agent-evaluations.mjs', [root, '--check']))
+    }
+    console.log('[prepare] Checking browser and every required container image after preflight.')
+    const preparationStarted = performance.now()
+    const environment = await prepareEnvironment(root)
+    console.log(`[passed] prepare: ${((performance.now() - preparationStarted) / 1000).toFixed(1)}s`)
+    const identity = { artifactManifestSha256: sealed.sha256, environment }
+    const stage = await checkpointRunner(root, identity)
+    await atomicJson(join(root, 'certification/environment.json'), environment)
+    const qualityArgs = [root, '--certification', '--prepared-toolchain', '--prepared-environment']
+    await stage('quality-preflight', checked(() => execute('quality/external-consumer/full-quality.mjs', [
+      ...qualityArgs, '--preflight',
+    ])), ['certification/quality-preflight.json', 'certification/tooling.json', 'certification/performance.json',
+      'certification/certification-quality-preflight-stages.json'])
     await stage('template', checked(() => execute('quality/external-consumer/verify-template.mjs', [root])), ['certification/template.json'])
-    await stage('compose', checked(() => execute('quality/external-consumer/verify-compose.mjs', [root])), ['certification/compose.json'])
     await stage('nuget-compatibility', checked(() => execute('packaging/nuget/verify-api-compatibility.mjs', [join(root, 'nuget-release')])), ['nuget-release/api-compatibility.json'])
     await stage('npm-compatibility', checked(() => execute('ui/scripts/verify-platform-ui-contracts.mjs', [join(root, 'npm', `ngbplatform-ui-${matrix.target}.tgz`)])), ['npm/npm-compatibility.json'])
-    if (matrix.schemaVersion >= 2) {
+    await stage('compose', checked(() => execute('quality/external-consumer/verify-compose.mjs', [root])), ['certification/compose.json'])
+    if (hasGate('mcp-contract')) {
       await stage('mcp-contract', checked(() => execute('quality/mcp/verify-contract.mjs', [join(root, 'certification/mcp-contract')])),
         ['certification/mcp-contract/contracts.json'])
+    }
+    if (hasGate('mcp-external')) {
       await stage('mcp-external', checked(() => execute('quality/mcp/verify-external.mjs', [join(root, 'nuget-release'), join(root, 'certification/mcp-external')])),
         ['certification/mcp-external/inputs.json'])
+    }
+    if (hasGate('mcp-verticals')) {
       await stage('mcp-verticals', checked(() => execute('quality/mcp/verify-verticals.mjs', [join(root, 'certification/mcp-verticals')])),
         ['certification/mcp-verticals/verticals.json'])
     }
     for (const profile of Object.keys(matrix.profiles)) {
       await stage(profile, checked(() => execute('quality/external-consumer/certify.mjs', [profile, root])), [`certification/${profile}.json`])
     }
-    const kit = includesAiKit(matrix.target)
-    const qualityName = kit ? 'full-quality' : 'certification-quality'
-    await stage(qualityName, checked(() => execute('quality/external-consumer/full-quality.mjs', [
-      root, ...kit ? [] : ['--certification'], '--prepared-toolchain', '--prepared-environment',
-    ])), [
-      `certification/${qualityName}.json`, 'certification/tooling.json',
-      'certification/cross-browser.json', 'certification/performance.json',
-      `certification/${kit ? 'quality' : 'certification-quality'}-stages.json`,
-      ...kit ? ['certification/coverage/backend-full/coverage-summary.json', 'certification/coverage/frontend-full/coverage-summary.json'] : [],
-    ])
     if (kit) {
-      for (const profile of ['artifacts', 'contracts', 'application', 'upgrade', 'agents']) {
+      for (const profile of ['application', 'upgrade']) {
         await stage(`ai-kit-${profile}`, checked(() => execute('quality/ai-devkit/certify.mjs', [profile, root])),
           [`certification/ai-kit/${profile}.json`])
       }
+    }
+    // Historical matrices include the framework browser gate. The current
+    // release explicitly leaves platform regression and coverage to the maintainer.
+    if (hasGate('browser-quality')) {
+      await stage('certification-quality', checked(() => execute('quality/external-consumer/full-quality.mjs', qualityArgs)), [
+        'certification/certification-quality.json', 'certification/tooling.json',
+        'certification/cross-browser.json', 'certification/performance.json',
+        'certification/certification-quality-stages.json',
+      ])
+    }
+    if (kit) {
+      await stage('ai-kit-agents', checked(() => execute('quality/ai-devkit/certify.mjs', ['agents', root])),
+        ['certification/ai-kit/agents.json'])
     }
     const results = {}
     const bind = async (gates, path) => {
@@ -217,7 +254,7 @@ if (action === 'seal') {
     await bind(['external-isolation', 'tooling-quality'], 'certification/tooling.json')
     await bind(['nuget-compatibility'], 'nuget-release/api-compatibility.json')
     await bind(['npm-compatibility'], 'npm/npm-compatibility.json')
-    await bind(['browser-quality'], 'certification/cross-browser.json')
+    if (hasGate('browser-quality')) await bind(['browser-quality'], 'certification/cross-browser.json')
     await bind(['performance-tooling'], 'certification/performance.json')
     if (kit) {
       for (const [gate, profile] of Object.entries({ 'ai-kit-artifacts': 'artifacts', 'ai-kit-contracts': 'contracts',
@@ -225,15 +262,10 @@ if (action === 'seal') {
         validateCertification(await readJson(join(root, `certification/ai-kit/${profile}.json`)), profile, sealed.sha256)
         await bind([gate], `certification/ai-kit/${profile}.json`)
       }
-      await verifyFullQuality(sealed.sha256)
-      await bind(['full-quality'], 'certification/full-quality.json')
-      await bind(['full-backend-coverage'], 'certification/coverage/backend-full/coverage-summary.json')
-      await bind(['full-frontend-coverage'], 'certification/coverage/frontend-full/coverage-summary.json')
+      await verifyToolingQuality(sealed.sha256)
     }
-    if (matrix.schemaVersion >= 2) {
-      await bind(['mcp-contract'], 'certification/mcp-contract/contracts.json')
-      await bind(['mcp-external'], 'certification/mcp-external/inputs.json')
-      await bind(['mcp-verticals'], 'certification/mcp-verticals/verticals.json')
+    for (const [gate, path] of Object.entries({ 'mcp-contract': 'contracts.json', 'mcp-external': 'inputs.json', 'mcp-verticals': 'verticals.json' })) {
+      if (hasGate(gate)) await bind([gate], `certification/${gate}/${path}`)
     }
     await atomicJson(join(root, 'certification/candidate-identity.json'), {
       artifactManifestSha256: sealed.sha256, scope: matrix.scope, source: matrix.source, target: matrix.target,

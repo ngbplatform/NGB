@@ -10,6 +10,10 @@ Start with the installed SDK version, existing definitions and provider registra
    fields, parts, supported hierarchy and required public storage interface.
 2. Add the definition, provider adapter and immutable migration in their respective
    projects. Register the contributor and storage explicitly; metadata is not DI.
+   Map `ColumnType.String` to PostgreSQL `text`, including bounded fields; use a
+   `CHECK` for the database length limit. `varchar(n)` fails SDK schema validation.
+   Validate the migrated schema before CRUD tests; follow
+   [schema validation](../../../ai/vendor/references/persistence.md#typed-schema-validation-and-posted-document-guards).
 3. Specify invalid payloads and authorization outcomes before implementing the
    validator. Use the public application service and shared UI contracts.
 4. Run `node infrastructure/ngb.mjs validate --profile build`,

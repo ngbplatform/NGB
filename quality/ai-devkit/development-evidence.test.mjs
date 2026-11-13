@@ -1,6 +1,24 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { requiresFrontendAcceptance, reviewFrontendTests, verifyAuthoredFrontend } from './development-evidence.mjs'
+import { frontendUnitFailure, requiresFrontendAcceptance, reviewFrontendTests, verifyAuthoredFrontend } from './development-evidence.mjs'
+
+test('frontend failures identify the failed assertions without dumping an entire JSON report', () => {
+  assert.equal(frontendUnitFailure(null), null)
+  assert.equal(frontendUnitFailure({ testResults: [{}] }), null)
+  assert.equal(frontendUnitFailure(fixture().unit), null)
+  const report = { testResults: [{ name: 'bootstrap.spec.ts', assertionResults: [
+    { status: 'failed', fullName: 'preserves capabilities: false' },
+    { status: 'failed', title: 'preserves capabilities: true' },
+    { status: 'failed' },
+    { status: 'failed', fullName: 'fourth failure' },
+    { status: 'passed', fullName: 'successful test' },
+  ] }] }
+  assert.equal(frontendUnitFailure(report),
+    '4 frontend test(s) failed: preserves capabilities: false; preserves capabilities: true; bootstrap.spec.ts')
+  assert.equal(frontendUnitFailure({ testResults: [{ assertionResults: [{ status: 'failed' }] }] }), null)
+  assert.equal(frontendUnitFailure({ testResults: [{ assertionResults: [{ status: 'failed', fullName: ' \nlong ' + 'x'.repeat(500) }] }] }),
+    '1 frontend test(s) failed: ' + (' long ' + 'x'.repeat(500)).slice(0, 240))
+})
 
 function fixture() {
   const webRoot = '/isolated/application/web'

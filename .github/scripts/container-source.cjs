@@ -15,7 +15,7 @@ function publicationCommit(run, repository) {
   assert.equal(run.conclusion, 'success', 'Publication and registry verification must pass.')
   assert.ok(['workflow_run', 'workflow_dispatch'].includes(run.event), 'Unexpected publication event.')
 
-  // A workflow_run publication can have a newer head_sha than its certified
+  // A workflow_run publication can have a newer head_sha than its built
   // source. The selected commit is also checked against the downloaded manifest.
   const title = /^Publish NGB ([a-f0-9]{40})$/.exec(run.display_title)
   assert.ok(title, 'Publication must identify its exact release commit.')

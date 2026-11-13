@@ -126,7 +126,7 @@ public sealed class ReportDimensionScopeTests
     {
         var equipment = await PostAsync<CatalogItemDto>(admin, "/api/catalogs/example.equipment", Payload(("display", name)));
         var document = await PostAsync<DocumentDto>(admin, "/api/documents/example.inspection",
-            Payload(("equipment_id", equipment.Id), ("result", "Passed")));
+            CompleteInspectionPayload(equipment.Id));
         var path = "/api/documents/example.inspection/" + document.Id;
         var state = (await admin.GetFromJsonAsync<DocumentEditorStateDto>(path + "/editor-state", Json))!;
         using var posted = await ExecutePostAsync(admin, path, state.DocumentVersion, document.Id.ToString());

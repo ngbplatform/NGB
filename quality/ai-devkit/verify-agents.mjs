@@ -9,6 +9,7 @@ import { evaluationFamily, validateAgentEvaluations } from './evaluation-data.mj
 import { evaluationInputs } from './evaluation-inputs.mjs'
 import { requiresFrontendAcceptance } from './development-evidence.mjs'
 import { redactAgentOutput } from './agent-output.mjs'
+import { verifySourceReview } from './review-contracts.mjs'
 
 assert.ok([4, 5].includes(process.argv.length), 'Usage: node verify-agents.mjs <candidate> <new-evidence-directory> [saved-evaluation-directory]')
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
@@ -107,12 +108,15 @@ try {
         if (family !== 'discovery') {
           assert.ok(acceptance.artifacts && Object.keys(acceptance.artifacts).length > 0,
             'Independent acceptance must retain its raw evidence.')
+          const artifacts = {}
           for (const [path, sha256] of Object.entries(acceptance.artifacts)) {
-            const evidence = await copyArtifact({ path: `${dirname(artifact.path)}/${path}`, sha256 })
+            const evidence = await copyArtifact({ path: `${dirname(artifact.path)}/${path}`, sha256 }, path === 'source-review-transcript.jsonl')
+            artifacts[path] = evidence
             if (family === 'development' && path === 'frozen/test-selection.json') {
               assert.equal(digest(evidence), acceptance.authoredTests.reviewSha256)
             }
           }
+          verifySourceReview(artifacts, acceptance, family, inputs)
           if (family === 'development') {
             assert.ok(Object.hasOwn(acceptance.artifacts, 'frozen/test-selection.json'))
             assert.ok(Object.hasOwn(acceptance.artifacts, 'authored-unit.trx'))

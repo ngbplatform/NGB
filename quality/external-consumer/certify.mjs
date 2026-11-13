@@ -11,6 +11,7 @@ import { chromium, expect } from '@playwright/test'
 import { assertLayering } from './layering.mjs'
 import { validateMatrix } from './release-contracts.mjs'
 import { startAfterSuccessfulMigration } from './sequencing.mjs'
+import { assertMigrationHistoryPreserved } from './migration-history.mjs'
 import { assertConsumerIsolation, verifyFrozenFixture } from './contracts.mjs'
 import { withManagedIgnores } from '../../packaging/templates/content/infrastructure/ngb/contracts.mjs'
 import { acquireCli } from '../../packaging/templates/content/infrastructure/ngb/acquisition.mjs'
@@ -397,9 +398,14 @@ function runtimeProbe(test, state) {
 async function assertPersistentSnapshot(before, after, historyOnly, assertion) {
   const sourceState = JSON.parse(await readFile(join(root, before), 'utf8'))
   const targetState = JSON.parse(await readFile(join(root, after), 'utf8'))
-  const select = state => Object.fromEntries(Object.entries(state).filter(([name]) => !historyOnly || name.startsWith('migration_changelog__')))
-  assert.deepEqual(select(targetState), select(sourceState), 'Persistent state or migration history changed unexpectedly.')
-  evidence.assertions[assertion ?? (historyOnly ? 'migrationHistoryPreserved' : 'repeatedMigrationSnapshot')] = createHash('sha256').update(JSON.stringify(select(targetState))).digest('hex')
+  let verifiedState = targetState
+  if (historyOnly) {
+    const migrations = JSON.parse(await readFile(join(root, 'candidate-migrations.json'), 'utf8'))
+    verifiedState = assertMigrationHistoryPreserved(sourceState, targetState, migrations)
+  } else {
+    assert.deepEqual(targetState, sourceState, 'Persistent state or migration history changed unexpectedly.')
+  }
+  evidence.assertions[assertion ?? (historyOnly ? 'migrationHistoryPreserved' : 'repeatedMigrationSnapshot')] = createHash('sha256').update(JSON.stringify(verifiedState)).digest('hex')
 }
 
 async function verifyMcpUpgrade(state, content) {
@@ -590,6 +596,7 @@ volumes:
   dotnetHost('Migrator')
   if (!upgrade) dotnetHost('Migrator', ['seed-administrator'])
   await prepareRuntimeProbe()
+  if (upgrade) runtimeProbe('SnapshotPackagedPlatformMigrations', join(root, 'candidate-migrations.json'))
   const platformJob = join(root, 'platform-job.txt')
   runtimeProbe('EnqueueRegisteredPlatformJob', platformJob)
   let apiProcess = dotnetHost('Api', [], true)

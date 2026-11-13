@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { startApplication } from '../../src/bootstrap'
 
 const state = vi.hoisted(() => {
   const app = { use: vi.fn(), mount: vi.fn() }
@@ -34,7 +35,6 @@ vi.mock('../../src/App.vue', () => ({ default: {} }))
 vi.mock('../../src/metadata', () => ({ metadataFormBehavior: {} }))
 
 beforeEach(() => {
-  vi.resetModules()
   vi.clearAllMocks()
   state.auth.authenticated = true
   state.auth.initialize.mockResolvedValue(undefined)
@@ -47,11 +47,12 @@ afterEach(() => { document.body.innerHTML = '' })
 it('loads access before mounting protected pages and waits for the router', async () => {
   let release: () => void
   state.access.load.mockReturnValue(new Promise<void>(resolve => { release = resolve }))
-  await import('../../src/main')
+  const started = startApplication()
   await vi.waitFor(() => expect(state.access.load).toHaveBeenCalledOnce())
   expect(state.createApp).not.toHaveBeenCalled()
   release!()
-  await vi.waitFor(() => expect(state.app.mount).toHaveBeenCalledWith('#app'))
+  await started
+  expect(state.app.mount).toHaveBeenCalledWith('#app')
   expect(state.router.isReady).toHaveBeenCalledOnce()
   const metadata = { catalogCode: 'example.equipment' }
   state.catalogMetadata.mockResolvedValue(metadata)
@@ -62,31 +63,41 @@ it('loads access before mounting protected pages and waits for the router', asyn
   expect(state.palette.mock.calls[0][0].getMenuGroups()[0].items).toHaveLength(7)
 })
 
+it.each([false, true])('preserves server catalog write capabilities: %s', async allowed => {
+  await startApplication()
+  expect(state.app.mount).toHaveBeenCalledWith('#app')
+  const metadata = { catalogCode: 'example.equipment', capabilities: {
+    canCreate: allowed, canEdit: allowed, canMarkForDeletion: allowed,
+  } }
+  state.catalogMetadata.mockResolvedValue(metadata)
+  state.normalizeMetadata.mockReturnValue(metadata)
+  expect(await state.metadata.mock.calls[0][0].loadCatalogTypeMetadata('example.equipment')).toEqual(metadata)
+})
+
 it('redirects an unauthenticated user before creating application services', async () => {
   state.auth.authenticated = false
-  await import('../../src/main?unauthenticated')
-  await vi.waitFor(() => expect(state.auth.login).toHaveBeenCalledOnce())
+  await startApplication()
+  expect(state.auth.login).toHaveBeenCalledOnce()
   expect(state.access.load).not.toHaveBeenCalled()
   expect(state.createApp).not.toHaveBeenCalled()
 })
 
 it('renders an identity startup error', async () => {
   state.auth.initialize.mockRejectedValue(new Error('Identity unavailable'))
-  await import('../../src/main?identity-error')
-  await vi.waitFor(() => expect(document.getElementById('app')?.textContent).toBe('Identity unavailable'))
+  await startApplication()
+  expect(document.getElementById('app')?.textContent).toBe('Identity unavailable')
 })
 
 it('renders unexpected startup failures without exposing arbitrary values', async () => {
   state.auth.initialize.mockRejectedValue('unexpected value')
-  await import('../../src/main?unknown-error')
-  await vi.waitFor(() => expect(document.getElementById('app')?.textContent).toBe('Application startup failed.'))
+  await startApplication()
+  expect(document.getElementById('app')?.textContent).toBe('Application startup failed.')
 })
 
 it('handles startup failure even when the host element is unavailable', async () => {
   document.body.innerHTML = ''
   state.auth.initialize.mockRejectedValue(new Error('Identity unavailable'))
-  await import('../../src/main?no-host')
-  await vi.waitFor(() => expect(state.auth.initialize).toHaveBeenCalledOnce())
-  await Promise.resolve()
+  await startApplication()
+  expect(state.auth.initialize).toHaveBeenCalledOnce()
   expect(state.createApp).not.toHaveBeenCalled()
 })

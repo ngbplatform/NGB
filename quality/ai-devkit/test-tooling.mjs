@@ -14,6 +14,10 @@ const measured = ['contracts', 'kit-contracts', 'kit-plan', 'upgrade-plan', 'pro
   .map(name => `${modules}/${name}.mjs`)
 const authoringModules = ['ai-devkit/guidance.mjs', 'ai-devkit/capabilities.mjs',
   'quality/ai-devkit/certification-data.mjs', 'quality/ai-devkit/evaluation-data.mjs',
+  'quality/ai-devkit/contract-references.mjs',
+  'quality/ai-devkit/example-execution.mjs',
+  'quality/ai-devkit/review-contracts.mjs',
+  'quality/ai-devkit/agent-availability.mjs',
   'quality/ai-devkit/example-evidence.mjs', 'quality/ai-devkit/development-evidence.mjs', 'quality/ai-devkit/agent-output.mjs',
   'quality/ai-devkit/upgrade-launcher.mjs',
   'quality/ai-devkit/evaluation-oracles/skill-discovery.mjs',

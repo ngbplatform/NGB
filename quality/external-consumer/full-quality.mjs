@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict'
-import { execFileSync } from 'node:child_process'
 import { cp, mkdir, mkdtemp, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -8,19 +7,21 @@ import { atomicJson, lockRun, readOptionalJson } from './checkpoints.mjs'
 import { command } from './execution.mjs'
 import { prepareEnvironment, prepareToolchain } from './environment.mjs'
 import { digest } from './release-contracts.mjs'
+import { sourceFiles } from './source-files.mjs'
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const args = process.argv.slice(2)
 const paths = args.filter(arg => !arg.startsWith('--'))
 const options = args.filter(arg => arg.startsWith('--'))
 assert.ok(paths.length <= 1 && options.every(option => [
-  '--certification', '--prepared-toolchain', '--prepared-environment',
-].includes(option)), 'Usage: full-quality.mjs [candidate-directory] [--certification]')
+  '--certification', '--preflight', '--prepared-toolchain', '--prepared-environment',
+].includes(option)), 'Usage: full-quality.mjs [candidate-directory] [--certification] [--preflight]')
 const candidate = resolve(paths[0] ?? join(repository, 'artifacts/release-candidate'))
 const certification = process.argv.includes('--certification')
-const modeArgs = certification ? ['--certification'] : []
+const preflight = process.argv.includes('--preflight')
+const modeArgs = [...certification ? ['--certification'] : [], ...preflight ? ['--preflight'] : []]
 const workspaceName = certification ? 'certification-quality' : 'quality'
-const reportName = certification ? 'certification-quality.json' : 'full-quality.json'
+const reportName = preflight ? 'quality-preflight.json' : certification ? 'certification-quality.json' : 'full-quality.json'
 if (!process.argv.includes('--prepared-toolchain')) {
   const prepared = await prepareToolchain()
   await command(prepared.node, [fileURLToPath(import.meta.url), candidate, '--prepared-toolchain', ...modeArgs], { cwd: repository, env: prepared.env })
@@ -39,7 +40,10 @@ try {
     : await prepareEnvironment(candidate)
   const manifestBytes = await readFile(join(candidate, 'release-manifest.json'))
   const manifest = JSON.parse(manifestBytes)
-  const identity = { artifactManifestSha256: digest(manifestBytes), environment, certification }
+  const identity = {
+    artifactManifestSha256: digest(manifestBytes), environment, certification,
+    excludeNativeOllama: !certification,
+  }
   const locationFile = join(candidate, `${workspaceName}-workspace.json`)
   let workspace = await readOptionalJson(locationFile)
   if (workspace) {
@@ -65,8 +69,7 @@ try {
   // The CLI can die while Docker keeps running. Stop only this candidate's
   // labelled container before touching its persistent workspace or checkpoints.
   await stopContainer()
-  const sourcePaths = execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', '-z'], { cwd: repository, encoding: 'utf8' })
-    .split('\0').filter(path => path && path !== 'AGENTS.md' && !path.endsWith('.DS_Store'))
+  const sourcePaths = sourceFiles(repository)
   for (const path of sourcePaths) {
     await mkdir(dirname(join(root, path)), { recursive: true })
     // Re-copy tracked inputs on resume; retain only this candidate's build and dependency caches.
@@ -110,8 +113,7 @@ try {
         'npm cache add artifacts/npm/*.tgz',
         'npm --prefix ui ci',
         'npm --prefix quality ci',
-        certification ? 'node quality/external-consumer/quality-suite.mjs --certification /workspace/quality-identity.json'
-          : 'bash run-full-quality.sh /workspace/quality-identity.json',
+        `node quality/external-consumer/quality-suite.mjs ${[...modeArgs, '/workspace/quality-identity.json'].join(' ')}`,
       ].join('\n'),
     ], { cwd: repository })
   } finally {
@@ -124,17 +126,18 @@ try {
   }
   await command('node', ['quality/external-consumer/release.mjs', 'verify', candidate], { cwd: repository })
   await mkdir(join(candidate, 'certification'), { recursive: true })
-  for (const name of [reportName, 'tooling.json', 'cross-browser.json', 'performance.json']) {
+  for (const name of [reportName, 'tooling.json', 'performance.json', ...preflight ? [] : ['cross-browser.json']]) {
     await cp(join(root, 'artifacts/certification', name), join(candidate, 'certification', name))
   }
-  if (!certification) {
+  if (!preflight && !certification) {
     for (const name of ['backend-full', 'frontend-full']) {
       const directory = join(candidate, 'certification/coverage', name)
       await mkdir(directory, { recursive: true })
       await cp(join(root, 'artifacts/coverage', name, 'coverage-summary.json'), join(directory, 'coverage-summary.json'))
     }
   }
-  await cp(join(root, 'artifacts/run-state.json'), join(candidate, 'certification', `${workspaceName}-stages.json`))
+  const stagesName = `${workspaceName}${preflight ? '-preflight' : ''}-stages.json`
+  await cp(join(root, 'artifacts/run-state.json'), join(candidate, 'certification', stagesName))
   console.log(`Complete Linux quality diagnostics: ${root}`)
 } finally {
   try {

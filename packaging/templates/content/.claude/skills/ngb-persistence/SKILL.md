@@ -9,9 +9,12 @@ database/schema mutations or unrelated changes to existing business calculations
 1. Read [persistence contracts](../../../ai/vendor/references/persistence.md). Inspect the installed
    storage interface, unit-of-work lifetime, pack dependencies and current schema.
 2. Keep provider code in its declared layer. Write immutable versioned migrations,
-   stable seed identities and parameterized, bounded SQL.
+   stable seed identities and parameterized, bounded SQL. Use the installed type
+   mapping: `ColumnType.String` requires PostgreSQL `text`, with a `CHECK` for a
+   database length limit; `varchar(n)` fails SDK schema validation.
 3. Test empty initialization, actual previous-version data, repeated execution,
    failure sequencing and rollback behavior on disposable PostgreSQL.
+   Run schema validation after migrations and Setup, before testing data operations.
 4. Verify batch/query counts, indexes and paging boundaries with representative data.
    Preserve shared transactions for document state, effects and audit.
 5. Run `node infrastructure/ngb.mjs validate --profile build` and

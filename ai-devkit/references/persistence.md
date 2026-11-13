@@ -131,10 +131,18 @@ and retains their length bounds. Hybrid part tables must also have a direct
 head can remain alongside it to own Draft cleanup.
 
 Run `platform.schema.validate` through trusted maintenance composition after
-migration and Setup. It checks more than successful application startup: guards,
-physical types and metadata relationships must agree. The example retains its
+migration and Setup, before lifecycle or report tests. It checks more than
+successful application startup: guards, physical types and metadata relationships
+must agree. The example retains its
 frozen earlier migration fixture and verifies upgrade, repeat execution and
 preserved records/audit with these additional migrations.
+
+A test host can resolve `ICatalogSchemaValidationService` and
+`IDocumentSchemaValidationService` in an application DI scope and call
+`ValidateAllAsync()` on each immediately after migration and Setup. This verifies
+the typed application schema before HTTP tests; it does not replace the maintenance
+job's additional core-schema checks. The independent agent acceptance host does
+this even when generated tests omit schema validation.
 
 
 ## Trusted persistence data shapes

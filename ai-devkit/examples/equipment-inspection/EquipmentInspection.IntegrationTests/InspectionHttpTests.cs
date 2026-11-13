@@ -35,7 +35,7 @@ public sealed class InspectionHttpTests
             Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
         }
 
-        using (var update = await admin.PutAsJsonAsync(path, Payload(("equipment_id", equipment.Id), ("result", "Passed"))))
+        using (var update = await admin.PutAsJsonAsync(path, CompleteInspectionPayload(equipment.Id)))
         {
             await EnsureSuccessAsync(update);
         }

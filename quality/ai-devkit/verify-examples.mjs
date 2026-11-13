@@ -10,7 +10,8 @@ import { digest } from '../../packaging/templates/content/infrastructure/ngb/kit
 import { verifyCliArchive } from '../../packaging/templates/content/infrastructure/ngb/archive.mjs'
 import { inspectCapabilities, preparePayload } from '../../ai-devkit/prepare.mjs'
 import { assertUiConsumerLock, exampleFrontendSources, exampleSources, passingTestCases } from './example-evidence.mjs'
-import { executionEnvironment, runTool } from '../../packaging/templates/content/infrastructure/ngb/process.mjs'
+import { executionEnvironment } from '../../packaging/templates/content/infrastructure/ngb/process.mjs'
+import { exampleRunner, exampleTestTimeoutMs } from './example-execution.mjs'
 import { browserTestCounts, frontendCoverage, frontendTestCounts, uniqueCoverageReport } from '../../packaging/templates/content/infrastructure/ngb/evidence.mjs'
 import { classifyCoverageExclusion, evaluateCoverage, mergeCoverage, parseCobertura } from '../../packaging/templates/content/infrastructure/ngb/coverage.mjs'
 import { testCounts } from '../../packaging/templates/content/infrastructure/ngb/profiles.mjs'
@@ -39,22 +40,7 @@ const save = async (path, bytes) => {
   await writeFile(join(output, path), bytes, { mode: 0o600, flag: 'wx' })
   return { path, sha256: digest(bytes) }
 }
-const invoke = async (id, args, cwd, tool = 'dotnet', timeoutMs = 600_000) => {
-  abort.signal.throwIfAborted()
-  const result = await runTool(tool, args, { cwd, env, timeoutMs, signal: abort.signal,
-    maxBytes: 8 * 1024 * 1024,
-    onSpawn: async pid => {
-      await save(`processes/${id}.json`, JSON.stringify({ schemaVersion: 1,
-        candidateSha256: evidence.candidateSha256, runnerPid: process.pid, childPid: pid,
-        startedAt: new Date().toISOString(), tool, args, cwd,
-        purpose: 'Diagnostic identity only; this receipt does not establish current process ownership.' }, null, 2) + '\n')
-      console.log(`Independent example step: ${id}.`)
-    },
-  })
-  await writeFile(join(output, `${id}.log`), result.output, { mode: 0o600 })
-  assert.equal(result.state, 'passed', `Example ${id} failed: ${result.reason ?? result.exitCode}. See its saved log.`)
-  return result.output
-}
+const invoke = exampleRunner({ output, env, signal: abort.signal, candidateSha256: evidence.candidateSha256 })
 try {
   await save('started.json', JSON.stringify(evidence, null, 2) + '\n')
   assert.match(process.version, /^v24\./)
@@ -158,8 +144,9 @@ try {
       const directory = `.ngb/acceptance-${index}`
       try {
         await invoke(`${name}.tests.${index}`, ['test', project, '--no-build', '--no-restore', '-c', 'Release',
+          '--logger', 'console;verbosity=normal',
           '--logger', 'trx;LogFileName=tests.trx', '--results-directory', join(root, directory),
-          '--collect:XPlat Code Coverage', '--settings', settings], root, 'dotnet', 1_800_000)
+          '--collect:XPlat Code Coverage', '--settings', settings], root, 'dotnet', exampleTestTimeoutMs)
       } catch (error) {
         const artifacts = []
         for (const path of await assetPaths(root, directory)) {
@@ -254,6 +241,7 @@ try {
   evidence.status = 'passed'
 } catch (error) {
   evidence.failure = error.message
+  console.error(`Independent example failure: ${error.message}`)
   process.exitCode = 1
 } finally {
   process.removeListener('SIGINT', cancel)

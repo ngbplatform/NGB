@@ -18,6 +18,7 @@ public static class EquipmentRuntime
     public static IServiceCollection AddEquipmentRuntime(this IServiceCollection services)
     {
         services.AddSingleton<IDefinitionsContributor, EquipmentDefinitions>();
+        services.AddSingleton<IMainMenuContributor, EquipmentMainMenuContributor>();
         services.AddSingleton<IDefinitionsContributor, EquipmentCategoryDefinitions>();
         services.AddSingleton<IDefinitionsContributor, EquipmentCategoryRuntimeDefinitions>();
         services.AddScoped<EquipmentCategoryValidator>();

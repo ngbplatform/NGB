@@ -6,7 +6,11 @@ using NGB.Contracts.Services;
 using NGB.Definitions;
 using NGB.Metadata.Base;
 using NGB.Metadata.Catalogs.Hybrid;
+using NGB.Persistence.Catalogs.Storage;
 using NGB.Persistence.Catalogs.Universal;
+using NGB.Persistence.UnitOfWork;
+using NGB.PostgreSql.Catalogs;
+using NGB.Runtime.Catalogs;
 using NGB.Tools.Exceptions;
 using Npgsql;
 using Xunit;
@@ -26,6 +30,8 @@ public sealed class CatalogPartsHierarchyTests
     {
         await using var host = CreateHost();
         await host.StartAsync();
+        await using var scope = host.Services.CreateAsyncScope();
+        await scope.ServiceProvider.GetRequiredService<ICatalogSchemaValidationService>().ValidateAllAsync();
         if (username == "application-administrator")
         {
             await host.LinkUserAsync(username, true, InspectionHost.AdministratorRoleCode, "Application administrator");
@@ -98,7 +104,15 @@ public sealed class CatalogPartsHierarchyTests
     }
 
     private static InspectionHost CreateHost() => new(
-        configureServices: services => services.AddSingleton<IDefinitionsContributor, GroupDefinitions>(),
+        configureServices: services =>
+        {
+            services.AddSingleton<IDefinitionsContributor, GroupDefinitions>();
+            services.AddScoped<ICatalogTypeStorage>(provider => new PostgresHeadCatalogTypeStorage(
+                provider.GetRequiredService<IUnitOfWork>(),
+                Catalog,
+                "cat_example_inspection_groups",
+                [PostgresHeadCatalogTypeStorage.Column.DraftString("display", "display")]));
+        },
         prepareDatabase: PrepareDatabaseAsync);
 
     private static async Task PrepareDatabaseAsync(string connectionString)
@@ -110,13 +124,14 @@ public sealed class CatalogPartsHierarchyTests
         await using var command = new NpgsqlCommand("""
             CREATE TABLE cat_example_inspection_groups (
                 catalog_id uuid PRIMARY KEY REFERENCES catalogs(id),
-                display varchar(200) NOT NULL,
+                display text NOT NULL CHECK (char_length(display) <= 200),
                 parent_id uuid REFERENCES cat_example_inspection_groups(catalog_id)
             );
             CREATE TABLE cat_example_inspection_groups__checks (
                 catalog_id uuid NOT NULL REFERENCES cat_example_inspection_groups(catalog_id),
                 ordinal integer NOT NULL,
-                label varchar(200) NOT NULL,
+                label text NOT NULL CHECK (char_length(label) <= 200),
+                FOREIGN KEY (catalog_id) REFERENCES catalogs(id),
                 PRIMARY KEY (catalog_id, ordinal)
             );
             """, connection);

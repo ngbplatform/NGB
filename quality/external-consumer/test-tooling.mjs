@@ -17,17 +17,23 @@ run('node', [
   'quality/ai-devkit/commands.test.mjs',
   'quality/external-consumer/contracts.test.mjs', 'quality/external-consumer/layering.test.mjs', 'quality/external-consumer/release-contracts.test.mjs',
   'quality/external-consumer/registry-fetch.test.mjs', 'quality/external-consumer/sequencing.test.mjs',
+  'quality/external-consumer/migration-history.test.mjs',
   'quality/external-consumer/configuration.test.mjs', 'quality/upgrade-certification/scenarios.test.mjs',
   'ui/scripts/platform-ui-compatibility.test.mjs',
   'ui/scripts/npm-command.test.mjs',
   'quality/external-consumer/application-contracts.test.mjs', 'quality/external-consumer/release-source.test.mjs',
   'quality/external-consumer/container-source.test.mjs',
+  'quality/external-consumer/build-release-contracts.test.mjs',
+  'quality/external-consumer/source-files.test.mjs',
   'quality/external-consumer/infrastructure.test.mjs',
 ])
 run('node', ['--test',
   'quality/external-consumer/process-contracts.test.mjs', 'quality/external-consumer/application-process.test.mjs',
   'quality/external-consumer/checkpoints.test.mjs', 'quality/external-consumer/execution.test.mjs',
   'quality/external-consumer/environment-contracts.test.mjs',
+  'quality/external-consumer/pack-process.test.mjs',
+  'quality/external-consumer/build-release-process.test.mjs',
+  'quality/external-consumer/full-quality-process.test.mjs',
 ])
 await mkdir(join(repository, 'artifacts/coverage'), { recursive: true })
 const reports = await mkdtemp(join(repository, 'artifacts/coverage/generated-helpers-'))

@@ -512,12 +512,11 @@ explains the exact contracts and the application's authorization responsibility.
 Report variants, pivot workflows and independent-write UI flows still require
 their own scenarios and evidence.
 
-The integration assembly runs at most two test collections concurrently through
-its packaged `xunit.runner.json`, using xUnit's conservative scheduler. Each test
-owns disposable PostgreSQL and Keycloak instances; the fixed collection budget
-keeps container startup bounded independently of the host's CPU count. Explicit
-concurrent operations inside a test remain concurrent. Timeouts and assertions
-are unchanged, and diagnostics record the runner's effective configuration.
+The integration assembly runs at most two test collections concurrently. Its
+HTTP hosts share one disposable PostgreSQL server and one Keycloak server for the
+test run. Each host creates its own database, realm, users and signing keys and
+removes its database and realm on disposal. The assembly disposes both servers
+after its last test. The standalone browser test process owns its own servers.
 
 ## Work Center service and HTTP contracts
 
@@ -731,6 +730,11 @@ resources and the frozen migration baseline remain unchanged.
 a Posted document, transaction rollback, retained checklist rows/audit and successful
 public Unpost followed by Draft editing. `MigrationHttpTests` continues to verify
 upgrade from the frozen earlier application schema and checksum-drift refusal.
+
+Positive inspection setup uses `InspectionRequests.CompleteInspectionPayload`,
+including lifecycle, report, batch and typed-storage guard scenarios. Update this
+factory when extending Post requirements. Incomplete Drafts and frozen migration
+inputs stay explicit; generic request/action helpers do not add completion fields.
 
 ## Batch, maintenance and provider extension examples
 

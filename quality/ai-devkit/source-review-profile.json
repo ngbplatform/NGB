@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": "automatic-source-review-v3",
+  "client": "claude",
+  "clientVersion": "2.1.308",
+  "maximumSeconds": 300,
+  "maximumEstimatedCostUsd": 2,
+  "maximumTurns": 8,
+  "maximumInputBytes": 262144,
+  "policy": "Independent read-only assessment of every changed source before compilation or tests. Application code and new files are supplied in full. Existing test changes use complete unified diffs with 12 context lines and original/final hashes against the verified trusted baseline. No changed lines are omitted. Unchanged trusted integration tests are supplied as a path/class inventory for selection. No tools, model conversation reuse, code repair or feedback to the evaluated client. Reject unsafe execution, out-of-scope changes, hidden test bypasses or missing review context. Deterministic ownership checks and independent behavioral oracles remain mandatory."
+}

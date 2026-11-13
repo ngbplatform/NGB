@@ -140,6 +140,8 @@ test('shared attachments upload and download real bytes while a reader cannot re
     const reader = await readerContext.newPage()
     await signIn(reader, 'imitator')
     await reader.goto(path)
+    await expect(field(reader, 'display')).toHaveValue('Equipment with inspection attachment')
+    await expect(reader.getByRole('button', { name: 'Save', exact: true })).toBeDisabled()
     await reader.getByRole('button', { name: 'More actions', exact: true }).click()
     await reader.getByRole('menuitem', { name: 'Attachments (1)', exact: true }).click()
     const readOnly = reader.getByRole('dialog', { name: 'Attachments', exact: true })

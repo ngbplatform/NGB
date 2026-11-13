@@ -26,7 +26,7 @@ loading/cancellation and rejected access. Browser tests must use the real backen
 and disposable Keycloak; component mocks alone cannot prove authorization.
 
 The starter's `web/src/` and test configuration are a small working example.
-Its seven frontend tests and two browser scenarios establish starter behavior,
+Its eight frontend tests and two browser scenarios establish starter behavior,
 not arbitrary future business forms or all framework component combinations.
 
 The equipment example also maps the public Work Center and notification-preference
@@ -64,5 +64,11 @@ When browser-mode Vitest tests import additional package subpaths, predeclare
 their dependency optimization entries. Otherwise Vite may reload a test while
 discovering the new dependency graph. Keep one Vue runtime, retain the per-file
 coverage thresholds and verify a fresh package-only build as well as component
-tests. The example's current configuration covers its nine source files; it does
+tests. The example's current configuration covers its ten source files; it does
 not claim that every component exported by the framework has been exercised.
+
+Application startup is an explicit `startApplication` function in `src/bootstrap.ts`.
+The browser entry `src/main.ts` calls it once. Tests invoke the function directly
+for each authentication, access and failure case, so they do not depend on
+re-evaluating a cached browser module. Keep metadata capability assertions on
+this actual composition path; no frontend override may grant server-denied rights.

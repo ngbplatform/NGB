@@ -26,6 +26,14 @@ storage, keeping SQL in the provider project. Inspect its actual resolved signat
 before implementing it. Reuse the application's scoped unit of work; opening a
 second independent transaction can break atomic writes and audit behavior.
 
+Use PostgreSQL `text` for `ColumnType.String`, including fields with `MaxLength`.
+The SDK schema validator rejects `varchar(n)` for that logical type. Use a
+`CHECK (char_length(column) <= limit)` for a database length limit and validate
+input through the application validator for HTTP 400. After migration and Setup,
+call `ICatalogSchemaValidationService.ValidateAllAsync()` in an application DI
+scope before CRUD tests; successful reads and writes alone do not prove schema
+compatibility. See [schema validation](persistence.md#typed-schema-validation-and-posted-document-guards).
+
 Distinguish the two public creation paths. `ICatalogService.CreateAsync` validates
 the request, creates a header through `ICatalogDraftService.CreateHeaderOnlyAsync`
 and writes the metadata head in its transaction. It does not need a placeholder

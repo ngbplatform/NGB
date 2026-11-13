@@ -376,7 +376,8 @@ console.log('Installer filesystem boundary, both skill adapters, immutable targe
     report.status = 'preflight-passed-not-evaluated'
   } else {
     const context = `Evaluation environment: the application root is ${application}; the read-only target CLI is ${targetCli}; the read-only candidate directory is ${join(fixture, 'candidate')}. Keep resolution files and command logs in ${scratch}. Use the supplied PATH, DOTNET_CLI_HOME, NUGET_PACKAGES and TMPDIR. Preview with the target CLI normally. For apply, save your preview-bound resolution JSON at ${resolutionPath} and invoke exactly ${installerPath} with no arguments, shell prefix, directory change or redirection. This fixed launcher runs the same target CLI upgrade --apply for the supplied application and candidate in a separate restricted OS sandbox; it permits the authorized skill-adapter writes that the native Bash sandbox protects. It accepts no arbitrary command or environment. Both sandboxes permit only public NuGet/npm registry hosts; access to other destinations, Docker and the platform checkout is unavailable. Preserve the proxy transport for ordinary build commands. Independent acceptance runs afterward. Work without questions or human assistance.`
-    const prompt = `${task.prompt}\n\n${context}`
+    const diagnostics = 'Keep diagnostics in agent-scratch. Inspect status, exit codes and the logs you write there. Leave .env files, client-private logs, credential locations and environment dumps out of the investigation. For build configuration use the supplied project files, package locks and CLI JSON. A directory outside the preview belongs to the application unless your own commands created it.'
+    const prompt = `${task.prompt}\n\n${context} ${diagnostics}`
     const args = ['--print', '--verbose', '--output-format', 'stream-json',
       '--max-turns', String(profile.maximumTurnsPerAttempt),
       '--max-budget-usd', String(profile.maximumEstimatedCostUsdPerAttempt),

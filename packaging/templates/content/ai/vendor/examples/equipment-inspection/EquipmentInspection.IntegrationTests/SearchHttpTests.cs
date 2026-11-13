@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using EquipmentInspection.Definitions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using NGB.Accounting.Documents;
@@ -111,9 +112,12 @@ public sealed class SearchHttpTests
         }
 
         Assert.Empty((await SearchAsync(admin, new string('a', 256), "&limit=50")).Items);
-        var omittedType = await SearchAsync(admin, "Inspection", "&kind=Report&typeCode=%20");
-        Assert.Equal(2, omittedType.Items.Count);
-        Assert.All(omittedType.Items, item => Assert.Equal("report", item.Kind));
+        var withoutType = await SearchAsync(admin, "Inspection", "&kind=Report");
+        var blankType = await SearchAsync(admin, "Inspection", "&kind=Report&typeCode=%20");
+        Assert.Contains(withoutType.Items, item => item.TypeCode == InspectionReports.Summary);
+        Assert.Contains(withoutType.Items, item => item.TypeCode == InspectionReports.OutcomeRate);
+        Assert.Equal(withoutType.Items.ToArray(), blankType.Items.ToArray());
+        Assert.All(blankType.Items, item => Assert.Equal("report", item.Kind));
     }
 
     [Fact]

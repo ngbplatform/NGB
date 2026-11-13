@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
+import { digest } from '../../packaging/templates/content/infrastructure/ngb/kit-contracts.mjs'
 import { acceptanceMethods, browserCases, harnessSha256, harnessSources, inspectChange, testClass,
   verifyChange, verifyHarness } from './evaluation-oracles/permission-correction.mjs'
 
@@ -8,6 +9,22 @@ const firstHash = 'a'.repeat(64)
 const secondHash = 'b'.repeat(64)
 const harnessFiles = Object.fromEntries(await Promise.all(Object.keys(harnessSha256).map(async path =>
   [path, await readFile(new URL(`./evaluation-fixtures/${harnessSources[path]}`, import.meta.url))])))
+
+test('the permission seed differs from the working example only by its two declared mistakes', async () => {
+  const manifest = JSON.parse(await readFile(new URL('./evaluation-fixtures/permission-seed.json', import.meta.url)))
+  assert.deepEqual(Object.keys(manifest.files).sort(), ['EquipmentInspection.Api/Program.cs', 'web/src/bootstrap.ts'])
+  for (const [path, hash] of Object.entries(manifest.files)) {
+    const source = await readFile(new URL(`./evaluation-fixtures/permission-seed/${path}`, import.meta.url), 'utf8')
+    assert.equal(digest(source), hash)
+    const example = await readFile(new URL(`../../ai-devkit/examples/equipment-inspection/${path}`, import.meta.url), 'utf8')
+    const corrected = path.endsWith('.cs')
+      ? source.replace('options.ApplicationRoleCodes.Add("Administrator")', 'options.ApplicationRoleCodes.Add(ApplicationRoles.Administrator)')
+      : source.replace(/    loadCatalogTypeMetadata: async code => \{\n[^]*?\n    \},/,
+        '    loadCatalogTypeMetadata: async code => normalizeCatalogTypeMetadata(await getCatalogTypeMetadata(code)),')
+    assert.notEqual(source, corrected)
+    assert.equal(corrected, example)
+  }
+})
 
 function inventories() {
   const before = {

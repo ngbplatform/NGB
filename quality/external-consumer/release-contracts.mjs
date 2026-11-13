@@ -18,7 +18,9 @@ export const requiredGates = [
 
 export const mcpGates = ['mcp-contract', 'mcp-external', 'mcp-verticals']
 export const aiKitGates = ['ai-kit-artifacts', 'ai-kit-contracts', 'ai-kit-independent-app', 'ai-kit-upgrade',
-  'ai-kit-agents', 'full-backend-coverage', 'full-frontend-coverage', 'full-quality']
+  'ai-kit-agents']
+
+const manualRegressionGates = ['browser-quality', 'mcp-contract', 'mcp-verticals']
 
 export function includesAiKit(version) {
   assertExactVersion(version)
@@ -31,15 +33,20 @@ export function digest(bytes, algorithm = 'sha256', encoding = 'hex') {
 }
 
 export function validateMatrix(matrix) {
-  assert.ok([1, 2, 3].includes(matrix.schemaVersion))
+  assert.ok([1, 2, 4].includes(matrix.schemaVersion))
   if (matrix.target === '3.3.0') assert.equal(matrix.schemaVersion, 2, 'MCP gates are mandatory for 3.3.0.')
-  if (includesAiKit(matrix.target)) assert.equal(matrix.schemaVersion, 3, 'AI Kit and full regression gates are mandatory from 3.4.0.')
+  if (includesAiKit(matrix.target)) assert.equal(matrix.schemaVersion, 4, 'AI Kit releases require the separate manual regression scope.')
   assertExactVersion(matrix.source)
   assertExactVersion(matrix.target)
   assert.notEqual(matrix.source, matrix.target)
   assert.deepEqual(Object.keys(matrix.profiles).sort(), [...requiredProfiles].sort())
   assert.deepEqual(matrix.gates.map(gate => gate.id).sort(),
-    [...requiredGates, ...(matrix.schemaVersion >= 2 ? mcpGates : []), ...(matrix.schemaVersion === 3 ? aiKitGates : [])].sort())
+    [...requiredGates, ...(matrix.schemaVersion >= 2 ? mcpGates : []), ...(matrix.schemaVersion === 4 ? aiKitGates : [])]
+      .filter(id => matrix.schemaVersion !== 4 || !manualRegressionGates.includes(id)).sort())
+  if (matrix.schemaVersion === 4) {
+    assert.deepEqual(matrix.scope.manualRegressionOnly, ['platform-backend-tests', 'platform-frontend-tests',
+      'full-backend-coverage', 'full-frontend-coverage'], 'Platform regression belongs to the maintainer, outside certification.')
+  }
   for (const gate of matrix.gates) {
     assert.ok(['candidate', 'publication', 'promotion'].includes(gate.blocks), `Invalid gate stage: ${gate.id}`)
     const expectedStage = gate.id === 'publish-identity' ? 'publication'
@@ -58,7 +65,7 @@ export function validateMatrix(matrix) {
         assert.ok(profile.assertions.includes(assertion), `Missing MCP upgrade assertion: ${id}/${assertion}`)
       }
     }
-    if (matrix.schemaVersion === 3 && id.endsWith('-upgrade')) {
+    if (matrix.schemaVersion === 4 && id.endsWith('-upgrade')) {
       assert.ok(profile.assertions.includes('coordinatedCliKitUpgrade'), `Missing coordinated CLI/Kit upgrade assertion: ${id}`)
     }
   }

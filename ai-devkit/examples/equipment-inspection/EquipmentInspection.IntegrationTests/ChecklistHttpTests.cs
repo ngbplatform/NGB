@@ -70,8 +70,13 @@ public sealed class ChecklistHttpTests
         var path = DocumentsPath + "/" + draft.Id;
         var before = await admin.GetStringAsync(path);
         var audit = await admin.GetStringAsync($"/api/audit/entities/Document/{draft.Id}");
+        var state = await admin.GetStringAsync(path + "/editor-state");
+        var oversized = new string('x', ChecklistDefinitions.TextMaxLength + 1);
         RecordPayload[] invalid =
         [
+            WithChecks([Row(1, "Changed part", false)]) with { Fields = Payload(("display", oversized)).Fields },
+            WithChecks([Row(1, "Changed part", false)]) with { Fields = Payload(("DISPLAY", oversized)).Fields },
+            WithChecks([Row(1, oversized, false)]) with { Fields = Payload(("display", "Changed head")).Fields },
             WithChecks([Row(0, null, null)]),
             WithChecks([Row(1, "First", true), Row(1, "Duplicate", false)]),
             WithChecks([new Dictionary<string, JsonElement>()]),
@@ -99,9 +104,46 @@ public sealed class ChecklistHttpTests
             Assert.Equal(HttpStatusCode.BadRequest, create.StatusCode);
             Assert.Equal(before, await admin.GetStringAsync(path));
             Assert.Equal(audit, await admin.GetStringAsync($"/api/audit/entities/Document/{draft.Id}"));
+            Assert.Equal(state, await admin.GetStringAsync(path + "/editor-state"));
         }
         var page = (await admin.GetFromJsonAsync<PageResponseDto<DocumentDto>>(DocumentsPath + "?includeTotal=true", Json))!;
         Assert.Equal(1, page.Total);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData(" \t\r\n")]
+    public async Task Draft_text_may_be_incomplete_and_round_trips_at_the_length_limit(string? incomplete)
+    {
+        await using var host = new InspectionHost();
+        await host.StartAsync();
+        using var admin = await host.CreateClientAsync("administrator");
+        var maximum = new string('x', ChecklistDefinitions.TextMaxLength);
+        var payload = WithChecks([Row(1, maximum, true)]) with { Fields = Payload(("display", maximum)).Fields };
+        var draft = await PostAsync<DocumentDto>(admin, DocumentsPath, payload);
+        var path = DocumentsPath + "/" + draft.Id;
+        using var omitted = await admin.PutAsJsonAsync(path, Payload(("reviewed", true)));
+        await EnsureSuccessAsync(omitted);
+        var saved = (await admin.GetFromJsonAsync<DocumentDto>(path, Json))!;
+        Assert.Equal(maximum, saved.Payload.Fields!["display"].GetString());
+        Assert.Equal(maximum, Assert.Single(saved.Payload.Parts![ChecklistDefinitions.ChecksPartCode].Rows)["description"].GetString());
+
+        var incompletePayload = WithChecks([Row(1, incomplete, null)])
+            with { Fields = Payload(("display", incomplete!)).Fields };
+        var incompleteDraft = await PostAsync<DocumentDto>(admin, DocumentsPath, incompletePayload);
+        Assert.Equal(incomplete, incompleteDraft.Payload.Fields!["display"].GetString());
+        using var incompleteUpdate = await admin.PutAsJsonAsync(path, incompletePayload);
+        await EnsureSuccessAsync(incompleteUpdate);
+        saved = (await admin.GetFromJsonAsync<DocumentDto>(path, Json))!;
+        Assert.Equal(incomplete, saved.Payload.Fields!["display"].GetString());
+        Assert.Equal(incomplete, Assert.Single(saved.Payload.Parts![ChecklistDefinitions.ChecksPartCode].Rows)["description"].GetString());
+
+        using var maximumUpdate = await admin.PutAsJsonAsync(path, payload);
+        await EnsureSuccessAsync(maximumUpdate);
+        saved = (await admin.GetFromJsonAsync<DocumentDto>(path, Json))!;
+        Assert.Equal(maximum, saved.Payload.Fields!["display"].GetString());
+        Assert.Equal(maximum, Assert.Single(saved.Payload.Parts![ChecklistDefinitions.ChecksPartCode].Rows)["description"].GetString());
     }
 
     [Theory]

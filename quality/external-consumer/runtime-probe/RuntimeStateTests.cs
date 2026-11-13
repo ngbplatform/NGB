@@ -1,7 +1,10 @@
 using System.Text.Json;
+using EvolveDb.Configuration;
+using EvolveDb.Migration;
 using Hangfire;
 using NGB.BackgroundJobs.Infrastructure;
 using NGB.BackgroundJobs.PostgreSql;
+using NGB.PostgreSql.Bootstrap;
 using Npgsql;
 using Xunit;
 
@@ -9,6 +12,30 @@ namespace ExternalConsumer.Tests;
 
 public sealed class RuntimeStateTests
 {
+    [Fact]
+    public async Task SnapshotPackagedPlatformMigrations()
+    {
+        var assembly = typeof(DatabaseBootstrapper).Assembly;
+        using var connection = new NpgsqlConnection(
+            Environment.GetEnvironmentVariable("NGB_CONNECTION_STRING"));
+        IEvolveConfiguration configuration = new EvolveDb.Evolve(connection)
+        {
+            EmbeddedResourceAssemblies = [assembly],
+            EmbeddedResourceFilters = [$"{assembly.GetName().Name}.db.migrations.V"]
+        };
+        var migrations = new EmbeddedResourceMigrationLoader(in configuration).GetMigrations()
+            .Select(migration => new
+            {
+                name = migration.Name,
+                version = migration.Version!.ToString(),
+                checksum = migration.CalculateChecksum()
+            })
+            .ToArray();
+        Assert.NotEmpty(migrations);
+        await File.WriteAllTextAsync(
+            Environment.GetEnvironmentVariable("NGB_PROBE_STATE")!, JsonSerializer.Serialize(migrations));
+    }
+
     [Fact]
     public async Task SnapshotPersistentApplicationState()
     {

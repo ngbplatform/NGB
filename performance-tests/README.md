@@ -13,7 +13,10 @@ performance-tests/
   artifacts/                         Disposable generated results (ignored by Git)
 ```
 
-The framework is intentionally independent from the normal backend and frontend builds. It type-checks in CI, while live k6 runs are opt-in and should target dedicated non-production environments.
+The framework is intentionally independent from the normal backend and frontend builds.
+Type-checking, diagnostic tests and live k6 runs are local maintainer checks; there is
+no GitHub Actions performance workflow. Live runs should target dedicated non-production
+environments.
 
 ## Version and Compatibility
 

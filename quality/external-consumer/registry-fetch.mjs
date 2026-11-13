@@ -34,5 +34,5 @@ export async function fetchRegistryBytes(url, { deadline = performance.now() + r
     await new Promise(resolve => setTimeout(resolve, delayMs))
   }
   throw new Error(`Timed out waiting for registry package: ${url}. `
-    + 'Check registry processing/status and rerun publication with the same certified artifacts.', { cause: failure })
+    + 'Check registry processing/status and rerun publication with the same build artifacts.', { cause: failure })
 }

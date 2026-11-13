@@ -44,8 +44,14 @@ all public-schema tables, including audit, outbox and posting data.
 
 `external/performance-budgets.json` contains the SQL budgets established by
 measuring the real package-only fixture. Warm catalog list, detail, search and
-custom current-user reads used 3, 5, 3 and 2 commands respectively, including
-authorization. These maxima are enforced for every sample. Increasing the page
+custom current-user reads use at most 3, 5, 4 and 2 commands respectively, including
+authorization. General search includes the installed General Journal Entry reader
+as well as catalog lookup. The former three-command search budget predated the
+dedicated journal read path and is no longer the complete-search baseline.
+Separate catalog-only and journal-only searches each retain a three-command
+maximum. All search samples also require no unavailable sources, so a failed
+source cannot masquerade as a cheaper successful search.
+These maxima are enforced for every sample. Increasing the page
 size must not increase round trips. The probe propagates W3C trace context over
 HTTP and counts Npgsql commands belonging to each individual request; it never
 records SQL text, parameters, connection strings or tokens.
@@ -74,8 +80,10 @@ bytes and total managed allocations for both workloads together. Allocation
 counts are diagnostic process totals, not per-request retained memory. Raw
 samples and comparison files use a unique directory for every verifier run;
 failed or stale samples are never imported into a later summary. The regular
-backend suite exercises the functional matrix; `verify-verticals.mjs` always
-enables these additional load measurements for candidate certification.
+backend suite exercises the functional matrix; an explicit manual
+`verify-verticals.mjs` run enables these additional load measurements. Current
+FULL Certification does not call `verify-contract.mjs` or `verify-verticals.mjs`;
+those platform and API tests belong to the maintainer's manual regression.
 
 ## Upgrade and release evidence
 
@@ -88,6 +96,7 @@ The current transition uses the frozen 3.3.0 source and targets 3.4.0. Historica
 source fixtures and their provenance remain intact; upgrading
 alone does not enable MCP.
 
-Unsealed local runs are diagnostic evidence. The release runner reruns these
-gates against a sealed candidate and binds results to its package hashes.
+Unsealed local runs are diagnostic evidence. The release runner runs the
+package-only `verify-external.mjs` consumer and external upgrade profiles against
+a sealed candidate and binds results to its package hashes.
 Published-registry checks belong to the post-publication workflow.

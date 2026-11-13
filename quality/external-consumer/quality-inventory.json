@@ -3,8 +3,11 @@
   "measuredJavaScript": [
     "quality/external-consumer/contracts.mjs",
     "quality/external-consumer/release-contracts.mjs",
+    "quality/external-consumer/build-release-contracts.mjs",
+    "quality/external-consumer/source-files.mjs",
     "quality/external-consumer/registry-fetch.mjs",
     "quality/external-consumer/sequencing.mjs",
+    "quality/external-consumer/migration-history.mjs",
     "quality/external-consumer/infrastructure.mjs",
     "quality/upgrade-certification/scenarios.mjs",
     "packaging/templates/content/infrastructure/configuration.mjs",
@@ -34,12 +37,19 @@
     "files": [
       "quality/external-consumer/certify.mjs",
       "quality/external-consumer/release.mjs",
+      "quality/external-consumer/build-release.mjs",
+      "quality/ai-devkit/run-agent-evaluations.mjs",
+      "quality/ai-devkit/evaluation-state.mjs",
+      "quality/ai-devkit/evaluation-worker.mjs",
+      "quality/ai-devkit/agent-clients.mjs",
+      "quality/ai-devkit/review-agent-source.mjs",
       "quality/external-consumer/verify-registry.mjs",
       "quality/external-consumer/verify-template.mjs",
       "quality/external-consumer/test-tooling.mjs",
       "quality/external-consumer/runtime-probe",
       "quality/upgrade-certification/verify-source.mjs",
       "packaging/templates/prepare-locks.mjs",
+      "packaging/nuget/pack-platform.mjs",
       "packaging/nuget/verify-api-compatibility.mjs",
       "ui/scripts/verify-platform-ui-contracts.mjs",
       "packaging/templates/content/infrastructure/configure.mjs",
@@ -70,6 +80,9 @@
     ],
     "verification": [
       "node --test quality/external-consumer/process-contracts.test.mjs",
+      "node --test quality/external-consumer/build-release-process.test.mjs",
+      "node --test quality/external-consumer/full-quality-process.test.mjs",
+      "node --test quality/ai-devkit/agent-orchestration.test.mjs quality/ai-devkit/evaluation-state.test.mjs quality/ai-devkit/agent-clients.test.mjs",
       "node --test quality/external-consumer/application-process.test.mjs",
       "node quality/external-consumer/verify-template.mjs",
       "node quality/external-consumer/release.mjs certify",
@@ -93,9 +106,12 @@
     "coveragePolicy": "Generation, source hashes, compilation, runtime and layer-boundary checks. Frozen source remains immutable. Declaration-only types, route/controller composition and SQL DDL are not reported as uncovered executable helpers. Frozen executable extension helpers are measured through linked source without modifying the fixture."
   },
   "existingPlatform": {
-    "execution": "local-before-release",
-    "backend": "bash run-backend-full-coverage.sh",
-    "frontend": "bash run-frontend-full-coverage.sh",
+    "execution": "manual-outside-full-certification",
+    "backendTests": "Maintainer runs platform and application test projects independently.",
+    "frontendTests": "npm --prefix ui run test:all",
+    "backend": "NGB_BACKEND_COVERAGE_JOBS=3 ./run-backend-full-coverage.sh",
+    "frontend": "NGB_FRONTEND_COVERAGE_JOBS=3 ./run-frontend-full-coverage.sh",
+    "certificationImportsReports": false,
     "threshold": 100
   }
 }
