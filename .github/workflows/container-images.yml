@@ -2,7 +2,7 @@ name: container-images
 
 on:
   workflow_run:
-    workflows: [publish-certified-platform-release, publish-platform-nuget, publish-platform-ui]
+    workflows: [publish-platform-release, publish-platform-nuget, publish-platform-ui]
     types: [completed]
     branches: [main]
   workflow_dispatch:
@@ -75,8 +75,8 @@ jobs:
           const ui = JSON.parse(await readFile('ui/ngb-crm-web/package.json', 'utf8'))
           assertContainerManifest(manifest, process.env.NGB_RELEASE_COMMIT, props, ui)
           JS
-          node quality/external-consumer/release.mjs verify-publication
-          node quality/external-consumer/release.mjs verify-promotion
+          node quality/external-consumer/build-release.mjs verify-publication
+          node quality/external-consumer/build-release.mjs verify-promotion
 
   crm-registry-dependencies:
     name: verify CRM registry dependencies

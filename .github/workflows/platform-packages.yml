@@ -3,13 +3,15 @@ name: platform-packages
 on:
   pull_request:
     paths:
-      - '.github/workflows/platform-packages.yml'
+      - '.github/workflows/**'
+      - '.github/scripts/**'
       - 'Directory.Build.props'
       - 'Directory.Build.targets'
       - 'LICENSE'
       - 'NOTICE'
       - 'NGB.Accounting/**'
       - 'NGB.AiAssistant*/**'
+      - 'NGB.Mcp*/**'
       - 'NGB.Api/**'
       - 'NGB.Attachments/**'
       - 'NGB.Notes/**'
@@ -35,6 +37,9 @@ on:
       - 'packaging/**'
       - 'ai-devkit/**'
       - 'quality/ai-devkit/**'
+      - 'quality/external-consumer/**'
+      - 'quality/package.json'
+      - 'quality/package-lock.json'
       - 'ui/package.json'
       - 'ui/package-lock.json'
       - 'ui/ngb-crm-web/package.json'
@@ -44,13 +49,15 @@ on:
   push:
     branches: [main]
     paths:
-      - '.github/workflows/platform-packages.yml'
+      - '.github/workflows/**'
+      - '.github/scripts/**'
       - 'Directory.Build.props'
       - 'Directory.Build.targets'
       - 'LICENSE'
       - 'NOTICE'
       - 'NGB.Accounting/**'
       - 'NGB.AiAssistant*/**'
+      - 'NGB.Mcp*/**'
       - 'NGB.Api/**'
       - 'NGB.Attachments/**'
       - 'NGB.Notes/**'
@@ -76,6 +83,9 @@ on:
       - 'packaging/**'
       - 'ai-devkit/**'
       - 'quality/ai-devkit/**'
+      - 'quality/external-consumer/**'
+      - 'quality/package.json'
+      - 'quality/package-lock.json'
       - 'ui/package.json'
       - 'ui/package-lock.json'
       - 'ui/ngb-crm-web/package.json'
@@ -111,12 +121,6 @@ jobs:
         working-directory: ui
         run: npm ci
 
-      - name: Test UI framework
-        working-directory: ui
-        run: |
-          npm run test:api-compat
-          npm exec -- vitest run --config ngb-ui-framework/vitest.config.ts
-
       - name: Resolve package version
         id: npm-version
         working-directory: ui
@@ -132,7 +136,7 @@ jobs:
         id: npm-artifact
         uses: actions/upload-artifact@v7
         with:
-          name: ngbplatform-ui-${{ steps.npm-version.outputs.version }}
+          name: ngbplatform-ui-${{ steps.npm-version.outputs.version }}-attempt-${{ github.run_attempt }}
           path: artifacts/npm/ngbplatform-ui-${{ steps.npm-version.outputs.version }}.tgz
           if-no-files-found: error
           retention-days: 14
@@ -154,9 +158,9 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: 10.0.x
+          dotnet-version: 10.0.401
 
-      - name: Download the validated npm package
+      - name: Download the built npm package
         uses: actions/download-artifact@v8
         with:
           artifact-ids: ${{ needs.npm.outputs.artifact-id }}
@@ -164,7 +168,9 @@ jobs:
           path: artifacts/npm
 
       - name: Pack platform packages
-        run: bash packaging/nuget/pack-platform.sh
+        run: |
+          npm --prefix quality ci
+          bash packaging/nuget/pack-platform.sh
 
       - name: Resolve package version
         id: nuget-version
@@ -176,9 +182,22 @@ jobs:
       - name: Upload NuGet packages
         uses: actions/upload-artifact@v7
         with:
-          name: ngb-platform-nuget-${{ steps.nuget-version.outputs.version }}
+          name: ngb-platform-nuget-${{ steps.nuget-version.outputs.version }}-attempt-${{ github.run_attempt }}
           path: |
             artifacts/nuget-release/*.nupkg
             artifacts/nuget-release/*.snupkg
           if-no-files-found: error
           retention-days: 14
+
+      - name: Record the GitHub build package identities
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        run: node quality/external-consumer/build-release.mjs seal
+
+      - name: Upload the GitHub release package set
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v7
+        with:
+          name: ngb-platform-release-attempt-${{ github.run_attempt }}
+          path: artifacts/release-candidate/
+          if-no-files-found: error
+          retention-days: 30

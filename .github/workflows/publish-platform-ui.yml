@@ -10,6 +10,6 @@ permissions:
   id-token: write
 
 jobs:
-  publish-certified-release:
+  publish-release:
     uses: ./.github/workflows/publish-platform-release.yml
     secrets: inherit

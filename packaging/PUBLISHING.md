@@ -9,8 +9,15 @@ This maintainer runbook covers release approval, trusted publishing, container
 deployment and retries.
 The normal configured sequence is:
 
-**PR → checks → merge → main certification → approval → package publication and
-registry verification → container builds → infrastructure deployment PR.**
+**Local tests + full coverage + FULL Certification → PR → package build → merge →
+GitHub package build on main → approval → publication and registry identity
+verification → container builds → infrastructure deployment PR.**
+
+Backend/Frontend suites, full coverage, FULL Certification and Codex/Claude checks
+run locally before release. GitHub does not repeat them or import their reports.
+It builds NuGet/npm packages from the release commit; no local packages or reports
+need to be uploaded. Local certification is the maintainer's release prerequisite,
+not an automatically verified GitHub gate.
 
 ## Configure release access once
 
@@ -68,7 +75,7 @@ connection already exists:
 | Allowed actions | Allow `npm publish` |
 
 Use the filename only, without `.github/workflows/`. This is different from the
-Actions display name `publish-certified-platform-release`. Stage-only permission
+Actions display name `publish-platform-release`. Stage-only permission
 does not authorize this workflow's direct publish command. Newly created npm
 connections require their first successful publication within two days; recreate an
 expired connection. See [npm trusted publishers](https://docs.npmjs.com/trusted-publishers/).
@@ -94,9 +101,9 @@ Its merge/deployment rules and Argo CD configuration must already be set up ther
 Before opening the PR, choose an unpublished target version and align the platform,
 UI, template, CLI, Kit and CRM dependencies, the certification matrix, package baselines and
 registered CLI transition. Record changes and migration instructions. A repeated
-publication of an existing version is only a retry of the identical certified set.
+publication of an existing version is only a retry of the identical published set.
 Prepare local candidate packages using [Prepare local artifacts](#prepare-local-artifacts),
-then review and commit the generated template and CRM lockfiles. The strict npm
+then review and commit the generated template and CRM lockfiles. The npm package
 job and CRM image build consume the committed CRM lockfile; container jobs do not
 replace it with the copy saved in certification evidence. A changed UI archive
 therefore requires regenerating and committing its matching lockfile before merge.
@@ -104,17 +111,18 @@ therefore requires regenerating and committing its matching lockfile before merg
 | Step | What you do | What to check |
 | --- | --- | --- |
 | 1 | Commit and push the feature branch. In GitHub, open a PR targeting `main`. | The PR includes the intended version, migration documentation and source changes. |
-| 2 | Open the PR's **Checks** tab and wait. | `external-app-certification` passes, plus `platform-packages` when its path filters trigger, and other required checks. |
+| 2 | Open the PR's **Checks** tab and wait. | `platform-packages` builds the packages when its path filters trigger. Complete all mandatory local checks before releasing. |
 | 3 | Review and merge the PR in GitHub. | Do not run the old publish workflows from the feature branch. |
-| 4 | Open **Actions → external-app-certification** and select the new `main` run. | It passes for the merged commit and uploads `ngb-certified-release`. PR certification does not replace this run. |
-| 5 | Open **Actions → publish-certified-platform-release**, select the matching run and inspect its summary. | Commit, certification run and artifact identify the release you intend to publish. |
+| 4 | Open **Actions → platform-packages** and select the new `main` run. | It builds the merged commit and uploads `ngb-platform-release-attempt-<run_attempt>`. A PR build cannot authorize publication. |
+| 5 | Open **Actions → publish-platform-release**, select the matching run and inspect its summary. | Commit, package build, attempt and artifact identify the release you intend to publish. |
 | 6 | Click **Review deployments**, select `platform-release`, then **Approve and deploy**. | The publication job succeeds, including registry verification and promotion evidence. |
 | 7 | Open **Actions → container-images** and wait for the automatically triggered run. | Release evidence, CRM registry checks, all 20 image builds and `propose infra deploy` succeed. |
 | 8 | Open the generated PR in `ngbplatform/ngb-platform-infra`. Review its image tags and merge it. | All four workloads reference `sha-<released-commit>`. Check the deployment through your configured Argo CD process. |
 
-No run IDs or artifact IDs are entered manually. No local quality command is
-required to trigger this flow. Approval authorizes package publication; the
-infrastructure PR is a separate deployment review. Registry publication alone does
+No run IDs or artifact IDs are entered manually. GitHub starts this flow from the
+main package build; the maintainer completes the local checks before approval.
+Approval authorizes package publication; the infrastructure PR is a separate
+deployment review. Registry publication alone does
 not mean an application has been deployed.
 
 The workflows do not create a Git tag or GitHub Release entry. When recording a
@@ -126,26 +134,29 @@ the matching changelog after package verification succeeds. Do not tag a newer
 
 | Actions name | Purpose |
 | --- | --- |
-| `platform-packages` | Package/API checks for matching changed paths; its artifacts do not authorize release. |
-| `external-app-certification` | Build the candidate, prepare lockfiles, seal it and run all required profiles and quality gates. |
-| `publish-certified-platform-release` | Select successful main certification, wait for approval, publish its saved packages and verify registry contents/runtime. |
+| `platform-packages` | Build UI, NuGet, template and CLI packages; check package contents and record commit, build attempt and archive identities. |
+| `publish-platform-release` | Select the successful main build for the exact commit, wait for approval, publish its saved archives and verify registry identities/signatures. |
 | `container-images` | Verify publication evidence, build the released commit and propose the infrastructure update. |
 
-In `platform-packages`, the NuGet job waits for successful npm validation and
-downloads that job's archive by artifact ID into `artifacts/npm` before packing.
-Template lockfile generation consumes the same archive; it does not repack the UI.
-`external-app-certification` packs the UI before NuGet, then packs the CLI and seals the candidate.
-Its Compose check builds the generated starter. The 20 existing vertical images
-are built by `container-images` after publication; their Docker builds are not part
-of the candidate quality aggregate. A local candidate has 30 required gates; the
-remaining two matrix gates require published packages and promotion evidence.
+In `platform-packages`, the NuGet job waits for the npm build and downloads that
+job's archive by artifact ID into `artifacts/npm`. Template lockfile generation
+consumes this archive. NuGet packing also prepares the Kit and packs the CLI.
+The release bundle includes all NuGet/symbol packages, the UI and CLI archives,
+and a `github-package-build` manifest. It contains no local certification reports.
+The publisher consumes that exact build attempt without rebuilding packages.
+The 20 vertical images are built by `container-images` after publication.
+
+`external-app-certification` and `performance-tests` no longer run in GitHub.
+If repository branch protection/rulesets require either deleted check, remove
+those check requirements in repository settings; workflow files cannot update
+server-side rulesets. Keep the package build check if it is required by policy.
 
 Container cache export is optional: both image matrices use `ignore-error=true`
 only for `cache-to`. A GitHub cache write failure does not invalidate a successful
 image build and GHCR push. Build/push errors still fail the job and block the
 deployment PR; the workflow does not use `continue-on-error` for those steps.
 
-The certified artifact is retained for 30 days and publication evidence for 90 days
+The GitHub release package artifact is retained for 30 days and publication evidence for 90 days
 under the checked-in workflow settings. Downloads select the exact artifact ID,
 not an arbitrary artifact with the same name.
 Publication evidence names include the workflow attempt number. Container selection
@@ -154,17 +165,16 @@ For older runs with the shared `ngb-publication-evidence` name, selection matche
 archive creation time to that attempt's successful evidence upload step. Missing,
 expired or ambiguous evidence blocks image builds; it never falls back to an older attempt.
 
-The manifest preserves the generated template and CRM lockfiles. They are derived
-from the package bytes during packing; use that generation step before the PR,
-not manual integrity edits. Registry verification checks NuGet content/signatures and npm
+The build manifest records source commit/tree, build run/attempt and archive hashes.
+Generated template locks are inside the template package. CRM images use committed
+lockfiles; generate and review those before the PR rather than editing integrity values. Registry verification checks NuGet content/signatures and npm
 integrity. Source, image tags and deployment PR all identify the released commit.
 Registry downloads share a 20-minute deadline for the entire NuGet/npm package set.
 Available packages proceed immediately; temporary HTTP/connection failures retry
 every 15 seconds, or later when the registry supplies `Retry-After`, within that deadline.
 Logs show the affected URL, retry number and remaining time. Access errors, package
-identity/signature mismatches and runtime failures stop verification without retries.
-The deadline starts when registry verification begins; the subsequent registry-only
-application smoke test remains a separate check within the publication job's timeout.
+identity/signature mismatches stop verification without retries. GitHub does not
+start a registry-only application or run browser/runtime tests after publication.
 
 An ordinary push does not publish images. A vertical-only change needs publication
 evidence for its exact commit to enter this release train; independent vertical
@@ -174,16 +184,16 @@ release pipelines are outside this workflow's scope.
 
 | Failure | Action |
 | --- | --- |
-| PR or main certification failed | Inspect the failed step. Fix source/test failures in a PR; rerun a transient failure for the same commit. A fresh hosted runner certifies again; local retries reuse verified checkpoints for the same candidate and environment. Nothing has been published yet. |
+| PR or main package build failed | Inspect the failed build/packaging step. Fix it in a PR or rerun a transient failure for the same commit. Nothing has been published yet. Local tests/certification remain separate. |
 | Release selection reports no reviewer or an OIDC policy mismatch | Correct the external settings, then rerun the failed publication job. Check workflow filename and environment first. |
-| Upload or registry verification failed transiently | Rerun the original publication run, retaining the same certified artifact. Existing npm integrity must match; NuGet duplicates are checked during registry verification. |
+| Upload or registry verification failed transiently | Rerun the original publication run, retaining the same GitHub build artifact. Existing npm integrity must match; NuGet duplicates are checked during registry verification. |
 | An older container run reports multiple `ngb-publication-evidence` artifacts | That run still uses the old selector. Identify the archive IDs in each publication attempt's `Record publication and promotion evidence` log. Preserve the successful attempt's archive; download any failed-attempt archives needed for diagnostics before deleting only those failed-attempt archives. Then rerun the failed container jobs. Do not repack or republish the released version. |
-| Published contents are wrong or differ from the certified package | Prepare a corrected new version. Published versions cannot be overwritten. |
+| Published contents are wrong or differ from the selected build package | Prepare a corrected new version. Published versions cannot be overwritten. |
 | Container build or infrastructure PR creation failed | For transient registry, runner or credential failures, repair the environment and rerun that release's container run. It uses the same verified commit. A source/Dockerfile fix needs a new commit and certification; rerunning the old run cannot consume the fix. |
-| Certification artifact expired | Re-certification is required. Do not replace a partially published candidate with newly packed bytes of the same version. |
+| GitHub build artifact expired | Rerun the package build for the release commit. Do not replace a partially published release with different bytes of the same version; use a new version if identity differs. |
 
 For manual dispatch, select **Run workflow → main**. Publication requires successful
-main certification for that exact dispatch commit; container dispatch requires
+main package build for that exact dispatch commit; container dispatch requires
 successful publication evidence for it. When `main` has advanced, use the original
 run's **Re-run jobs** controls for the older release instead of starting a new run
 at the branch tip.
@@ -198,21 +208,24 @@ npm --prefix quality ci
 node ui/scripts/pack-platform-ui.mjs --local-candidate
 bash packaging/nuget/pack-platform.sh
 bash packaging/nuget/verify-platform-packages.sh
-node ai-devkit/prepare.mjs
-node packaging/cli/pack.mjs
 node quality/external-consumer/release.mjs seal
 ```
 
 The order matters: template packing consumes the already packed npm archive.
-`pack-platform.sh` calls `packaging/templates/prepare-locks.mjs` before packing the
-template. It regenerates template NuGet lockfiles, template npm integrity and CRM
-npm integrity from the candidate. Review and commit the derived lockfile changes
+`pack-platform.sh` selects the Node/.NET versions in
+`quality/external-consumer/toolchain.json` and uses the Git commit timestamp for
+deterministic NuGet archives. After building runtime packages it checks their
+public contracts, refreshes package and assembly identities, renders the Kit,
+generates consumer locks, then packs the template and CLI. Changes to public
+contracts require capability review before explicit reference regeneration.
+The generated locks contain template NuGet hashes, template npm integrity and CRM
+npm integrity. Review and commit the derived lockfile changes
 before opening the release PR: CRM image jobs consume the committed lockfile.
 
-`--local-candidate` is also used by certification CI. It permits packing the UI
-before the derived lockfiles are generated; it does not waive the later artifact,
-compatibility or registry checks. Without that flag, UI packaging requires the
-existing CRM lockfile to match the packed archive exactly. Do not hand-edit its
+`--local-candidate` permits local packing of the UI before the derived lockfiles
+are generated; it does not waive later artifact or registry identity checks.
+GitHub uses the strict UI packer without this flag: the committed CRM lockfile must
+match the packed archive exactly. Do not hand-edit its
 integrity or introduce a second manual npm installation procedure.
 
 Artifacts are ignored by Git. The default sealed directory is
@@ -220,6 +233,15 @@ Artifacts are ignored by Git. The default sealed directory is
 use a new path, for example `release.mjs seal artifacts/release-candidate-next`,
 and pass that path to subsequent commands. Source changes after sealing, including
 documentation changes, invalidate source identity for certification.
+`seal` checks the package-derived Kit references before creating the candidate.
+
+Certification checks host settings, the frozen fixture, Kit artifacts/contracts and
+agent availability/evidence before preparing containers. Linux tooling and offline
+metric checks precede compatibility and integration scenarios; missing agent evaluations
+run automatically and save resumable results. Final evidence validation remains last.
+Backend/Frontend regression and full coverage are separate manual checks. See the
+[execution order](../quality/external-consumer/README.md#execution-order) for phases,
+saved agent evidence and checkpoint reuse.
 
 For a transient certification failure, retain that directory and rerun
 `node quality/external-consumer/release.mjs certify artifacts/release-candidate`.
@@ -287,10 +309,12 @@ those must succeed in the release workflows.
 ## When to run full quality locally
 
 `run-full-quality.sh` runs backend/frontend coverage, the framework browser matrix,
-tooling tests and performance-tooling/metric regression checks. For 3.4.0,
-`release.mjs certify` runs full quality against the sealed candidate and records
-its backend and frontend coverage reports. It also runs the five external-consumer
-profiles, compatibility checks and five AI Development Kit profiles.
+tooling tests and performance-tooling/metric regression checks. This is an optional
+manual aggregate. FULL Certification does not run it, platform/application Backend
+tests, `npm run test:all`, framework browser suites or either full-coverage script.
+The maintainer runs regression and coverage independently; certification does not
+require or import those reports. It runs the five external-consumer profiles,
+compatibility, package-only MCP, tooling checks and five AI Development Kit profiles.
 
 Application developers run their own application's tests. Platform contributors can
 run the aggregate before opening a PR to catch failures sooner. Use prepared local
@@ -319,9 +343,11 @@ The wrapper requires a sealed candidate; it does not package one. It verifies it
 inputs and copies source and artifacts into a private workspace without host caches.
 That workspace is retained for retries. Tooling is run once per unchanged aggregate,
 with separate checkpoints for backend, frontend, browser and performance gates.
-Release certification for 3.4.0 requires `full-quality.json`. The historical
-`--certification` mode runs tooling, browser and performance-tooling stages in
-a separate workspace and writes `certification-quality.json`.
+The direct wrapper remains an explicit manual operation. Release certification
+uses only its `--certification --preflight` mode for tooling and offline performance
+checks, producing candidate-bound `quality-preflight.json`. It does not require
+`full-quality.json` or backend/frontend coverage reports. Historical matrices retain
+their original browser gates and `certification-quality.json` evidence.
 For the complete local certification sequence, see the
 [certification maintainer runbook](../quality/external-consumer/README.md).
 

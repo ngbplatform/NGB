@@ -1,9 +1,9 @@
-name: publish-certified-platform-release
+name: publish-platform-release
 run-name: Publish NGB ${{ github.event.workflow_run.head_sha || github.sha }}
 
 on:
   workflow_run:
-    workflows: [external-app-certification]
+    workflows: [platform-packages]
     types: [completed]
     branches: [main]
   workflow_dispatch:
@@ -14,7 +14,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: publish-certified-platform-release
+  group: publish-platform-release
   cancel-in-progress: false
 
 jobs:
@@ -23,11 +23,12 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       run-id: ${{ steps.source.outputs.run-id }}
+      run-attempt: ${{ steps.source.outputs.run-attempt }}
       sha: ${{ steps.source.outputs.sha }}
       artifact-id: ${{ steps.source.outputs.artifact-id }}
     steps:
       - uses: actions/checkout@v6
-      - name: Select certified artifacts for the exact release commit
+      - name: Select GitHub-built artifacts for the exact release commit
         id: source
         uses: actions/github-script@v8
         with:
@@ -35,13 +36,15 @@ jobs:
             const { selectReleaseSource } = require('./.github/scripts/release-source.cjs');
             const source = await selectReleaseSource(github, context);
             core.setOutput('run-id', source.runId);
+            core.setOutput('run-attempt', source.runAttempt);
             core.setOutput('sha', source.sha);
             core.setOutput('artifact-id', source.artifactId);
             await core.summary
               .addHeading('Release awaiting approval')
               .addTable([
                 ['Commit', source.sha],
-                ['Certification', source.runId],
+                ['Package build', source.runId],
+                ['Build attempt', source.runAttempt],
                 ['Artifact', source.artifactId]
               ])
               .addRaw('Approve the platform-release environment to publish these exact packages.')
@@ -50,10 +53,13 @@ jobs:
   publish:
     needs: select
     name: Approve release of ${{ needs.select.outputs.sha }}
-    # Playwright 1.59.1 supports Ubuntu 24.04; ubuntu-latest may select a newer OS.
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     environment: platform-release
+    env:
+      NGB_RELEASE_COMMIT: ${{ needs.select.outputs.sha }}
+      NGB_BUILD_RUN_ID: ${{ needs.select.outputs.run-id }}
+      NGB_BUILD_RUN_ATTEMPT: ${{ needs.select.outputs.run-attempt }}
     permissions:
       contents: read
       actions: read
@@ -77,35 +83,24 @@ jobs:
           path: artifacts/release-candidate
           run-id: ${{ needs.select.outputs.run-id }}
           github-token: ${{ github.token }}
-      - name: Verify certification and the exact artifact identities
-        env:
-          NGB_RELEASE_COMMIT: ${{ needs.select.outputs.sha }}
+      - name: Verify build provenance and package identities
         run: |
           npm --prefix quality ci
-          node --input-type=module <<'JS'
-          import assert from 'node:assert/strict'
-          import { readFile } from 'node:fs/promises'
-          const manifest = JSON.parse(await readFile('artifacts/release-candidate/release-manifest.json', 'utf8'))
-          assert.equal(manifest.sourceCommit, process.env.NGB_RELEASE_COMMIT)
-          JS
-          node quality/external-consumer/release.mjs verify-candidate
+          node quality/external-consumer/build-release.mjs verify
       - name: Request short-lived NuGet credential
         id: nuget-login
         uses: NuGet/login@v1
         with:
           user: ${{ vars.NUGET_USER || 'ngb_platform' }}
-      - name: Publish the certified bytes without rebuilding
+      - name: Publish the GitHub-built packages without rebuilding
         env:
           NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
-        run: node quality/external-consumer/publish.mjs
-      - name: Verify registry identity and runtime before promotion
+        run: node quality/external-consumer/publish.mjs --ci-build
+      - name: Verify published package identities before promotion
         run: |
-          cd quality
-          npx playwright install --with-deps chromium
-          cd ..
-          node quality/external-consumer/verify-registry.mjs
-          node quality/external-consumer/release.mjs verify-publication
-          node quality/external-consumer/release.mjs verify-promotion
+          node quality/external-consumer/verify-registry.mjs --ci-build
+          node quality/external-consumer/build-release.mjs verify-publication
+          node quality/external-consumer/build-release.mjs verify-promotion
       - name: Record publication and promotion evidence
         if: always()
         uses: actions/upload-artifact@v7
