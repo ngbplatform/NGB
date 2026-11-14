@@ -1,6 +1,6 @@
 import { mount } from '@vue/test-utils'
 import { h, nextTick } from 'vue'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 
 import NgbDocumentLines from '../../../../src/ngb/editor/NgbDocumentLines.vue'
 
@@ -112,6 +112,120 @@ describe('NgbDocumentLines', () => {
     expect(wrapper.get('input').element.value).toBe('New')
     await wrapper.get('button[title="Delete"]').trigger('click')
     expect(wrapper.emitted('remove')).toEqual([[100]])
+    wrapper.unmount()
+  })
+
+  test('focuses the first valid error and falls back to meaningful summary errors', async () => {
+    const wrapper = render({
+      description: 'Review the lines before posting.',
+      summaryErrors: [' ', 'Review the total'],
+      errors: {
+        0: { name: ' ' },
+        1: { name: 'Quantity is required' },
+        9: { name: 'This row was removed' },
+      },
+    })
+    const scroll = vi.spyOn(wrapper.element, 'scrollIntoView')
+    expect(wrapper.text()).toContain('Review the lines before posting.')
+    expect(wrapper.findAll('li').map((item) => item.text())).toEqual(['Review the total'])
+    expect(wrapper.vm.focusFirstError()).toBe(true)
+    expect(document.activeElement).toBe(wrapper.findAll('input')[1]!.element)
+    expect(scroll).not.toHaveBeenCalled()
+
+    await wrapper.setProps({ errors: { 0: {}, 9: { name: 'This row was removed' } } })
+    expect(wrapper.vm.focusFirstError()).toBe(true)
+    expect(scroll).toHaveBeenCalledWith({ block: 'center', behavior: 'smooth' })
+    await wrapper.setProps({ errors: null, summaryErrors: [' '] })
+    expect(wrapper.vm.focusFirstError()).toBe(false)
+    expect(wrapper.find('ul').exists()).toBe(false)
+    expect(wrapper.vm.focusCell(0.5, 'name')).toBe(false)
+    expect(wrapper.vm.focusCell(0, 'unknown')).toBe(false)
+
+    await wrapper.setProps({ summaryErrors: ['Review the total'] })
+    const focusFirstError = wrapper.vm.focusFirstError
+    wrapper.unmount()
+    expect(() => focusFirstError()).not.toThrow()
+    scroll.mockRestore()
+  })
+
+  test('navigates bounded pages and normalizes unsupported page sizes', async () => {
+    const many = Array.from({ length: 101 }, (_, index) => ({ id: String(index), name: `Row ${index}` }))
+    const wrapper = render({ rows: many, pageSize: Number.NaN, rowKey: (row: typeof rows[number]) => row.id })
+    const previous = () => wrapper.findAll('button').find((button) => button.text() === 'Previous')!
+    const next = () => wrapper.findAll('button').find((button) => button.text() === 'Next')!
+    expect(wrapper.findAll('tbody tr')).toHaveLength(100)
+    expect(previous().attributes('disabled')).toBeDefined()
+    await next().trigger('click')
+    expect(wrapper.text()).toContain('Rows 101–101 of 101')
+    expect(next().attributes('disabled')).toBeDefined()
+    await previous().trigger('click')
+    expect(wrapper.text()).toContain('Rows 1–100 of 101')
+    await wrapper.setProps({ pageSize: 0 })
+    expect(wrapper.findAll('tbody tr')).toHaveLength(1)
+    await wrapper.setProps({ pageSize: 2.9 })
+    expect(wrapper.findAll('tbody tr')).toHaveLength(2)
+    wrapper.unmount()
+  })
+
+  test('accepts a new row while its columns are not yet available', async () => {
+    const wrapper = render({ rows: [], columns: [] })
+    await wrapper.setProps({ onAdd: () => void wrapper.setProps({ rows: [rows[0]!] }) })
+    await wrapper.findAll('button').find((button) => button.text() === 'Add row')!.trigger('click')
+    await nextTick()
+    expect(wrapper.findAll('tbody tr')).toHaveLength(1)
+    expect(wrapper.find('input').exists()).toBe(false)
+    await wrapper.setProps({ columns })
+    expect(wrapper.vm.focusCell(0, 'name')).toBe(true)
+    expect(document.activeElement).toBe(wrapper.get('input').element)
+    wrapper.unmount()
+  })
+
+  test('accepts only local drags and only the supported reorder keys', async () => {
+    const wrapper = render()
+    const tableRows = wrapper.findAll('tbody tr')
+    const dispatchDrag = async (rowIndex: number, type: string, dataTransfer: DataTransfer | null = null) => {
+      const event = new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer })
+      tableRows[rowIndex]!.element.dispatchEvent(event)
+      await nextTick()
+      return event
+    }
+    expect((await dispatchDrag(1, 'dragover')).defaultPrevented).toBe(false)
+    await dispatchDrag(0, 'dragstart')
+    expect((await dispatchDrag(1, 'dragover')).defaultPrevented).toBe(true)
+    await dispatchDrag(1, 'drop')
+    expect(wrapper.emitted('reorder')).toEqual([[0, 1]])
+
+    const grip = wrapper.get('button[aria-label="Reorder row 1"]')
+    await grip.trigger('keydown', { key: 'ArrowDown' })
+    await grip.trigger('keydown', { altKey: true, key: 'Enter' })
+    expect(wrapper.emitted('reorder')).toHaveLength(1)
+    await grip.trigger('keydown', { altKey: true, key: 'ArrowDown' })
+    expect(wrapper.emitted('reorder')).toEqual([[0, 1], [0, 1]])
+    await wrapper.get('button[aria-label="Reorder row 2"]').trigger('keydown', { altKey: true, key: 'ArrowDown' })
+    expect(wrapper.emitted('reorder')).toHaveLength(2)
+
+    await dispatchDrag(0, 'dragstart')
+    await wrapper.setProps({ readonly: true })
+    expect((await dispatchDrag(1, 'dragover')).defaultPrevented).toBe(false)
+    await dispatchDrag(1, 'drop')
+    await dispatchDrag(0, 'dragstart')
+    expect(wrapper.emitted('reorder')).toHaveLength(2)
+    wrapper.unmount()
+  })
+
+  test('rechecks permissions for row commands captured before the readonly update', async () => {
+    const wrapper = render({ readonlyActions: 'disable' })
+    const add = wrapper.findAll('button').find((button) => button.text() === 'Add row')!.element
+    const remove = wrapper.get('button[title="Delete"]').element
+    const grip = wrapper.get('button[aria-label="Reorder row 1"]').element
+    await wrapper.setProps({ readonly: true })
+    add.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    remove.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    grip.dispatchEvent(new KeyboardEvent('keydown', { altKey: true, key: 'ArrowDown', bubbles: true }))
+    await nextTick()
+    expect(wrapper.emitted('add')).toBeUndefined()
+    expect(wrapper.emitted('remove')).toBeUndefined()
+    expect(wrapper.emitted('reorder')).toBeUndefined()
     wrapper.unmount()
   })
 })

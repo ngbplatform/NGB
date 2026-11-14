@@ -305,6 +305,11 @@ async function exerciseEditor(): Promise<void> {
   expect(reordered.lines?.rows?.map((row) => row.__row_key)).toEqual([...rowKeys].reverse())
   state.reorderRows('empty', 0, 1)
 
+  const updateCount = wrapper.emitted('update:modelValue')!.length
+  state.reorderRows('lines', 99, 0)
+  expect(wrapper.emitted('update:modelValue')).toHaveLength(updateCount)
+  expect(state.lineColumns('missing')).toEqual([])
+
   expect(state.fieldWidth('lines', field('status', 'String'))).toBe('120px')
   expect(state.fieldWidth('lines', field('product_id', 'Lookup', { lookup: { kind: 'catalog', catalogType: 'crm.product' } }))).toBe('260px')
   expect(state.fieldWidth('lines', field('enabled', 'Boolean'))).toBe('96px')

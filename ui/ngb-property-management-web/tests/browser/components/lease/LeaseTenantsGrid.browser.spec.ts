@@ -173,6 +173,35 @@ describe('LeaseTenantsGrid', () => {
     wrapper.unmount()
   })
 
+  it('ignores removed rows and absent field errors when choosing a focus target', () => {
+    const wrapper = mount(LeaseTenantsGrid, {
+      attachTo: document.body,
+      props: { modelValue: rows() as never },
+    })
+    const focusFirstError = wrapper.vm.focusFirstError
+    const focusRowField = wrapper.vm.focusRowField
+    expect(focusFirstError({ rowErrors: { 0: {}, 9: { role: ['Removed row'] } } })).toBe(false)
+    expect(focusFirstError({ rowErrors: { 0: {}, 1: { role: ['Choose a role'] } } })).toBe(true)
+    expect(document.activeElement).toBe(wrapper.findAll('[data-testid="role-select"]')[1]!.element)
+    wrapper.unmount()
+    expect(focusRowField(1, 'role')).toBe(false)
+  })
+
+  it('rejects stale reorder commands after row removal or a readonly update', async () => {
+    const wrapper = mount(LeaseTenantsGrid, { props: { modelValue: rows() as never } })
+    const lines = wrapper.findComponent({ name: 'NgbDocumentLines' })
+    await wrapper.setProps({ modelValue: [] })
+    lines.vm.$emit('reorder', 2, 0)
+    await nextTick()
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+
+    await wrapper.setProps({ modelValue: rows() as never, readonly: true })
+    lines.vm.$emit('reorder', 0, 1)
+    await nextTick()
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+    wrapper.unmount()
+  })
+
   it('searches parties, maps lookup results, updates party and role values, and opens valid targets', async () => {
     mocks.searchCatalog
       .mockResolvedValueOnce(undefined)
