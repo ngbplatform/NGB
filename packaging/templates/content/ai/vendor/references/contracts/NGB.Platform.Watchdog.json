@@ -2,11 +2,11 @@
   "schemaVersion": 1,
   "package": "NGB.Platform.Watchdog",
   "version": "3.4.0",
-  "packageSha256": "081123f8b45ecd5630ec40257861bc509140e417b4457d7b4b4b159ac49770e5",
+  "packageSha256": "c9c89b40e72e27e8d33341d5b8be1ea13e8c6dcdb78d27a7dcbf6ff92c091dbc",
   "assembly": {
     "name": "NGB.Watchdog",
     "version": "3.0.0.0",
-    "sha256": "2cf40c1cca5b192c331c1246190177a904323494a169992919ac724041ae9fae"
+    "sha256": "41322f31ee1d228f7fac909fe280cc97171f396ebdc2940927de54108907c662"
   },
   "contractSha256": "23dcd9c065ae83ec530910d2a0dca1e77172da411b71d956d07b851efebf00cd",
   "types": [

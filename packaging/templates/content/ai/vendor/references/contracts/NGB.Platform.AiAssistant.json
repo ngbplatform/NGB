@@ -2,11 +2,11 @@
   "schemaVersion": 1,
   "package": "NGB.Platform.AiAssistant",
   "version": "3.4.0",
-  "packageSha256": "b6b32487db100c4f0bc770a7aa7386a683a5aaed42a59435b09b374a1bf77b79",
+  "packageSha256": "f9199887a8e8eb7b1b63376de37a28bcc57cd9f178c6edade637e9c39d839257",
   "assembly": {
     "name": "NGB.AiAssistant",
     "version": "3.0.0.0",
-    "sha256": "f48a9a601cd28d15897b74ca4ddc3c2dc2df9e30d64fbb56094027129719a5d9"
+    "sha256": "5df356f6e20782173ebb0887b44f0010d1bfbb4c067c54fd82f3ec0b7e222207"
   },
   "contractSha256": "1d83acb0a8083fa93372d44912d21ecdaf60014201dc49c3497a409d5ca4f744",
   "types": [

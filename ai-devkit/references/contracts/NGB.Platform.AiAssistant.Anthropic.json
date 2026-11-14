@@ -2,11 +2,11 @@
   "schemaVersion": 1,
   "package": "NGB.Platform.AiAssistant.Anthropic",
   "version": "3.4.0",
-  "packageSha256": "af7cf8ec4d1b401504c031866b1fefcb74b52aef9d886396201baa30cc64ee89",
+  "packageSha256": "bf98eb843959310b655f04089ea1ad9e2bd3ffcb0df69699f7f1bbd9ad09c2df",
   "assembly": {
     "name": "NGB.AiAssistant.Anthropic",
     "version": "3.0.0.0",
-    "sha256": "449ac62190286270d76f808d3c951d89496e49ce826d105d63434c816ce613b8"
+    "sha256": "ed250fbc0317c3c8e6c6b4392733f3bde5a55b27c1b2e60eaa74d48e96105b94"
   },
   "contractSha256": "3dafc7b8117bc4fb23e12f0a234d03ed8ac10714bd7debb822658b76c7e8db11",
   "types": [

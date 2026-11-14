@@ -2,11 +2,11 @@
   "schemaVersion": 1,
   "package": "NGB.Platform.BackgroundJobs",
   "version": "3.4.0",
-  "packageSha256": "5673d9597d74971f0cfe44bbe099bd2e6b76af101957d0d1449228592390dc5e",
+  "packageSha256": "789a13331e28642015ac3a3da010a0f6a12f933762eae1ccea10d1837d88ec52",
   "assembly": {
     "name": "NGB.BackgroundJobs",
     "version": "3.0.0.0",
-    "sha256": "b475ee8e08db329800fba55ba71a9ac1064e217475b05f97364112a3d5b5caf0"
+    "sha256": "38650c23d83f3f2bb030a078bcedb2cf7d360973f50a2e46090122c1adb9fb7a"
   },
   "contractSha256": "fffb4fa64e66caaffc6ea511a9de4e8641979ee623cc2f1f0397fdc8bf47b05e",
   "types": [
