@@ -114,9 +114,11 @@ does not grant lookup, and a request with no permitted types returns an empty li
 
 `InspectionDerivationDefinitions` registers `example.reinspect` and a directed
 ManyToOne relationship. The derivation's code is the action code; no prefix is
-added. Dispatching it creates one numbered Draft and a child-to-source edge in the
-same transaction. The target inherits the source registry date. With no derivation
-handler, it has no copied application fields and is not automatically Posted.
+added. Dispatching it creates one numbered Draft, its domain relationship and a
+standard `created_from` child-to-source edge in the same transaction. The latter
+makes the chain visible to the shared Document Flow UI. The target inherits the
+source registry date. With no derivation handler, it has no copied application
+fields and is not automatically Posted.
 An optional `NGB.Runtime.Documents.Derivations.IDocumentDerivationHandler` receives
 the source and target in `DocumentDerivationContext` within that transaction.
 Keep any prefill work inside the existing unit of work and register the handler
@@ -330,3 +332,50 @@ before the contributor, preserves direct-column filtering and denies an ungrante
 reader before query execution. Query parameters use `filters.result_label` (or
 the plain key), not bracket notation. Adding the contributor alone does not
 advertise a filter; declare it in the application's original document metadata.
+
+## Withdrawal and dependent documents
+
+A Reference Register handler builds register records. It is not a universal
+lifecycle validator. In 3.4.0, Unpost returns from the RR branch before resolving
+the handler when no register write state exists for the document. An empty
+handler can enable Post but cannot be relied on to reject withdrawal. Repost
+also has different semantics; do not treat it as an Unpost callback. Never create
+fake RR records to force a business guard to run.
+
+Define correction rules from the business workflow and prove them through the
+actual authorized action/API path. Rejected withdrawal must preserve status,
+version and all financial/operational effects. Include a dependent Posted record,
+repeat requests and a competing dependent write using the same locking policy.
+A unit test calling the guard directly is insufficient.
+
+For custom actions, context facts and availability evaluators are rechecked by
+`IDocumentActionDispatcher` inside its transaction. Mutation-time invariants must
+also be checked by the supported application handler under the relevant locks;
+UI action availability is only a snapshot. Follow [custom actions](custom-document-actions.md).
+Do not assume a custom action guards the standard Unpost/Repost routes or trusted
+system lifecycle calls. The current registry creates standard actions first;
+adding another definition under the same type/action key is a duplicate, not an
+override API. Inspect supported contracts for every reachable path. If a required
+guard cannot be installed through them, report that concrete limitation and keep
+acceptance incomplete instead of inventing a hook or changing Platform implicitly.
+
+## Visible Document Flow
+
+The shared Document Flow UI displays standard relationship codes `based_on`,
+`created_from`, `reversal_of`, `related_to` and `supersedes`. Select one according
+to the business relationship and preserve its source/target direction. Register
+compatible endpoint types/cardinality and create the edge in the same transaction
+as the linked document, using a derivation, supported head-field mirror or the
+public relationship service as appropriate. A document lookup by itself is not
+an edge.
+
+A custom domain relationship may coexist with a standard flow relationship. It
+must not replace the standard edge if the chain should appear in the shared UI.
+Do not broaden shared UI filtering merely because a generated application used
+only custom codes. For a new derivation, use the semantic standard relationship;
+for an existing persisted domain relationship, preserve its code and add the
+standard edge through the authorized workflow rather than renaming history.
+
+Verify a source/child/grandchild chain both in the authorized graph response and
+in the actual browser page, including link navigation and excluded inaccessible
+nodes. A passing graph API test alone cannot prove visible hierarchy.

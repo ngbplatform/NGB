@@ -6,6 +6,11 @@ description: Configure NGB Keycloak identity, registered permissions, administra
 Use for an authorized identity/access change or permission-sensitive feature.
 Do not change business permissions to make an MCP or Assistant scenario pass.
 
+For demo generation, provision a readable invented identity, active platform user
+and role assignment for every employee role, including Administrator. This is a
+Kit responsibility, not a required addition to the business specification. Follow
+[demo identity and acceptance rules](../../references/application-generation.md#demo-identities).
+
 1. Read [security contracts](../../references/security.md). Identify the existing
    authorized service, capability keys, record scope and optional feature flag.
 2. Register new permission definitions through the public contract and preserve

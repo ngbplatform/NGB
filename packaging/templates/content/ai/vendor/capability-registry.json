@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "version": "3.4.0",
-  "surfaceSha256": "2a0cb69551cc4eb2aa632832953120d38c08309bfe9a29150a65e28e252ab267",
+  "surfaceSha256": "c761f2b502102f53a3b487254de7ade1dc68373bca90d08bde5cb837cf8e4fdf",
   "capabilities": [
     {
       "id": "accounting.account-card",
@@ -6688,7 +6688,8 @@
       "support": "supported",
       "layer": "frontend",
       "constraints": [
-        "Import only declared public package entry points; enforce access at the backend."
+        "Import only declared public package entry points; enforce access at the backend.",
+        "NgbDocumentLines is an additive public table-parts component. Existing editor extension contracts remain supported; applications own fields, persistence, calculations and business validation. The packaged browser acceptance below covers head-only editor composition, not every Lines interaction."
       ],
       "prerequisites": [
         "Exact UI package version",
@@ -6697,7 +6698,7 @@
       "contracts": [
         {
           "id": "@ngbplatform/ui:./editor",
-          "sha256": "e4f59c768863aca734078a74f8a36bc03dd40a6ed63ca740f08b3c0c57ef6cf1",
+          "sha256": "8e183e071c7dd5ab167801798053cffa2b6846841e27b55e2b81f86f3ad934f4",
           "members": []
         }
       ],
@@ -6829,7 +6830,7 @@
       "contracts": [
         {
           "id": "@ngbplatform/ui:.",
-          "sha256": "fdc9d226d1204f4f13406692164f512e49a90a65d6ab170017a6508bed191372",
+          "sha256": "627bf790d5d7af4aadec0ab899dd61b77d5fa9061884ddd58a8ac6b63dd3fc31",
           "members": []
         }
       ],
@@ -6918,7 +6919,7 @@
       "contracts": [
         {
           "id": "@ngbplatform/ui:.",
-          "sha256": "fdc9d226d1204f4f13406692164f512e49a90a65d6ab170017a6508bed191372",
+          "sha256": "627bf790d5d7af4aadec0ab899dd61b77d5fa9061884ddd58a8ac6b63dd3fc31",
           "members": []
         }
       ],
@@ -12904,7 +12905,7 @@
   "classifications": [
     {
       "contract": "@ngbplatform/ui:.",
-      "sha256": "fdc9d226d1204f4f13406692164f512e49a90a65d6ab170017a6508bed191372",
+      "sha256": "627bf790d5d7af4aadec0ab899dd61b77d5fa9061884ddd58a8ac6b63dd3fc31",
       "kind": "extension",
       "reason": "Explicit public application boundary or contribution/configuration contract used by the mapped workflows. Acceptance completeness is tracked separately.",
       "capabilities": [
@@ -12923,7 +12924,7 @@
     },
     {
       "contract": "@ngbplatform/ui:./editor",
-      "sha256": "e4f59c768863aca734078a74f8a36bc03dd40a6ed63ca740f08b3c0c57ef6cf1",
+      "sha256": "8e183e071c7dd5ab167801798053cffa2b6846841e27b55e2b81f86f3ad934f4",
       "kind": "extension",
       "reason": "Explicit public application boundary or contribution/configuration contract used by the mapped workflows. Acceptance completeness is tracked separately.",
       "capabilities": [

@@ -1,7 +1,7 @@
 import { mount } from '@vue/test-utils'
 import { defineComponent, h, nextTick, toRaw } from 'vue'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
-import type { FieldMetadata, MetadataFormBehavior, PartMetadata, RecordParts } from '@ngbplatform/ui'
+import type { FieldMetadata, MetadataFormBehavior, PartMetadata, RecordPartRow, RecordParts } from '@ngbplatform/ui'
 
 const ITEM_1 = '11111111-1111-4111-8111-111111111111'
 const ITEM_2 = '22222222-2222-4222-8222-222222222222'
@@ -210,11 +210,6 @@ describe('TradeDocumentPartsEditor coverage', () => {
     state.updateCell('lines', 99, 'quantity', 3)
 
     expect(state.lookupCellKey('lines', 0, 'item_id')).toBe('lines:0:item_id')
-    expect(state.fieldError('lines', 0, 'memo')).toBe('Required')
-    expect(state.fieldError('lines', 1, 'missing')).toBeNull()
-    expect(state.rowHasErrors('lines', 0)).toBe(true)
-    expect(state.rowHasErrors('lines', 1)).toBe(false)
-    expect(state.rowHasErrors('empty', 0)).toBe(false)
 
     const row = state.partRows('lines')[0]
     expect(state.resolveFieldState(field('currency', 'String'), row).mode).toBe('select')
@@ -269,29 +264,22 @@ describe('TradeDocumentPartsEditor coverage', () => {
     ;(formBehavior.buildLookupTargetUrl as ReturnType<typeof vi.fn>).mockResolvedValueOnce(null)
     await state.openLookup(lookupField, row)
 
-    const transfer = { setData: vi.fn(), setDragImage: vi.fn(), getData: vi.fn(() => 'lines:0') }
-    expect(state.canReorder('lines')).toBe(true)
-    expect(state.canReorder('empty')).toBe(false)
-    state.onDragStart('lines', 0, { dataTransfer: transfer } as never)
-    state.onDragStart('lines', 0, { dataTransfer: { setData: () => { throw new Error('unsupported') } } } as never)
-    const preventDefault = vi.fn()
-    state.onDragOver('lines', { preventDefault } as never)
-    state.onDragOver('empty', { preventDefault } as never)
-    state.onDrop('lines', 1, { preventDefault } as never)
-    state.onDrop('lines', 1, { preventDefault, dataTransfer: transfer } as never)
-    state.onDrop('lines', 1, { preventDefault, dataTransfer: { getData: () => 'other:0' } } as never)
-    state.onDrop('lines', 1, { preventDefault, dataTransfer: { getData: () => 'lines:x' } } as never)
-    state.onDrop('lines', 1, { preventDefault, dataTransfer: { getData: () => 'lines:1' } } as never)
-    state.onDrop('lines', 1, { preventDefault, dataTransfer: { getData: () => 'lines:99' } } as never)
-    state.onDrop('empty', 0, { preventDefault } as never)
+    expect(wrapper.text()).toContain('Required')
+    expect(wrapper.find('tbody tr').classes()).toContain('bg-red-50/40')
+    const rowKeys = state.partRows('lines').map((row: RecordPartRow) => row.__row_key)
+    await wrapper.get('button[aria-label="Reorder row 1"]').trigger('keydown', { altKey: true, key: 'ArrowDown' })
+    const reordered = wrapper.emitted('update:modelValue')?.at(-1)?.[0] as RecordParts
+    expect(reordered.lines?.rows?.map((row) => row.ordinal)).toEqual([1, 2])
+    expect(reordered.lines?.rows?.map((row) => row.__row_key)).toEqual([...rowKeys].reverse())
+    state.reorderRows('empty', 0, 1)
 
-    expect(state.fieldColStyle('lines', field('currency', 'String'))).toBe('width:120px')
-    expect(state.fieldColStyle('lines', field('item_id', 'Lookup', { lookup: {} }))).toBe('width:260px')
-    expect(state.fieldColStyle('lines', field('enabled', 'Boolean'))).toBe('width:96px')
-    expect(state.fieldColStyle('lines', field('service_on', 'Date'))).toBe('width:170px')
-    expect(state.fieldColStyle('lines', field('created_at', 'DateTime'))).toBe('width:170px')
-    expect(state.fieldColStyle('lines', field('quantity', 'Decimal'))).toBe('width:160px')
-    expect(state.fieldColStyle('lines', field('memo', 'String'))).toBeUndefined()
+    expect(state.fieldWidth('lines', field('currency', 'String'))).toBe('120px')
+    expect(state.fieldWidth('lines', field('item_id', 'Lookup', { lookup: {} }))).toBe('260px')
+    expect(state.fieldWidth('lines', field('enabled', 'Boolean'))).toBe('96px')
+    expect(state.fieldWidth('lines', field('service_on', 'Date'))).toBe('170px')
+    expect(state.fieldWidth('lines', field('created_at', 'DateTime'))).toBe('170px')
+    expect(state.fieldWidth('lines', field('quantity', 'Decimal'))).toBe('160px')
+    expect(state.fieldWidth('lines', field('memo', 'String'))).toBeUndefined()
     expect(state.partAmount(parts[0])).toBe(7)
     expect(state.partAmount(parts[2])).toBeNull()
     expect(state.formatAmount(null)).toMatch(/0/)
@@ -308,10 +296,11 @@ describe('TradeDocumentPartsEditor coverage', () => {
     await flush()
     const readonlyState = setupState(readonly)
     expect(readonlyState.canManageRows('lines')).toBe(false)
-    readonlyState.onDragStart('lines', 0, {} as never)
-    readonlyState.onDrop('lines', 0, { preventDefault } as never)
+
     expect(readonlyState.buildLineDefaultsRequest()).toBeNull()
     await readonlyState.refreshLineDefaults()
+    expect(readonly.find('button[title="Delete"]').exists()).toBe(false)
+    expect(readonly.get('tbody tr').attributes('draggable')).toBe('false')
     readonly.unmount()
 
     const blank = mount(TradeDocumentPartsEditor, { props: { entityTypeCode: 'trd.inventory_transfer', parts: [part()] } })

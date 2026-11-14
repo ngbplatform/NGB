@@ -178,10 +178,14 @@ public sealed class InspectionCompositionTests
         Assert.Equal(2, graph.Nodes.Count);
         var childNode = Assert.Single(graph.Nodes, node => node.EntityId == child.Id);
         var sourceNode = Assert.Single(graph.Nodes, node => node.EntityId == source.Document.Id);
-        var edge = Assert.Single(graph.Edges);
+        Assert.Equal(2, graph.Edges.Count);
+        var edge = Assert.Single(graph.Edges, edge => edge.RelationshipType == InspectionDerivationDefinitions.RelationshipCode);
         Assert.Equal(childNode.NodeId, edge.FromNodeId);
         Assert.Equal(sourceNode.NodeId, edge.ToNodeId);
         Assert.Equal(InspectionDerivationDefinitions.RelationshipCode, edge.RelationshipType);
+        var flowEdge = Assert.Single(graph.Edges, edge => edge.RelationshipType == "created_from");
+        Assert.Equal(childNode.NodeId, flowEdge.FromNodeId);
+        Assert.Equal(sourceNode.NodeId, flowEdge.ToNodeId);
         var bounded = (await admin.GetFromJsonAsync<RelationshipGraphDto>(childPath + "/graph?depth=1&maxNodes=1", Json))!;
         Assert.Single(bounded.Nodes);
         Assert.Empty(bounded.Edges);
@@ -198,7 +202,7 @@ public sealed class InspectionCompositionTests
         Assert.False(await relationships.CreateAsync(child.Id, source.Document.Id, InspectionDerivationDefinitions.RelationshipCode));
         await Assert.ThrowsAsync<DocumentRelationshipValidationException>(() =>
             relationships.CreateAsync(child.Id, other.Id, InspectionDerivationDefinitions.RelationshipCode));
-        Assert.Single(await relationships.ListOutgoingAsync(child.Id));
+        Assert.Equal(2, (await relationships.ListOutgoingAsync(child.Id)).Count);
         var usage = await PostAsync<DocumentDto>(admin, "/api/documents/" + EquipmentUsageDefinitions.DocumentCode,
             Payload(("display", "Unrelated usage")));
         await Assert.ThrowsAsync<DocumentRelationshipValidationException>(() =>

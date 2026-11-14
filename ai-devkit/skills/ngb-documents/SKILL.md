@@ -12,6 +12,11 @@ absent, automatic registration omits Post. If the application explicitly exposes
 the action anyway, executing it returns `doc.posting.handler.not_configured`. The
 document stays in `Draft` and its effects stay unchanged.
 
+An empty RR posting handler is not a guaranteed lifecycle callback: Unpost skips
+it when the document has no RR write state. Never put dependency guards there.
+Read [withdrawal boundaries]({{references}}/documents.md#withdrawal-and-dependent-documents)
+and [visible flow relationships]({{references}}/documents.md#visible-document-flow).
+
 ## Implementing a document
 
 1. Read [document contracts]({{references}}/documents.md). Inspect the installed

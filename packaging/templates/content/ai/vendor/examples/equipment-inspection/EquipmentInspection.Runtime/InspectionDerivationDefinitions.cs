@@ -19,6 +19,6 @@ public sealed class InspectionDerivationDefinitions : IDefinitionsContributor
             .Name("Create reinspection")
             .From(EquipmentDefinitions.InspectionCode)
             .To(EquipmentDefinitions.InspectionCode)
-            .Relationship(RelationshipCode));
+            .Relationships(RelationshipCode, "created_from"));
     }
 }

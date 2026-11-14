@@ -1,6 +1,5 @@
 using NgbApplication;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.Extensions.DependencyInjection.Extensions;
 using NGB.AiAssistant.AspNetCore;
 using NGB.AiAssistant.Ollama;
 using NGB.Api;
@@ -13,6 +12,7 @@ using NGB.Hosting.AspNetCore.Identity;
 using NGB.Mcp.AspNetCore;
 using NGB.PostgreSql.AspNetCore.DependencyInjection;
 using NGB.PostgreSql.DependencyInjection;
+using NGB.Runtime.Admin;
 using NGB.Runtime.DependencyInjection;
 using NGB.Runtime.Hosting;
 using NGB.Runtime.Security;
@@ -40,7 +40,22 @@ builder.Services.AddControllersApi();
 builder.Services.AddNgbWorkCenterRealtime();
 builder.Services.AddNgbWorkCenterOutboxProcessing(builder.Configuration);
 builder.Services.AddNgbAttachmentsNotesApi(builder.Configuration);
-builder.Services.RemoveAll<IMainMenuContributor>();
+// This minimal starter has no Accounting controllers or UI routes. When adding
+// Accounting, retain these contributors and compose their destinations together.
+// Preserve every other contributor registered by application or platform modules.
+var accountingMenuTypes = new[]
+{
+    typeof(AccountingDocumentsMainMenuContributor),
+    typeof(AccountingReportsMainMenuContributor),
+    typeof(AccountingAdminMainMenuContributor)
+};
+foreach (var descriptor in builder.Services.Where(descriptor =>
+    descriptor.ServiceType == typeof(IMainMenuContributor)
+    && descriptor.ImplementationType is { } type
+    && accountingMenuTypes.Contains(type)).ToArray())
+{
+    builder.Services.Remove(descriptor);
+}
 builder.Services.AddScoped<IMainMenuContributor, ApplicationMenu>();
 builder.Services.AddAuthorization(options =>
     options.FallbackPolicy = new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build());

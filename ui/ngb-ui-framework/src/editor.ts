@@ -1,4 +1,6 @@
 /** Curated public surface for configured entity-editor integrations. */
+export { default as NgbDocumentLines } from './ngb/editor/NgbDocumentLines.vue'
+export type { DocumentLinesColumn, DocumentLinesErrors, DocumentLinesHandle } from './ngb/editor/documentLines'
 export { default as NgbConfiguredEntityEditor } from './ngb/editor/NgbConfiguredEntityEditor.vue'
 export { default as NgbEntityEditor } from './ngb/editor/NgbEntityEditor.vue'
 export { forwardEntityEditorHandle } from './ngb/editor/forwardEntityEditorHandle'

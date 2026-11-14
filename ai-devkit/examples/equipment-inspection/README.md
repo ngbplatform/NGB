@@ -34,8 +34,10 @@ explicitly exposes Post only to verify the lifecycle's missing-handler guard.
 
 Inspections receive SDK-allocated numbers on Draft creation. `example.reinspect`
 creates a separate numbered empty Draft linked to its source through the directed
-ManyToOne `example.reinspection_of` relationship. It does not copy fields or Post
-the new document. Composition acceptance checks concurrent numbering, preservation
+ManyToOne `example.reinspection_of` relationship and the standard `created_from`
+relationship used by Document Flow. Existing domain relationship codes remain
+unchanged. It does not copy fields or Post the new document. Composition acceptance
+checks concurrent numbering, preservation
 through lifecycle actions, idempotent derivation, endpoint and cardinality guards,
 bounded pages and cross-type lookup. Graph reads use ViewFlow separately from
 View and hide types the reader cannot view. A test-only bidirectional relationship

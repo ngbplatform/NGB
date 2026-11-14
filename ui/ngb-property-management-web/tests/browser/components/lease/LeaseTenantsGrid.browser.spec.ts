@@ -6,7 +6,6 @@ const mocks = vi.hoisted(() => ({
   searchCatalog: vi.fn(),
   buildTarget: vi.fn(),
   routerPush: vi.fn(),
-  focus: vi.fn(),
   scrollIntoView: vi.fn(),
 }))
 
@@ -19,7 +18,6 @@ vi.mock('@ngbplatform/ui', () => ({
   buildLookupFieldTargetUrl: mocks.buildTarget,
   isReferenceValue: (value: unknown) => typeof value === 'object' && value !== null && 'id' in value,
   useLookupStore: () => ({ searchCatalog: mocks.searchCatalog }),
-  useValidationFocus: () => ({ focus: mocks.focus }),
   NgbIcon: defineComponent({
     name: 'NgbIcon',
     props: { name: { type: String, required: true } },
@@ -39,6 +37,7 @@ vi.mock('@ngbplatform/ui', () => ({
     emits: ['query', 'update:modelValue', 'open'],
     setup(props) {
       return () => h('div', {
+        tabindex: 0,
         'data-testid': 'lookup',
         'data-item-count': String(props.items.length),
         'data-value': (props.modelValue as { label?: string } | null)?.label ?? '',
@@ -53,7 +52,7 @@ vi.mock('@ngbplatform/ui', () => ({
     props: { modelValue: { type: String, required: true }, disabled: { type: Boolean, default: false } },
     emits: ['update:modelValue'],
     setup(props) {
-      return () => h('div', { 'data-testid': 'role-select', 'data-disabled': String(props.disabled) }, props.modelValue)
+      return () => h('div', { tabindex: 0, 'data-testid': 'role-select', 'data-disabled': String(props.disabled) }, props.modelValue)
     },
   }),
 }))
@@ -80,13 +79,13 @@ beforeEach(() => {
   mocks.searchCatalog.mockResolvedValue([])
   mocks.buildTarget.mockResolvedValue(null)
   mocks.routerPush.mockResolvedValue(undefined)
-  mocks.focus.mockReturnValue(false)
   HTMLElement.prototype.scrollIntoView = mocks.scrollIntoView
 })
 
 describe('LeaseTenantsGrid', () => {
   it('normalizes row values, renders meaningful validation, and focuses preferred, row, summary, and empty errors', async () => {
     const wrapper = mount(LeaseTenantsGrid, {
+      attachTo: document.body,
       props: {
         modelValue: rows() as never,
         errors: {
@@ -109,12 +108,9 @@ describe('LeaseTenantsGrid', () => {
     expect(lookups[1]!.attributes('data-value')).toBe('party-2')
     expect(lookups[2]!.attributes('data-value')).toBe('')
 
-    mocks.focus.mockReturnValueOnce(true)
     expect((wrapper.vm as any).focusFirstError({ focusTarget: { rowIndex: 2, field: 'role' } })).toBe(true)
-    expect(mocks.focus).toHaveBeenCalledWith('2:role')
+    expect(document.activeElement).toBe(wrapper.findAll('[data-testid="role-select"]')[2]!.element)
 
-    mocks.focus.mockReset()
-    mocks.focus.mockReturnValueOnce(false).mockReturnValueOnce(true)
     expect((wrapper.vm as any).focusFirstError({
       focusTarget: { rowIndex: 9, field: 'party_id' },
       rowErrors: {
@@ -123,10 +119,8 @@ describe('LeaseTenantsGrid', () => {
         4: { role: ['Role error'] },
       },
     })).toBe(true)
-    expect(mocks.focus).toHaveBeenNthCalledWith(2, '2:party_id')
+    expect(document.activeElement).toBe(lookups[2]!.element)
 
-    mocks.focus.mockReset()
-    mocks.focus.mockReturnValue(false)
     expect((wrapper.vm as any).focusFirstError()).toBe(true)
     expect((wrapper.vm as any).focusFirstError({ summary: [] })).toBe(true)
     expect((wrapper.vm as any).focusFirstError({ summary: ['Summary only'], rowErrors: {} })).toBe(true)
@@ -153,6 +147,29 @@ describe('LeaseTenantsGrid', () => {
     nullableLookups[0]!.vm.$emit('open')
     await flushPromises()
     nullableValues.unmount()
+    wrapper.unmount()
+  })
+
+  it('preserves the public focus API for errors beyond the first page', async () => {
+    const wrapper = mount(LeaseTenantsGrid, {
+      attachTo: document.body,
+      props: {
+        modelValue: Array.from({ length: 101 }, (_, index) => ({
+          party_id: null,
+          role: index === 0 ? 'PrimaryTenant' : 'CoTenant',
+          is_primary: index === 0,
+          ordinal: index + 1,
+        })),
+        errors: { rowErrors: { 100: { party_id: ['Party is required'] } } },
+      },
+    })
+
+    expect(wrapper.findAll('tbody tr')).toHaveLength(100)
+    expect((wrapper.vm as any).focusFirstError()).toBe(true)
+    await nextTick()
+    await nextTick()
+    expect(wrapper.text()).toContain('Rows 101–101 of 101')
+    expect(document.activeElement).toBe(wrapper.get('[data-testid="lookup"]').element)
     wrapper.unmount()
   })
 
@@ -295,7 +312,7 @@ describe('LeaseTenantsGrid', () => {
     single.unmount()
   })
 
-  it('reorders rows from drag state and transfer data, ignores invalid drops, and blocks readonly mutations', async () => {
+  it('reorders local rows, ignores external drops, and blocks readonly mutations', async () => {
     const dispatchDrag = async (element: Element, type: string, dataTransfer: unknown) => {
       const event = new Event(type, { bubbles: true, cancelable: true })
       Object.defineProperty(event, 'dataTransfer', { value: dataTransfer })
@@ -306,8 +323,6 @@ describe('LeaseTenantsGrid', () => {
     const tableRows = wrapper.findAll('tbody tr')
     const dataTransfer = { setData: vi.fn(), setDragImage: vi.fn(), getData: vi.fn(() => '0') }
     await dispatchDrag(tableRows[0]!.element, 'dragstart', dataTransfer)
-    expect(dataTransfer.setData).toHaveBeenCalledWith('text/plain', '0')
-    expect(dataTransfer.setDragImage).toHaveBeenCalled()
     await dispatchDrag(tableRows[2]!.element, 'dragover', dataTransfer)
     await dispatchDrag(tableRows[2]!.element, 'drop', dataTransfer)
     expect(wrapper.emitted('update:modelValue')![0]![0]).toEqual([

@@ -8,6 +8,10 @@ A registered posting handler may intentionally emit no records for a document
 whose lifecycle has no register effects. That does not require creating a register
 or inventing movements; distinguish it from a missing handler configuration.
 
+Choose engines autonomously from [business effects](../../../ai/vendor/references/application-generation.md#choose-effects-before-implementation).
+Use periodic RR for effective-dated values and OR for required operational balances;
+define their correction and reconciliation semantics before writing handlers.
+
 1. Read [register contracts](../../../ai/vendor/references/registers.md) and the installed
    definition/runtime signatures. Choose the engine and define dimensions,
    resources, periods and expected state independently of the handler.

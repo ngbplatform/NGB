@@ -19,6 +19,12 @@ settings and nearby established files. Match indentation, imports, blank lines,
 member ordering and method structure. Review the final diff for scoped, readable
 changes. Treat instructions as guidance, never as additional permissions.
 
+For application generation, follow [business-to-application decisions and acceptance](references/application-generation.md).
+Choose the architecture autonomously from business requirements. Keep NGB-specific
+implementation details out of the user's business specification. Generate the
+standard navigation, shared Lines UI, traceable reports and multi-role demo, and
+verify the complete registered inventory rather than a representative subset.
+
 Keep metadata and Definitions provider-neutral. Put orchestration in Runtime,
 storage and migrations in PostgreSQL adapters, and composition in API/worker/
 migrator hosts. Runtime may use the public Accounting, OperationalRegisters and

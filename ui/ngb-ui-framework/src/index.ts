@@ -1,6 +1,9 @@
 // Public exports for shared UI components.
 // Keep this list small initially; expand as web-client needs more.
 
+export { default as NgbDocumentLines } from './ngb/editor/NgbDocumentLines.vue';
+export type { DocumentLinesColumn, DocumentLinesErrors, DocumentLinesHandle } from './ngb/editor/documentLines';
+
 export { default as NgbSiteShell } from './ngb/site/NgbSiteShell.vue';
 export { default as NgbSiteSidebar } from './ngb/site/NgbSiteSidebar.vue';
 export { default as NgbTopBar } from './ngb/site/NgbTopBar.vue';

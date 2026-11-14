@@ -2,14 +2,14 @@
   "schemaVersion": 1,
   "package": "@ngbplatform/ui",
   "version": "3.4.0",
-  "packageSha256": "5d5532c5bf24d2cc4a7dccbb9420920c69118b5c0387a42bb7f94c7945aa30f7",
+  "packageSha256": "ab135589394c8089610638cfed77e197a857c8abc3021d9f6c40ff0de8cba113",
   "exports": [
     {
       "subpath": ".",
       "files": [
         {
           "path": "./src/index.ts",
-          "sha256": "008959c1895ee04ce7369ddc08d59335645456502a5af8f94ba63176a54f72b8"
+          "sha256": "7ea147bc48b2a5cdc5b290f3aa11f4684ec1ff97e3ec9c05fee8830caf7c2140"
         }
       ]
     },
@@ -27,7 +27,7 @@
       "files": [
         {
           "path": "./src/editor.ts",
-          "sha256": "b30d81fbab5938b789c6ae9c20ac6553b8e88d9bbb893c998e52ad7e45d3324b"
+          "sha256": "c3a878178ff7c2d52e6817aee37bbaee72cdc5426cb7f44a822a121b4c011ce4"
         }
       ]
     },

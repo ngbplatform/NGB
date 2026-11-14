@@ -85,6 +85,7 @@ test('published UI entry points preserve navigation, theme, assets and recovery 
   await page.getByTestId('site-main').getByRole('button', { name: 'Back', exact: true }).click()
   await expect(page).toHaveURL(`${origin}/catalogs/example.equipment`)
 
+  await expect(page.locator('head link[rel="icon"]')).toHaveAttribute('href', '/favicon.svg')
   const favicon = await page.request.get(`${origin}/favicon.svg`)
   expect(favicon.status()).toBe(200)
   expect(favicon.headers()['content-type']).toContain('image/svg+xml')
@@ -349,6 +350,44 @@ test('administrator creates equipment, saves an incomplete Draft, completes and 
   await expect(page.getByTestId('report-sheet-table')).toContainText('All checks passed')
   await expect(page.getByTestId('report-sheet-table').getByRole('row').filter({ hasText: 'All checks passed' }))
     .toContainText('1')
+
+  const detailsContext = Buffer.from(JSON.stringify({
+    reportCode: 'example.inspection-summary',
+    request: {
+      ...reportRequest,
+      layout: {
+        detailFields: ['inspection_id', 'inspection_display', 'inspection_date'],
+        showDetails: true,
+        showSubtotals: false,
+        showGrandTotals: false,
+      },
+    } satisfies ReportExecutionRequestDto,
+  })).toString('base64url')
+  await page.goto(`${origin}/reports/example.inspection-summary?ctx=${detailsContext}`)
+  await page.getByTestId('report-sheet-table').getByRole('button', { name: 'Initial safety check', exact: true }).click()
+  await expect.poll(() => new URL(page.url()).pathname).toBe(`/documents/example.inspection/${draft.id}`)
+
+  await page.getByRole('button', { name: 'More actions', exact: true }).click()
+  const derived = page.waitForResponse(response => response.url().endsWith('/actions/example.reinspect'))
+  await page.getByRole('menuitem', { name: 'Create reinspection', exact: true }).click()
+  const derivedResponse = await derived
+  expect(derivedResponse.status()).toBe(200)
+  const child = (await derivedResponse.json()).createdDocument
+  expect(child.id).not.toBe(draft.id)
+  const flowLoaded = page.waitForResponse(response => new URL(response.url()).pathname
+    === `/api/documents/example.inspection/${child.id}/graph`)
+  await page.goto(`${origin}/documents/example.inspection/${child.id}/flow`)
+  const flowResponse = await flowLoaded
+  expect(flowResponse.status()).toBe(200)
+  const graph = await flowResponse.json()
+  expect(graph.nodes).toHaveLength(2)
+  expect(graph.edges.some((edge: { relationshipType: string }) => edge.relationshipType === 'created_from')).toBe(true)
+  for (const node of graph.nodes) {
+    await expect(page.getByRole('button', { name: node.title, exact: true })).toBeVisible()
+  }
+  const source = graph.nodes.find((node: { entityId: string }) => node.entityId === draft.id)
+  await page.getByRole('button', { name: source.title, exact: true }).click()
+  await expect.poll(() => new URL(page.url()).pathname).toBe(`/documents/example.inspection/${draft.id}`)
 })
 
 test('ordinary actor receives a real API denial and cannot edit through a direct document URL', async ({ page }) => {

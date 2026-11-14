@@ -5,7 +5,7 @@ import preset from '@ngbplatform/ui/tailwind-preset'
 
 const state = vi.hoisted(() => ({
   push: vi.fn(), logout: vi.fn(), accessLoad: vi.fn(), menuLoad: vi.fn(),
-  groups: [{ label: 'Administration', items: [{ route: '/roles', label: 'Roles', icon: 'shield' }] }],
+  groups: [{ label: 'Setup & Controls', items: [{ route: '/roles', label: 'Roles', icon: 'shield' }] }],
 }))
 vi.mock('vue-router', () => ({ useRouter: () => ({ push: state.push }), useRoute: () => ({ path: '/roles' }) }))
 vi.mock('@ngbplatform/ui', () => ({
@@ -38,7 +38,7 @@ it('maps platform navigation and forwards shell actions', async () => {
   await screen.getByRole('button', { name: 'Sign out' }).click()
   expect(state.push.mock.calls).toEqual([['/users'], ['/roles']])
   expect(state.logout).toHaveBeenCalledOnce()
-  expect(screen.container.textContent).toContain('Administration')
+  expect(screen.container.textContent).toContain('Setup & Controls')
   expect(preset.darkMode).toBe('class')
   expect(preset.theme.extend.colors['ngb-bg']).toBe('var(--ngb-bg)')
 })

@@ -31,6 +31,8 @@ public sealed class MainMenuHttpTests
         Assert.Equal(5, group.Ordinal);
         Assert.Equal("clipboard-check", group.Icon);
         Assert.Equal(3, group.Items.Count);
+        Assert.Equal("file-text", group.Items[1].Icon);
+        Assert.Equal("bar-chart", group.Items[2].Icon);
         Assert.Equal(new[] { "example.equipment", "example.inspection", "example.inspection-summary" },
             group.Items.Select(item => item.Code));
         Assert.Equal("Equipment overview", group.Items[0].Label);

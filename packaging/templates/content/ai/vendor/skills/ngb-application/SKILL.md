@@ -7,6 +7,11 @@ Use this for bootstrap, adding module projects or changing host composition. For
 record lifecycle or persistence implementation, load the corresponding reference.
 Do not use it to modify platform internals to simulate a missing extension point.
 
+For generation from business requirements, read
+[architecture, navigation, demo and acceptance](../../references/application-generation.md).
+Make platform implementation choices yourself; keep the business specification
+independent of NGB vocabulary. Do not remove all built-in menu contributors.
+
 1. Inspect `ai/kit.json`, `ngb.config.json`, solution/project files and the existing
    host composition. Confirm exact SDK/UI/CLI/Kit alignment with
    `node infrastructure/ngb.mjs doctor`.

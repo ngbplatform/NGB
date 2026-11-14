@@ -60,7 +60,7 @@
       "enabled": true,
       "emailVerified": true,
       "email": "${BOOTSTRAP_EMAIL}",
-      "firstName": "External",
+      "firstName": "Application",
       "lastName": "Administrator",
       "credentials": [
         {

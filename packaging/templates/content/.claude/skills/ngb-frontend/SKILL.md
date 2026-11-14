@@ -6,6 +6,10 @@ description: Build NGB Vue application pages, navigation, editors, report UI, th
 Use for application UI composition. Do not copy or import monorepo-private framework
 components to bypass a missing public extension.
 
+Use public `NgbDocumentLines` for document parts and keep business behavior in
+the application. Apply the [navigation and UI conventions](../../../ai/vendor/references/application-generation.md#navigation-and-standard-surfaces),
+including uniform document/report icons and explicit favicon linkage.
+
 1. Read [frontend contracts](../../../ai/vendor/references/frontend.md). Inspect the installed
    export, component props/emits/slots and corresponding backend metadata.
 2. Compose the page using supported entry points and theme tokens. Preserve routes,

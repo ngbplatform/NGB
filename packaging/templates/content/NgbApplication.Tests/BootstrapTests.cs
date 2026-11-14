@@ -66,7 +66,7 @@ public sealed class BootstrapTests
     {
         var groups = await new ApplicationMenu().ContributeAsync(CancellationToken.None);
         var group = Assert.Single(groups);
-        Assert.Equal("Administration", group.Label);
+        Assert.Equal("Setup & Controls", group.Label);
         Assert.Equal(["/admin/security/users", "/admin/security/roles"], group.Items.Select(item => item.Route));
     }
 }

@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { NgbDocumentLines } from '@ngbplatform/ui/editor'
 import {
   dataTypeKind,
   isReferenceValue,
   normalizeJsonValue,
   NgbDatePicker,
-  NgbIcon,
   NgbInput,
   NgbLookup,
   NgbSelect,
@@ -72,10 +72,7 @@ const emit = defineEmits<{
 const route = useRoute()
 const router = useRouter()
 const lookupItemsByCell = ref<Record<string, LookupItem[]>>({})
-const dragState = ref<{ partCode: string; rowIndex: number } | null>(null)
 const lookupControllers = new Map<string, AbortController>()
-const PART_ROW_PAGE_SIZE = 100
-const partPageByCode = ref<Record<string, number>>({})
 
 const partFields = computed(() =>
   new Map(props.parts.map((part) => [part.partCode, listAgencyBillingDocumentPartFields(part)] as const)),
@@ -122,35 +119,6 @@ function partRows(partCode: string): RecordPartRow[] {
   return normalizedRowsByPart.value.get(partCode) ?? []
 }
 
-function partPageCount(partCode: string): number {
-  return Math.max(1, Math.ceil(partRows(partCode).length / PART_ROW_PAGE_SIZE))
-}
-
-function partPage(partCode: string): number {
-  return Math.min(partPageByCode.value[partCode] ?? 0, partPageCount(partCode) - 1)
-}
-
-function visiblePartRows(partCode: string): Array<{ row: RecordPartRow; rowIndex: number }> {
-  const rows = partRows(partCode)
-  const start = partPage(partCode) * PART_ROW_PAGE_SIZE
-  return rows.slice(start, start + PART_ROW_PAGE_SIZE)
-    .map((row, index) => ({ row, rowIndex: start + index }))
-}
-
-function setPartPage(partCode: string, page: number): void {
-  partPageByCode.value = {
-    ...partPageByCode.value,
-    [partCode]: Math.max(0, Math.min(page, partPageCount(partCode) - 1)),
-  }
-}
-
-function partRowRange(partCode: string): string {
-  const total = partRows(partCode).length
-  const start = partPage(partCode) * PART_ROW_PAGE_SIZE
-  const end = Math.min(total, start + PART_ROW_PAGE_SIZE)
-  return `Rows ${start + 1}\u2013${end} of ${total}`
-}
-
 function emitRows(partCode: string, rows: RecordPartRow[]): void {
   const next: RecordParts = { ...props.modelValue }
   next[partCode] = {
@@ -180,10 +148,6 @@ function canManageRows(partCode: string): boolean {
 function addRow(partCode: string): void {
   if (!canManageRows(partCode)) return
   const rows = partRows(partCode)
-  partPageByCode.value = {
-    ...partPageByCode.value,
-    [partCode]: Math.floor(rows.length / PART_ROW_PAGE_SIZE),
-  }
   emitRows(partCode, [...rows, createEmptyRow(partCode)])
 }
 
@@ -207,16 +171,6 @@ function updateCell(partCode: string, rowIndex: number, fieldKey: string, value:
 
 function lookupCellKey(partCode: string, rowIndex: number, fieldKey: string): string {
   return `${partCode}:${rowIndex}:${fieldKey}`
-}
-
-function fieldError(partCode: string, rowIndex: number, fieldKey: string): string | null {
-  return props.errors?.[partCode]?.[rowIndex]?.[fieldKey] ?? null
-}
-
-function rowHasErrors(partCode: string, rowIndex: number): boolean {
-  const rowErrors = props.errors?.[partCode]?.[rowIndex]
-  if (!rowErrors) return false
-  return Object.values(rowErrors).some((message) => String(message ?? '').trim().length > 0)
 }
 
 function resolveFieldState(field: FieldMetadata, row: RecordPartRow): GridFieldState {
@@ -319,58 +273,32 @@ async function openLookup(field: FieldMetadata, row: RecordPartRow): Promise<voi
   await router.push(target)
 }
 
-function canReorder(partCode: string): boolean {
-  return canManageRows(partCode) && partRows(partCode).length > 1
-}
-
-function onDragStart(partCode: string, rowIndex: number, event: DragEvent): void {
-  if (!canReorder(partCode)) return
-
-  dragState.value = { partCode, rowIndex }
-  try {
-    event.dataTransfer?.setData('text/plain', `${partCode}:${rowIndex}`)
-    event.dataTransfer?.setDragImage(new Image(), 0, 0)
-  } catch {
-    // Ignore browser drag API differences.
-  }
-}
-
-function onDragOver(partCode: string, event: DragEvent): void {
-  if (!canReorder(partCode)) return
-  event.preventDefault()
-}
-
-function onDrop(partCode: string, rowIndex: number, event: DragEvent): void {
-  if (!canReorder(partCode)) return
-
-  event.preventDefault()
-  const fallback = event.dataTransfer?.getData('text/plain') ?? ''
-  const [dragPartCode, dragRowIndexRaw] = fallback.split(':')
-
-  const sourcePartCode = dragState.value?.partCode ?? dragPartCode
-  const sourceRowIndex = dragState.value?.rowIndex ?? Number.parseInt(dragRowIndexRaw, 10)
-  dragState.value = null
-
-  if (sourcePartCode !== partCode || !Number.isFinite(sourceRowIndex) || sourceRowIndex === rowIndex) return
-
-  const next = partRows(partCode).map((row) => ({ ...row }))
-  const [moved] = next.splice(sourceRowIndex, 1)
-  if (!moved) return
-
-  next.splice(rowIndex, 0, moved)
-  emitRows(partCode, next)
-}
-
-function fieldColStyle(partCode: string, field: FieldMetadata): string | undefined {
+function fieldWidth(partCode: string, field: FieldMetadata): string | undefined {
   const widthPx = partColumns.value.get(partCode)?.get(field.key)?.widthPx
-  if (typeof widthPx === 'number' && widthPx > 0) return `width:${widthPx}px`
+  if (typeof widthPx === 'number' && widthPx > 0) return `${widthPx}px`
 
   const dataType = dataTypeKind(field.dataType)
-  if (field.lookup || dataType === 'Lookup') return 'width:260px'
-  if (dataType === 'Boolean') return 'width:96px'
-  if (dataType === 'Date' || dataType === 'DateTime') return 'width:170px'
-  if (dataType === 'Int32' || dataType === 'Decimal' || dataType === 'Money') return 'width:160px'
+  if (field.lookup || dataType === 'Lookup') return '260px'
+  if (dataType === 'Boolean') return '96px'
+  if (dataType === 'Date' || dataType === 'DateTime') return '170px'
+  if (dataType === 'Int32' || dataType === 'Decimal' || dataType === 'Money') return '160px'
   return undefined
+}
+
+function lineColumns(partCode: string) {
+  return (partFields.value.get(partCode) ?? []).map((field) => ({
+    ...field,
+    width: fieldWidth(partCode, field),
+  }))
+}
+
+function reorderRows(partCode: string, fromIndex: number, toIndex: number): void {
+  if (!canManageRows(partCode)) return
+  const next = partRows(partCode).map((row) => ({ ...row }))
+  const [moved] = next.splice(fromIndex, 1)
+  if (!moved) return
+  next.splice(toIndex, 0, moved)
+  emitRows(partCode, next)
 }
 
 function partAmount(part: PartMetadata): number | null {
@@ -387,200 +315,90 @@ function formatAmount(value: number | null): string {
 </script>
 
 <template>
-  <section
+  <NgbDocumentLines
     v-for="part in parts"
     :key="part.partCode"
-    class="overflow-hidden rounded-[var(--ngb-radius)] border border-ngb-border bg-ngb-card"
+    :title="part.title"
+    :rows="partRows(part.partCode)"
+    :columns="lineColumns(part.partCode)"
+    :row-key="(row) => String(row.__row_key)"
+    :readonly="readonly"
+    :allow-add-remove-rows="part.allowAddRemoveRows !== false"
+    :allow-reorder="part.allowAddRemoveRows !== false"
+    :errors="errors?.[part.partCode]"
+    @add="addRow(part.partCode)"
+    @remove="removeRow(part.partCode, $event)"
+    @reorder="(from, to) => reorderRows(part.partCode, from, to)"
   >
-    <div class="border-b border-ngb-border px-4 py-3">
-      <div class="text-sm font-semibold text-ngb-text">{{ part.title }}</div>
-      <div class="mt-0.5 text-xs text-ngb-muted">Tabular section</div>
-    </div>
-
-    <table v-if="partRows(part.partCode).length > 0" class="w-full table-fixed text-sm">
-      <colgroup>
-        <col style="width:28px" />
-        <col style="width:44px" />
-        <col
-          v-for="field in partFields.get(part.partCode)!"
-          :key="`${part.partCode}:col:${field.key}`"
-          :style="fieldColStyle(part.partCode, field)"
+    <template #cell="{ row, rowIndex, column: field }">
+      <template v-if="resolveFieldState(field, row).mode === 'lookup'">
+        <NgbLookup
+          :model-value="lookupValue(row, field.key)"
+          :items="lookupItemsByCell[lookupCellKey(part.partCode, rowIndex, field.key)] ?? []"
+          :readonly="readonly"
+          :show-open="!!lookupValue(row, field.key)"
+          :show-clear="!readonly && !!lookupValue(row, field.key)"
+          variant="grid"
+          :placeholder="`Select ${field.label.toLowerCase()}…`"
+          @query="onLookupQuery(part.partCode, rowIndex, field, row, $event)"
+          @update:model-value="onLookupSelect(part.partCode, rowIndex, field.key, $event)"
+          @open="void openLookup(field, row)"
         />
-        <col v-if="!readonly && part.allowAddRemoveRows !== false" style="width:40px" />
-      </colgroup>
+      </template>
 
-      <thead class="bg-ngb-bg text-xs text-ngb-muted">
-        <tr>
-          <th class="px-2 py-2"></th>
-          <th class="border-r border-dotted border-ngb-border px-2 py-2 text-right font-semibold">#</th>
-          <th
-            v-for="field in partFields.get(part.partCode)!"
-            :key="`${part.partCode}:head:${field.key}`"
-            class="border-r border-dotted border-ngb-border px-3 py-2 font-semibold truncate"
-          >
-            {{ field.label }}
-          </th>
-          <th v-if="!readonly && part.allowAddRemoveRows !== false" class="px-2 py-2"></th>
-        </tr>
-      </thead>
+      <template v-else-if="resolveFieldState(field, row).mode === 'select'">
+        <NgbSelect
+          :model-value="row[field.key] ?? null"
+          :options="resolveFieldState(field, row).fieldOptions!"
+          :disabled="readonly"
+          variant="grid"
+          @update:model-value="updateCell(part.partCode, rowIndex, field.key, $event)"
+        />
+      </template>
 
-      <tbody>
-        <tr
-          v-for="{ row, rowIndex } in visiblePartRows(part.partCode)"
-          style="content-visibility: auto; contain-intrinsic-block-size: 54px"
-          :key="`${part.partCode}:${String(row.__row_key)}`"
-          class="border-t border-ngb-border align-top transition-colors hover:bg-ngb-bg"
-          :class="rowHasErrors(part.partCode, rowIndex) ? 'bg-red-50/40 dark:bg-red-950/10' : ''"
-          :draggable="canReorder(part.partCode)"
-          @dragstart="onDragStart(part.partCode, rowIndex, $event)"
-          @dragover="onDragOver(part.partCode, $event)"
-          @drop="onDrop(part.partCode, rowIndex, $event)"
-        >
-          <td class="px-1 py-1 align-middle">
-            <div
-              class="flex h-8 w-6 items-center justify-center text-ngb-muted"
-              :class="canReorder(part.partCode) ? 'cursor-grab active:cursor-grabbing' : 'opacity-50'"
-              :title="canReorder(part.partCode) ? 'Drag to reorder' : ''"
-            >
-              <NgbIcon name="grip-vertical" :size="16" />
-            </div>
-          </td>
+      <template v-else-if="resolveFieldState(field, row).mode === 'checkbox'">
+        <div class="flex min-h-8 items-center justify-center px-2">
+          <input
+            type="checkbox"
+            class="h-4 w-4 rounded-[3px] border border-ngb-border bg-ngb-card"
+            :checked="!!row[field.key]"
+            :disabled="readonly"
+            @change="updateCell(part.partCode, rowIndex, field.key, ($event.target as HTMLInputElement).checked)"
+          />
+        </div>
+      </template>
 
-          <td class="border-r border-dotted border-ngb-border px-2 py-1 align-top text-right text-ngb-muted">
-            <div class="flex min-h-8 items-center justify-end">{{ rowIndex + 1 }}</div>
-          </td>
+      <template v-else-if="resolveFieldState(field, row).mode === 'date'">
+        <div class="px-1 py-0.5">
+          <NgbDatePicker
+            :model-value="(row[field.key] as string | null | undefined) ?? null"
+            :disabled="readonly"
+            :readonly="readonly"
+            :grouped="true"
+            @update:model-value="updateCell(part.partCode, rowIndex, field.key, $event)"
+          />
+        </div>
+      </template>
 
-          <td
-            v-for="field in partFields.get(part.partCode)!"
-            :key="`${part.partCode}:${rowIndex}:${field.key}`"
-            class="border-r border-dotted border-ngb-border px-0 py-1 align-top"
-          >
-            <template v-if="resolveFieldState(field, row).mode === 'lookup'">
-              <NgbLookup
-                :model-value="lookupValue(row, field.key)"
-                :items="lookupItemsByCell[lookupCellKey(part.partCode, rowIndex, field.key)] ?? []"
-                :readonly="readonly"
-                :show-open="!!lookupValue(row, field.key)"
-                :show-clear="!readonly && !!lookupValue(row, field.key)"
-                variant="grid"
-                :placeholder="`Select ${field.label.toLowerCase()}...`"
-                @query="onLookupQuery(part.partCode, rowIndex, field, row, $event)"
-                @update:model-value="onLookupSelect(part.partCode, rowIndex, field.key, $event)"
-                @open="void openLookup(field, row)"
-              />
-            </template>
-
-            <template v-else-if="resolveFieldState(field, row).mode === 'select'">
-              <NgbSelect
-                :model-value="row[field.key] ?? null"
-                :options="resolveFieldState(field, row).fieldOptions!"
-                :disabled="readonly"
-                variant="grid"
-                @update:model-value="updateCell(part.partCode, rowIndex, field.key, $event)"
-              />
-            </template>
-
-            <template v-else-if="resolveFieldState(field, row).mode === 'checkbox'">
-              <div class="flex min-h-8 items-center justify-center px-2">
-                <input
-                  type="checkbox"
-                  class="h-4 w-4 rounded-[3px] border border-ngb-border bg-ngb-card"
-                  :checked="!!row[field.key]"
-                  :disabled="readonly"
-                  @change="updateCell(part.partCode, rowIndex, field.key, ($event.target as HTMLInputElement).checked)"
-                />
-              </div>
-            </template>
-
-            <template v-else-if="resolveFieldState(field, row).mode === 'date'">
-              <div class="px-1 py-0.5">
-                <NgbDatePicker
-                  :model-value="(row[field.key] as string | null | undefined) ?? null"
-                  :disabled="readonly"
-                  :readonly="readonly"
-                  :grouped="true"
-                  @update:model-value="updateCell(part.partCode, rowIndex, field.key, $event)"
-                />
-              </div>
-            </template>
-
-            <template v-else>
-              <NgbInput
-                :type="resolveFieldState(field, row).inputType"
-                :model-value="(row[field.key] as string | number | undefined) ?? ''"
-                :readonly="readonly"
-                :disabled="readonly"
-                variant="grid"
-                @update:model-value="updateCell(part.partCode, rowIndex, field.key, $event)"
-              />
-            </template>
-
-            <div v-if="fieldError(part.partCode, rowIndex, field.key)" class="px-2 pb-1 text-xs text-ngb-danger">
-              {{ fieldError(part.partCode, rowIndex, field.key) }}
-            </div>
-          </td>
-
-          <td v-if="!readonly && part.allowAddRemoveRows !== false" class="px-1 py-1 align-middle">
-            <button
-              type="button"
-              class="flex h-8 w-8 items-center justify-center rounded-[var(--ngb-radius)] text-ngb-muted hover:bg-ngb-bg hover:text-ngb-text ngb-focus"
-              title="Delete"
-              @click="removeRow(part.partCode, rowIndex)"
-            >
-              <NgbIcon name="trash" :size="16" />
-            </button>
-          </td>
-        </tr>
-      </tbody>
-    </table>
-
-    <div
-      v-if="partPageCount(part.partCode) > 1"
-      class="flex items-center justify-between border-t border-ngb-border px-4 py-2 text-xs text-ngb-muted"
-    >
-      <span>{{ partRowRange(part.partCode) }}</span>
-      <div class="flex items-center gap-2">
-        <button
-          type="button"
-          class="rounded-[var(--ngb-radius)] border border-ngb-border px-3 py-1 hover:bg-ngb-bg disabled:cursor-not-allowed disabled:opacity-50"
-          :disabled="partPage(part.partCode) === 0"
-          @click="setPartPage(part.partCode, partPage(part.partCode) - 1)"
-        >
-          Previous
-        </button>
-        <span>Page {{ partPage(part.partCode) + 1 }} of {{ partPageCount(part.partCode) }}</span>
-        <button
-          type="button"
-          class="rounded-[var(--ngb-radius)] border border-ngb-border px-3 py-1 hover:bg-ngb-bg disabled:cursor-not-allowed disabled:opacity-50"
-          :disabled="partPage(part.partCode) + 1 >= partPageCount(part.partCode)"
-          @click="setPartPage(part.partCode, partPage(part.partCode) + 1)"
-        >
-          Next
-        </button>
-      </div>
-    </div>
-
-    <div v-else class="px-4 py-6 text-sm text-ngb-muted">
-      No rows yet.
-    </div>
-
-    <div
-      v-if="resolveAgencyBillingDocumentAmountSourceField(part)"
-      class="flex items-center justify-end gap-4 border-t border-ngb-border px-4 py-3"
-    >
-      <span class="text-xs font-semibold uppercase tracking-[0.12em] text-ngb-muted">Amount</span>
-      <span class="text-base font-semibold text-ngb-text">{{ formatAmount(partAmount(part)) }}</span>
-    </div>
-
-    <div v-if="!readonly && part.allowAddRemoveRows !== false" class="flex justify-end border-t border-ngb-border px-3 py-2">
-      <button
-        type="button"
-        class="inline-flex items-center gap-2 h-9 rounded-[var(--ngb-radius)] border border-ngb-border bg-ngb-card px-3 text-sm text-ngb-text hover:bg-ngb-bg ngb-focus"
-        @click="addRow(part.partCode)"
+      <template v-else>
+        <NgbInput
+          :type="resolveFieldState(field, row).inputType"
+          :model-value="(row[field.key] as string | number | undefined) ?? ''"
+          :readonly="readonly"
+          :disabled="readonly"
+          variant="grid"
+          @update:model-value="updateCell(part.partCode, rowIndex, field.key, $event)"
+        />
+      </template>
+    </template>
+    <template #footer>
+      <div
+        v-if="resolveAgencyBillingDocumentAmountSourceField(part)"
+        class="flex items-center justify-end gap-4 border-t border-ngb-border px-4 py-3"
       >
-        <NgbIcon name="plus" :size="16" />
-        <span>Add row</span>
-      </button>
-    </div>
-  </section>
+        <span class="text-xs font-semibold uppercase tracking-[0.12em] text-ngb-muted">Amount</span>
+        <span class="text-base font-semibold text-ngb-text">{{ formatAmount(partAmount(part)) }}</span>
+      </div>
+    </template>
+  </NgbDocumentLines>
 </template>

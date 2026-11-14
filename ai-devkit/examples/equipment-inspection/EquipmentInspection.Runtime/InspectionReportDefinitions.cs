@@ -20,7 +20,9 @@ public sealed class InspectionReportDefinitions : IReportDefinitionSource, IRepo
                 AllowsFilters: true,
                 AllowsRowGroups: true,
                 AllowsMeasures: true,
+                AllowsDetailFields: true,
                 AllowsSorting: true,
+                AllowsShowDetails: true,
                 AllowsGrandTotals: true,
                 AllowsXlsxExport: true,
                 AllowsVariants: true,
@@ -55,6 +57,13 @@ public sealed class InspectionReportDefinitions : IReportDefinitionSource, IRepo
         DatasetCode: InspectionReports.Summary,
         Fields:
         [
+            new ReportFieldDto("inspection_id", "Inspection ID", "uuid", ReportFieldKind.Dimension,
+                IsSelectable: true, Lookup: new DocumentLookupSourceDto([EquipmentDefinitions.InspectionCode])),
+            new ReportFieldDto("inspection_display", "Inspection", "string", ReportFieldKind.Dimension,
+                IsSelectable: true, IsSortable: true),
+            new ReportFieldDto("inspection_date", "Inspection date", "date", ReportFieldKind.Time,
+                IsSelectable: true, IsGroupable: true, IsSortable: true,
+                SupportedTimeGrains: [ReportTimeGrain.Day, ReportTimeGrain.Month]),
             new ReportFieldDto("equipment_id", "Equipment", "uuid", ReportFieldKind.Dimension,
                 IsFilterable: true, Lookup: new CatalogLookupSourceDto(EquipmentDefinitions.EquipmentCode)),
             new ReportFieldDto("result", "Result", "string", ReportFieldKind.Dimension,

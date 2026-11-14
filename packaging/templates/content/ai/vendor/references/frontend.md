@@ -72,3 +72,65 @@ The browser entry `src/main.ts` calls it once. Tests invoke the function directl
 for each authentication, access and failure case, so they do not depend on
 re-evaluating a cached browser module. Keep metadata capability assertions on
 this actual composition path; no frontend override may grant server-denied rights.
+
+## Document Lines
+
+Import `NgbDocumentLines` and `DocumentLinesColumn`/`DocumentLinesHandle` from
+`@ngbplatform/ui/editor` (also exported at the package root). This is the standard
+tabular editor surface: title, fixed columns, dotted separators, row numbers,
+validation, bounded pages, add/delete and local drag or Alt+Arrow reordering.
+It has no dependency on an application's document types or calculations.
+
+Supply `rows`, `columns` (`key`, `label`, optional `width`/`align`), a stable
+`rowKey`, `readonly` and structural permissions `allowAddRemoveRows`/`allowReorder`.
+The `cell` slot receives `row`, global `rowIndex`, `column` and `readonly`.
+Render public grid-variant inputs, lookups and selects there, respecting field
+read-only rules as well as the document state. The `header` and `footer` slots
+support business explanations and calculated totals without replacing the table.
+
+The component emits `add`, `remove(rowIndex)` and `reorder(fromIndex, toIndex)`;
+the owner creates/clones rows, preserves identities, renumbers its ordering field
+and emits the existing payload. It never mutates input rows. Apply calculations,
+lookup defaults and business rules in that owner; do not move them into the SDK.
+Indices refer to the full row array, including on later pages. Default page size
+is 100. Keep errors keyed by global row index and column key; values can be a
+message or a list of messages. `summaryErrors` is separate. The exposed
+`focusCell`/`focusFirstError` methods reveal a later page before focusing its cell.
+
+```vue
+<NgbDocumentLines
+  title="Lines"
+  :rows="rows"
+  :columns="columns"
+  :row-key="row => row.id"
+  :readonly="readonly"
+  :errors="errors"
+  @add="addRow"
+  @remove="removeRow"
+  @reorder="reorderRows"
+>
+  <template #cell="{ row, rowIndex, column }">
+    <NgbInput
+      :model-value="row[column.key]"
+      :readonly="readonly"
+      variant="grid"
+      @update:model-value="value => updateCell(rowIndex, column.key, value)"
+    />
+  </template>
+</NgbDocumentLines>
+```
+
+Use the existing `documentPartsEditor` configuration or entity-editor render
+extension to mount the application owner. Preserve its public props/events,
+payload shape and persistence strategy when migrating an existing editor.
+Keep lookup navigation available in view mode. Verify save/reload, calculated
+values, validation focus, row identity after reorder and paging, and readonly
+behavior. The component is additive; existing custom editors remain supported.
+
+## Branding integration
+
+The public-assets Vite plugin copies the favicon but does not modify HTML. Add
+`<link rel="icon" href="%BASE_URL%favicon.svg" type="image/svg+xml" sizes="any" />`
+to the document head, as in the starter. Verify the built HTML and served icon
+under the deployed base path. An asset in `dist` alone does not establish browser
+branding. See [application acceptance](application-generation.md#acceptance-evidence).

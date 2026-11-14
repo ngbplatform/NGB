@@ -225,6 +225,6 @@
     "references/contracts/NGB.Platform.Runtime.Hosting.json": "4dccea587ac7d652615871ed3bb0cfd140490c1e7472ff1e91a97129db7682f3",
     "references/contracts/NGB.Platform.Tools.json": "db745de7f829de0be3255939026546e8e5edbf722c6596a6f2037bf406cd3c16",
     "references/contracts/NGB.Platform.Watchdog.json": "00e04057d5bae513c2b2e023c314fc822dae5f6f14f466d1165ecdd111d9e7d2",
-    "references/contracts/ui.json": "31c54cffb6845957d6a3e509d93f20196b534e792d9ca2d7b5a733698a018006"
+    "references/contracts/ui.json": "51fae7d9265f836831b46d4ce18fa4c698ceec04ce5e458725051534bb994e9d"
   }
 }

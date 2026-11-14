@@ -298,3 +298,42 @@ reported as a complete successful download.
 selection, refusal before preparation, failure before the first row, recovery,
 frozen parameters, single-write behavior and cleanup after cancellation. It tests
 the extension lifecycle, not new business calculations or export throughput.
+
+## Time fields and drill-down
+
+A `ReportFieldDto` declaring `SupportedTimeGrains` must have
+`Kind: ReportFieldKind.Time`, not `Dimension`, and a supported date/time data type.
+Construct the actual dataset definition and execute the report endpoint during
+acceptance; this configuration error can fail before SQL is executed.
+For each advertised grain, the `PostgresReportFieldBinding` must also supply its
+matching bucket expression (for example `monthBucketSqlExpression`). The provider
+does not derive those expressions from field metadata. Enable `AllowsDetailFields`
+and `AllowsShowDetails` when the report exposes selectable detail rows, and test
+both a time-grouped request and a detail request through HTTP.
+
+Every report has a meaningful detail path. For composable entity references use
+`<prefix>_display` plus `<prefix>_id`, with the ID field declaring the appropriate
+`CatalogLookupSourceDto` or single-type `DocumentLookupSourceDto`. Include the
+supporting ID value in the selected row; a display string named `customer` or
+`document` alone is not a navigation target. The built-in `document_display` and
+`account_display` paths use their specific `ReportInteractiveSupport` fields;
+inspect their installed contract rather than guessing support-column names.
+
+Grouped figures must drill to the contributing details with the same period,
+filters and authorization. Detail rows must open the source record/document.
+Use the public composable action support or the report executor's declared cell
+and row actions. Test returned actions and browser clicks, not just nonempty
+metadata or a filter dialog. Never attach a link to an arbitrary representative
+record as the drill-down for an aggregate.
+
+Detail capabilities and lookup metadata enable source navigation; they do not
+automatically create an aggregate-to-details action for an arbitrary grouping.
+Compose that action through a supported report executor, carrying the selected
+group as a filter and the detail layout into the destination report. Verify both
+steps separately; source links alone do not prove grouped drill-down.
+
+Enumerate registered report definitions and execute every one through the
+permission-aware HTTP endpoint with valid required parameters. Use nonempty known
+data, empty selections and boundary periods; verify rows, totals, paging and
+supported export. Keep required per-report inputs explicit. Direct SQL sums and
+dashboard tests are complementary reconciliation, not report execution tests.

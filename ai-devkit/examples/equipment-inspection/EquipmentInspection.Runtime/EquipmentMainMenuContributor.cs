@@ -16,9 +16,9 @@ public sealed class EquipmentMainMenuContributor : IMainMenuContributor
                     new("catalog", EquipmentDefinitions.EquipmentCode, "Equipment",
                         "/catalogs/example.equipment", "wrench", 10),
                     new("document", EquipmentDefinitions.InspectionCode, "Inspections",
-                        "/documents/example.inspection", "clipboard-check", 20),
+                        "/documents/example.inspection", "file-text", 20),
                     new("report", "example.inspection-summary", "Inspection summary",
-                        "/reports/example.inspection-summary", "chart-column", 30)
+                        "/reports/example.inspection-summary", "bar-chart", 30)
                 ],
                 Ordinal: 30,
                 Icon: "clipboard-check")

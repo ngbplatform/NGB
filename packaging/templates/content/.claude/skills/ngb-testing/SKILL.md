@@ -6,6 +6,11 @@ description: Verify NGB application architecture, unit/integration/browser suite
 Use when implementing verification or diagnosing a failed development profile.
 Do not infer complete certification from one passing suite or lower a failing gate.
 
+For generated applications, use the [registered-inventory acceptance matrix](../../../ai/vendor/references/application-generation.md#acceptance-evidence).
+Run all report endpoints, visible document chains and role scenarios. Test actual
+withdrawal rejection with dependent documents; registration of a handler is not
+proof that its check is invoked.
+
 1. Read [verification profiles](../../../ai/vendor/references/testing.md). Inspect `ngb.config.json`,
    discovered production/test projects and the exact source/package versions.
 2. Choose `validate` for inspection, `validate --profile build` for resolved build

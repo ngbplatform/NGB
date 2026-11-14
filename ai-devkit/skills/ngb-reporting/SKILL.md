@@ -6,6 +6,11 @@ description: Add or extend NGB canonical/composable reports, datasets, provider-
 Use for reporting contracts and execution. A request to display existing data does
 not authorize changing the underlying business calculation.
 
+Every report needs meaningful drill-down. Follow the exact
+[time-field and action contracts]({{references}}/reporting.md#time-fields-and-drill-down).
+Execute every registered report through its endpoint with valid parameters;
+query-level aggregate tests alone do not exercise report definitions/rendering.
+
 1. Read [reporting contracts]({{references}}/reporting.md). Select the supported
    definition/dataset/executor role and inspect its exact installed signature.
 2. Freeze expected rows, totals, grouping, filters and drilldown targets. Declare

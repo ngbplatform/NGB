@@ -1,7 +1,7 @@
 import { mount } from '@vue/test-utils'
 import { defineComponent, h, nextTick, toRaw } from 'vue'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
-import type { FieldMetadata, MetadataFormBehavior, PartMetadata, RecordParts } from '@ngbplatform/ui'
+import type { FieldMetadata, MetadataFormBehavior, PartMetadata, RecordPartRow, RecordParts } from '@ngbplatform/ui'
 
 const GUID = '11111111-1111-4111-8111-111111111111'
 const GUID_2 = '22222222-2222-4222-8222-222222222222'
@@ -244,11 +244,6 @@ async function exerciseEditor(): Promise<void> {
   state.updateCell('lines', 0, 'quantity', 3)
   state.updateCell('lines', 99, 'quantity', 3)
   expect(state.lookupCellKey('lines', 0, 'product_id')).toBe('lines:0:product_id')
-  expect(state.fieldError('lines', 0, 'memo')).toBe('Required')
-  expect(state.fieldError('lines', 1, 'missing')).toBeNull()
-  expect(state.rowHasErrors('lines', 0)).toBe(true)
-  expect(state.rowHasErrors('lines', 1)).toBe(false)
-  expect(state.rowHasErrors('empty', 0)).toBe(false)
 
   const row = state.partRows('lines')[0]
   expect(state.resolveFieldState(field('status', 'String'), row).mode).toBe('select')
@@ -301,39 +296,22 @@ async function exerciseEditor(): Promise<void> {
   buildLookupTargetUrl.mockResolvedValueOnce(null as never)
   await state.openLookup(lookupField, row)
 
-  expect(state.canReorder('lines')).toBe(true)
-  expect(state.canReorder('empty')).toBe(false)
-  const transfer = {
-    setData: vi.fn(),
-    setDragImage: vi.fn(),
-    getData: vi.fn(() => 'lines:0'),
-  }
-  state.onDragStart('lines', 0, { dataTransfer: transfer } as never)
-  expect(transfer.setData).toHaveBeenCalled()
-  state.onDragStart('lines', 0, {
-    dataTransfer: {
-      setData: () => { throw new Error('unsupported') },
-      setDragImage: vi.fn(),
-    },
-  } as never)
-  const preventDefault = vi.fn()
-  state.onDragOver('lines', { preventDefault } as never)
-  state.onDragOver('empty', { preventDefault } as never)
-  state.onDrop('lines', 1, { preventDefault } as never)
-  state.onDrop('lines', 1, { preventDefault, dataTransfer: transfer } as never)
-  state.onDrop('lines', 1, { preventDefault, dataTransfer: { getData: () => 'other:0' } } as never)
-  state.onDrop('lines', 1, { preventDefault, dataTransfer: { getData: () => 'lines:x' } } as never)
-  state.onDrop('lines', 1, { preventDefault, dataTransfer: { getData: () => 'lines:1' } } as never)
-  state.onDrop('lines', 1, { preventDefault, dataTransfer: { getData: () => 'lines:99' } } as never)
-  state.onDrop('empty', 0, { preventDefault } as never)
+  expect(wrapper.text()).toContain('Required')
+  expect(wrapper.find('tbody tr').classes()).toContain('bg-red-50/40')
+  const rowKeys = state.partRows('lines').map((row: RecordPartRow) => row.__row_key)
+  await wrapper.get('button[aria-label="Reorder row 1"]').trigger('keydown', { altKey: true, key: 'ArrowDown' })
+  const reordered = wrapper.emitted('update:modelValue')?.at(-1)?.[0] as RecordParts
+  expect(reordered.lines?.rows?.map((row) => row.ordinal)).toEqual([1, 2])
+  expect(reordered.lines?.rows?.map((row) => row.__row_key)).toEqual([...rowKeys].reverse())
+  state.reorderRows('empty', 0, 1)
 
-  expect(state.fieldColStyle('lines', field('status', 'String'))).toBe('width:120px')
-  expect(state.fieldColStyle('lines', field('product_id', 'Lookup', { lookup: { kind: 'catalog', catalogType: 'crm.product' } }))).toBe('width:260px')
-  expect(state.fieldColStyle('lines', field('enabled', 'Boolean'))).toBe('width:96px')
-  expect(state.fieldColStyle('lines', field('service_on', 'Date'))).toBe('width:170px')
-  expect(state.fieldColStyle('lines', field('created_at', 'DateTime'))).toBe('width:170px')
-  expect(state.fieldColStyle('lines', field('quantity', 'Decimal'))).toBe('width:160px')
-  expect(state.fieldColStyle('lines', field('memo', 'String'))).toBeUndefined()
+  expect(state.fieldWidth('lines', field('status', 'String'))).toBe('120px')
+  expect(state.fieldWidth('lines', field('product_id', 'Lookup', { lookup: { kind: 'catalog', catalogType: 'crm.product' } }))).toBe('260px')
+  expect(state.fieldWidth('lines', field('enabled', 'Boolean'))).toBe('96px')
+  expect(state.fieldWidth('lines', field('service_on', 'Date'))).toBe('170px')
+  expect(state.fieldWidth('lines', field('created_at', 'DateTime'))).toBe('170px')
+  expect(state.fieldWidth('lines', field('quantity', 'Decimal'))).toBe('160px')
+  expect(state.fieldWidth('lines', field('memo', 'String'))).toBeUndefined()
   expect(state.partAmount(parts[0])).toBe(20)
   expect(state.partAmount(parts[2])).toBeNull()
   expect(state.partAmount({ partCode: 'none', title: 'None', list: { columns: [] } })).toBeNull()
@@ -352,9 +330,9 @@ async function exerciseEditor(): Promise<void> {
   await nextTick()
   const readonlyState = stateOf(readonlyWrapper)
   expect(readonlyState.canManageRows('lines')).toBe(false)
-  expect(readonlyState.canReorder('lines')).toBe(false)
-  readonlyState.onDragStart('lines', 0, {} as never)
-  readonlyState.onDrop('lines', 0, { preventDefault: vi.fn() } as never)
+
+  expect(readonlyWrapper.find('button[title="Delete"]').exists()).toBe(false)
+  expect(readonlyWrapper.get('tbody tr').attributes('draggable')).toBe('false')
   readonlyWrapper.unmount()
 
   const withoutModel = mount(component, {

@@ -9,7 +9,7 @@ internal sealed class ApplicationMenu : IMainMenuContributor
     {
         IReadOnlyList<MainMenuGroupDto> groups =
         [
-            new("Administration",
+            new("Setup & Controls",
             [
                 new("page", "system.users", "Users", "/admin/security/users", "users", 10),
                 new("page", "system.roles", "Roles & Permissions", "/admin/security/roles", "shield", 20)

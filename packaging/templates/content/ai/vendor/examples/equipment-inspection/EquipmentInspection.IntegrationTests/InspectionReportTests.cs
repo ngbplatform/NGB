@@ -21,6 +21,45 @@ public sealed class InspectionReportTests
     private const string ExecutePath = "/api/reports/" + InspectionReports.Summary + "/execute";
 
     [Fact]
+    public async Task Time_groups_and_source_document_actions_execute_through_the_report_endpoint()
+    {
+        await using var host = new InspectionHost();
+        await host.StartAsync();
+        using var admin = await host.CreateClientAsync("administrator");
+        await SeedAsync(admin);
+        var grouped = await PostAsync<ReportExecutionResponseDto>(admin, ExecutePath, Request() with
+        {
+            Layout = new ReportLayoutDto(
+                RowGroups: [new ReportGroupingDto("inspection_date", ReportTimeGrain.Month)],
+                Measures: [new ReportMeasureSelectionDto("inspection_count", ReportAggregationKind.Count)],
+                ShowSubtotals: false)
+        });
+        Assert.Equal(5m, Total(grouped.Sheet.Rows));
+
+        var details = await PostAsync<ReportExecutionResponseDto>(admin, ExecutePath, Request() with
+        {
+            Layout = new ReportLayoutDto(
+                DetailFields: ["inspection_id", "inspection_display", "inspection_date"],
+                ShowDetails: true,
+                ShowSubtotals: false,
+                ShowGrandTotals: false)
+        });
+        var actions = details.Sheet.Rows.SelectMany(row => row.Cells)
+            .Where(cell => cell.Action?.DocumentId is not null)
+            .Select(cell => cell.Action!)
+            .ToArray();
+        Assert.Equal(5, actions.Length);
+        Assert.Equal(5, actions.Select(action => action.DocumentId).Distinct().Count());
+        foreach (var action in actions)
+        {
+            Assert.Equal(EquipmentDefinitions.InspectionCode, action.DocumentType);
+            var source = await admin.GetFromJsonAsync<DocumentDto>(
+                $"/api/documents/{action.DocumentType}/{action.DocumentId}", Json);
+            Assert.Equal(action.DocumentId, source!.Id);
+        }
+    }
+
+    [Fact]
     public async Task Posted_results_are_aggregated_in_postgres_and_paged_without_duplicates()
     {
         await using var host = new InspectionHost();
