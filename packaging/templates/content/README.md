@@ -126,13 +126,34 @@ role to Administrator grants no additional access. Deployment flags remain indep
 Create an ordinary role, assign permissions, save, reopen and edit it, then inspect
 its audit tab. These are real platform operations backed by PostgreSQL and Keycloak.
 
-API readiness is at http://localhost:5181/health. The worker dashboard uses
-http://localhost:5184/hangfire; sign in with the bootstrap administrator. Run the registered
-`platform.schema.validate` job and inspect its outcome. API and worker write
-structured JSON logs to stdout. No Seq or separate logging service is required.
+Compose starts the full local stack, including the web application:
 
-Compose starts API and worker only after the Migrator exits successfully. A failed
-migration blocks both hosts. The Migrator applies platform migration packs, then
+| Service | Local address |
+| --- | --- |
+| Web | http://localhost:5182 |
+| API health | http://localhost:5181/health |
+| Background Jobs | http://localhost:5184/hangfire |
+| Watchdog Health UI | http://localhost:5185/health-ui |
+| Seq | http://localhost:5183 |
+| pgAdmin | http://localhost:5186 |
+| Keycloak | http://localhost:5180/admin/ |
+| PostgreSQL | localhost:5187 |
+| MinIO S3 / console | http://localhost:5188 / http://localhost:5189 |
+
+Sign in to Jobs and Health with the bootstrap application administrator. Watchdog
+collects API and worker health and checks the web client. Run the registered
+`platform.schema.validate` job and inspect its outcome. API, worker and Watchdog
+send logs to Seq as well as stdout. Seq and pgAdmin use `BOOTSTRAP_EMAIL` with
+their separate `SEQ_PASSWORD` and `PGADMIN_PASSWORD`; Keycloak's master console
+uses `KEYCLOAK_MASTER_PASSWORD`. MinIO uses `MINIO_ROOT_USER` and
+`MINIO_ROOT_PASSWORD`. Read those private values locally from `.env`.
+Seq asks you to replace its generated initial password on the first sign-in.
+The local pgAdmin configuration accepts `.test` email addresses for development.
+Set `PGADMIN_EMAIL` only when a separate pgAdmin administration identity is needed.
+
+Compose starts API and worker only after the Migrator exits successfully, and
+the API also waits for private MinIO bucket/account initialization. Watchdog starts
+after the application hosts. A failed migration blocks them. The Migrator applies platform migration packs, then
 idempotently creates the registered Administrator role. It never seeds business
 records. PostgreSQL stores the application, Keycloak realm, and Hangfire state.
 
@@ -163,8 +184,8 @@ cd ..
 
 Configure host connection strings, Keycloak issuer/client IDs and the API's
 Keycloak admin-client settings through environment variables or user secrets.
-Compose does not expose PostgreSQL to the host by default; a host development
-configuration must provide a reachable database endpoint.
+Compose exposes PostgreSQL only on loopback port 5187. Host development uses this
+endpoint; containers use `postgres:5432`.
 `NGB_CONNECTION_STRING` configures the Migrator. Run the following before hosts:
 
 ```sh
@@ -209,16 +230,21 @@ use documented package entry points; do not copy platform components or referenc
 workspace files. `web/public/runtime-config.js` contains public browser configuration,
 never service credentials. Update it for your deployment URLs.
 
-## Optional content capabilities
+## Default content capabilities
 
-Notes need PostgreSQL and an enabled `FeatureManagement:Notes` flag. They do not
-need MinIO. To enable Attachments, reference `NGB.Platform.Attachments.MinIO` at the
-same `NgbPlatformVersion` defined in `Directory.Build.props`, configure private
-object storage, and pass the storage registration callback to
-`AddNgbAttachmentsNotesApi`. Configure CORS for the exact web origin and private
-presigned upload/download endpoints. Enable `FeatureManagement:Attachments` only
-after storage validation passes. Use the platform parent-object authorization;
-do not expose buckets publicly or implement a separate application ACL.
+Attachments and Notes are enabled by default. The API registers the public MinIO
+adapter at the same SDK version. Compose initializes a private bucket and a separate
+application account limited to that bucket's upload/attachment objects. Root MinIO
+credentials are used only by initialization and the administration console.
+Browser upload/download URLs use port 5188; server I/O uses `minio:9000`. CORS permits
+the two local web origins on port 5182. Notes need PostgreSQL and do not use MinIO.
+The shared editors expose these actions for supported, saved parent objects; the
+empty starter does not invent a business catalog/document just to display them.
+
+To disable a feature explicitly, set `FEATURE_ATTACHMENTS=false` or
+`FEATURE_NOTES=false` in private `.env` and redeploy. Parent-object permissions and
+administrator behavior remain enforced independently of deployment flags. Never
+make the bucket public or replace parent authorization with a separate ACL.
 
 ## Optional MCP endpoint
 
@@ -323,9 +349,9 @@ their transitions and document the required tool version. Read the migration gui
 for application-specific configuration and tests. Installing a template never
 rewrites an existing app.
 
-Before an upgrade, take consistent backups of PostgreSQL, Keycloak and optional
+Before an upgrade, take consistent backups of PostgreSQL, Keycloak and
 object storage. Stop API and worker writers. Run the target Migrator against the
-same state, then start the matching API, worker and frontend. On migration failure,
+same state, then start the matching API, worker, Watchdog and frontend. On migration failure,
 keep target hosts stopped, inspect the error and follow the migration guide's
 retry/recovery steps. Do not downgrade a migrated database in place.
 

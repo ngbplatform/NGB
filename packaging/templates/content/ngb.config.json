@@ -15,6 +15,10 @@
       "role": "worker"
     },
     {
+      "path": "NgbApplication.Watchdog/NgbApplication.Watchdog.csproj",
+      "role": "monitor"
+    },
+    {
       "path": "NgbApplication.Tests/NgbApplication.Tests.csproj",
       "role": "tests"
     },

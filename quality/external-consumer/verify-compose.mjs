@@ -7,6 +7,7 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chromium, expect } from '@playwright/test'
 import { unzipSync } from 'fflate'
+import { verifyStarterOperations } from './verify-operations.mjs'
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const artifacts = resolve(process.argv[2] ?? join(repository, 'artifacts'))
@@ -54,14 +55,18 @@ try {
   for (const service of ['api', 'jobs']) assert.ok(!containers.some(item => item.Service === service && item.State === 'running'))
   compose(['down'])
   run('node', ['infrastructure/ngb.mjs', 'start'], application)
-  const infrastructureIds = execFileSync('docker', [...composeArguments, 'ps', '--quiet', 'postgres', 'keycloak'], {
+  const infrastructure = ['postgres', 'keycloak', 'seq', 'pgadmin', 'minio']
+  const infrastructureIds = execFileSync('docker', [...composeArguments, 'ps', '--quiet', ...infrastructure], {
     cwd: application, encoding: 'utf8',
   })
   run('node', ['infrastructure/ngb.mjs', 'deploy', '--backup-confirmed'], application)
-  assert.equal(execFileSync('docker', [...composeArguments, 'ps', '--quiet', 'postgres', 'keycloak'], {
+  assert.equal(execFileSync('docker', [...composeArguments, 'ps', '--quiet', ...infrastructure], {
     cwd: application, encoding: 'utf8',
   }), infrastructureIds, 'Deployment must preserve the infrastructure containers and volumes.')
-  for (const url of ['http://localhost:5181/health', 'http://localhost:5184/health', 'http://localhost:5182']) {
+  for (const url of [
+    'http://localhost:5181/health', 'http://localhost:5184/health', 'http://localhost:5185/health',
+    'http://localhost:5182', 'http://localhost:5183', 'http://localhost:5186', 'http://localhost:5188/minio/health/live',
+  ]) {
     let healthy = false
     for (let attempt = 0; attempt < 90; attempt += 1) {
       try {
@@ -80,13 +85,24 @@ try {
   await page.locator('button[type="submit"], input[type="submit"]').first().click()
   await expect(page.getByTestId('site-shell')).toBeVisible({ timeout: 30_000 })
   await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeVisible()
+  await verifyStarterOperations(page, {
+    urls: {
+      jobs: 'http://localhost:5184/hangfire', health: 'http://localhost:5185/health-ui',
+      seq: 'http://localhost:5183', pgadmin: 'http://localhost:5186',
+    },
+    email: secrets.BOOTSTRAP_EMAIL, seqPassword: secrets.SEQ_PASSWORD, pgAdminPassword: secrets.PGADMIN_PASSWORD,
+  })
   const runtime = execFileSync('docker', [...composeArguments, 'exec', '-T', 'api', 'id', '-u'], { cwd: application, encoding: 'utf8' }).trim()
   assert.notEqual(runtime, '0', 'The runtime image must use a non-root user.')
   await mkdir(join(artifacts, 'certification'), { recursive: true })
   await writeFile(join(artifacts, 'certification/compose.json'), `${JSON.stringify({
     schemaVersion: 1, status: 'passed', version: matrix.target,
     templateSha256: createHash('sha256').update(await readFile(template)).digest('hex'),
-    assertions: ['public-create-start', 'unchanged-dockerfiles', 'public-deploy', 'container-build', 'failed-migration-blocks-hosts', 'health', 'browser-login', 'private-discovery-public-issuer', 'non-root'],
+    assertions: [
+      'public-create-start', 'unchanged-dockerfiles', 'public-deploy', 'container-build', 'failed-migration-blocks-hosts',
+      'full-stack-readiness', 'browser-login', 'private-discovery-public-issuer', 'single-console-navigation',
+      'watchdog-collected-health', 'pgadmin-login', 'seq-login-and-ingestion', 'non-root',
+    ],
   }, null, 2)}\n`)
 } finally {
   if (browser) await browser.close()

@@ -5,6 +5,9 @@ description: Integrate NGB Attachments, Notes and audit with parent-object autho
 
 Use for content/audit integration. Do not change the parent application's business
 permissions or expose unrestricted object-store access.
+New applications enable Attachments and Notes by default using the starter's
+private MinIO storage and PostgreSQL. Preserve those defaults unless explicitly
+asked to disable them; a Kit upgrade alone does not alter existing feature flags.
 
 1. Read [content contracts]({{references}}/content.md). Identify parent resolution,
    authorized services, feature flags, storage provider and lifecycle limits.

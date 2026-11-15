@@ -389,15 +389,17 @@ export async function startApplication(root, deploy) {
   const compose = args => run('docker', ['compose', ...args], root, env)
   const configuration = JSON.parse(run('docker', ['compose', 'config', '--format', 'json'], root, env, true))
   assertDeployment(configuration.services)
+  const hosts = ['api', 'jobs', 'web']
+  if (configuration.services.watchdog) hosts.push('watchdog')
   if (!deploy) {
     const active = run('docker', ['compose', 'ps', '--quiet', '--all'], root, env, true).trim()
     assert.equal(active, '', 'An existing deployment was found. Use deploy --backup-confirmed for an upgrade, or docker compose start to resume it.')
   }
   compose(['build'])
   if (deploy) {
-    compose(['stop', 'api', 'jobs', 'web'])
+    compose(['stop', ...hosts])
     compose(['run', '--rm', '--no-deps', 'migrator'])
-    compose(['up', '-d', '--no-deps', 'api', 'jobs', 'web'])
+    compose(['up', '-d', '--no-deps', ...hosts])
   } else {
     compose(['up', '-d'])
   }

@@ -186,3 +186,27 @@ esac
     'compose config --format json', 'compose build', 'compose stop api jobs web', 'compose run --rm --no-deps migrator',
   ])
 })
+
+test('deployment restarts a declared monitor alongside the application hosts', async t => {
+  const root = await temporary(t)
+  const bin = join(root, 'bin')
+  const calls = join(root, 'calls')
+  await mkdir(bin)
+  const services = Object.fromEntries(['api', 'jobs', 'web', 'watchdog', 'migrator'].map(name => [name, {
+    build: { context: '.' }, depends_on: { migrator: { condition: 'service_completed_successfully' } },
+  }]))
+  await writeFile(join(bin, 'docker'), `#!/bin/sh
+printf '%s\\n' "$*" >> "$NGB_TEST_CALLS"
+case "$*" in
+  'compose config --format json') printf '%s\\n' '${JSON.stringify({ services })}' ;;
+esac
+`, { mode: 0o700 })
+  const result = spawnSync(process.execPath, [cli, 'deploy', '--app', root, '--backup-confirmed'], {
+    env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, NGB_TEST_CALLS: calls }, encoding: 'utf8',
+  })
+  assert.equal(result.status, 0, result.stderr)
+  assert.deepEqual((await readFile(calls, 'utf8')).trim().split('\n'), [
+    'compose config --format json', 'compose build', 'compose stop api jobs web watchdog',
+    'compose run --rm --no-deps migrator', 'compose up -d --no-deps api jobs web watchdog',
+  ])
+})

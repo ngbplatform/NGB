@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Configuration;
 using Moq;
 using NGB.Core.Security;
 using NGB.Persistence.Security;
@@ -61,12 +62,25 @@ public sealed class BootstrapTests
         transaction.Verify(value => value.CommitAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 
-    [Fact]
-    public async Task StarterMenuExposesOnlyRealPlatformPages()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task StarterMenuExposesPlatformPagesAndConfiguredOperationalConsoles(bool configured)
     {
-        var groups = await new ApplicationMenu().ContributeAsync(CancellationToken.None);
+        var settings = new Dictionary<string, string?>();
+        if (configured)
+        {
+            settings["ExternalLinksSettings:BackgroundJobsUiUrl"] = "https://jobs.example.test/hangfire";
+            settings["ExternalLinksSettings:HealthUiUrl"] = "https://health.example.test/health-ui";
+        }
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
+        var groups = await new ApplicationMenu(configuration).ContributeAsync(CancellationToken.None);
         var group = Assert.Single(groups);
         Assert.Equal("Setup & Controls", group.Label);
-        Assert.Equal(["/admin/security/users", "/admin/security/roles"], group.Items.Select(item => item.Route));
+        Assert.Equal([
+            "/admin/security/users", "/admin/security/roles",
+            configured ? "https://jobs.example.test/hangfire" : "http://localhost:5184/hangfire",
+            configured ? "https://health.example.test/health-ui" : "http://localhost:5185/health-ui"
+        ], group.Items.Select(item => item.Route));
     }
 }

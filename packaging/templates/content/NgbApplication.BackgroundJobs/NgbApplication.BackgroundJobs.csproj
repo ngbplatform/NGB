@@ -16,6 +16,7 @@
         <PackageReference Include="NGB.Platform.Runtime" Version="[$(NgbPlatformVersion)]" />
         <PackageReference Include="NGB.Platform.Runtime.Hosting" Version="[$(NgbPlatformVersion)]" />
         <PackageReference Include="Serilog.Sinks.Console" Version="6.1.1" />
+        <PackageReference Include="Serilog.Sinks.Seq" Version="9.1.0" />
     </ItemGroup>
 
 </Project>

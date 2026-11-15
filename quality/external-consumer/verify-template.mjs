@@ -37,7 +37,7 @@ for (const filename of Object.keys(files)) {
   assert.ok(!filename.includes('NgbApplication'))
 }
 const projects = Object.keys(files).filter(name => name.endsWith('.csproj') && !name.startsWith('ai/vendor/'))
-const expectedProjects = ['Api', 'BackgroundJobs', 'Migrator', ...(includesAiKit(matrix.target) ? ['Tests', 'IntegrationTests'] : [])]
+const expectedProjects = ['Api', 'BackgroundJobs', 'Migrator', ...(includesAiKit(matrix.target) ? ['Watchdog', 'Tests', 'IntegrationTests'] : [])]
   .map(name => `ExternalReview.${name}/ExternalReview.${name}.csproj`)
 if (includesAiKit(matrix.target)) expectedProjects.push('infrastructure/validation/Ngb.Validation.csproj')
 assert.deepEqual(projects.sort(), expectedProjects.sort())
@@ -60,7 +60,10 @@ if (includesAiKit(matrix.target)) {
 }
 run('node', ['infrastructure/configure.mjs', 'administrator@example.test'])
 const compose = JSON.parse(execFileSync('docker', ['compose', 'config', '--format', 'json'], { cwd: application, encoding: 'utf8' }))
-assert.deepEqual(Object.keys(compose.services).sort(), ['api', 'jobs', 'keycloak', 'migrator', 'postgres', 'web'])
+assert.deepEqual(Object.keys(compose.services).sort(), [
+  'api', 'jobs', 'keycloak', 'migrator', 'postgres', 'web',
+  ...(includesAiKit(matrix.target) ? ['minio', 'minio-init', 'pgadmin', 'seq', 'watchdog'] : []),
+].sort())
 for (const name of ['api', 'jobs']) assert.equal(compose.services[name].depends_on.migrator.condition, 'service_completed_successfully')
 assert.throws(() => run('node', ['infrastructure/configure.mjs', 'replacement@example.test']))
 const web = join(application, 'web')

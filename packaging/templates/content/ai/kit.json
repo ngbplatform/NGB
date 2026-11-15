@@ -12,7 +12,7 @@
     "package": "NGB.Platform.Templates",
     "version": "3.4.0"
   },
-  "payloadSha256": "a3b0d36908044db7e4df74912bc7134368c0ccb206a7d1476c818571e8774765",
+  "payloadSha256": "4c52946357e894f176192df164f6470f4b400a399af823cee588097c571f7420",
   "capabilitySha256": "33b47457c3651ccec3d2c7c82789d94b19bd2ae847d490bf85238522faf54ad8",
   "files": [
     {
@@ -23,7 +23,7 @@
     {
       "path": ".agents/skills/ngb-application/SKILL.md",
       "role": "file",
-      "sha256": "5b53a4dc0d964d484dccf180724d75c769c2994ccb28a65929c9053cdaae8140"
+      "sha256": "eac300868934156d1937551db2d531bbb5de162bfc516c8720c271371cc3bc47"
     },
     {
       "path": ".agents/skills/ngb-background-jobs/SKILL.md",
@@ -38,7 +38,7 @@
     {
       "path": ".agents/skills/ngb-content/SKILL.md",
       "role": "file",
-      "sha256": "fd31201e28d1b01494abd9a7ec25b313ef456d3870810b2f9e9104fd91a378a2"
+      "sha256": "a1fd41048e23f57762b472651762b6a1b48f70970a914a6a659e9d324bd0df9e"
     },
     {
       "path": ".agents/skills/ngb-documents/SKILL.md",
@@ -103,7 +103,7 @@
     {
       "path": ".claude/skills/ngb-application/SKILL.md",
       "role": "file",
-      "sha256": "5b53a4dc0d964d484dccf180724d75c769c2994ccb28a65929c9053cdaae8140"
+      "sha256": "eac300868934156d1937551db2d531bbb5de162bfc516c8720c271371cc3bc47"
     },
     {
       "path": ".claude/skills/ngb-background-jobs/SKILL.md",
@@ -118,7 +118,7 @@
     {
       "path": ".claude/skills/ngb-content/SKILL.md",
       "role": "file",
-      "sha256": "fd31201e28d1b01494abd9a7ec25b313ef456d3870810b2f9e9104fd91a378a2"
+      "sha256": "a1fd41048e23f57762b472651762b6a1b48f70970a914a6a659e9d324bd0df9e"
     },
     {
       "path": ".claude/skills/ngb-documents/SKILL.md",
@@ -1288,12 +1288,12 @@
     {
       "path": "ai/vendor/references/application-generation.md",
       "role": "file",
-      "sha256": "cf6485f87830126a06838fe5cfec0a3b54448cff0d6ab69d14dc0c9ca6f7de39"
+      "sha256": "510d9722c0722c2886b1026703d2b25a1daa054395f1659aa92cfd55a5b9d1fd"
     },
     {
       "path": "ai/vendor/references/application.md",
       "role": "file",
-      "sha256": "415347d383af648c9ab9a062a15f25b5ed063be3eb0319edd6e9e562fa0a7b19"
+      "sha256": "23501cbea0e1f461b2b1f1b25ba6483f0bd503f7e236c24df5abf5b0fadbf4d0"
     },
     {
       "path": "ai/vendor/references/background-jobs.md",
@@ -1308,167 +1308,167 @@
     {
       "path": "ai/vendor/references/content.md",
       "role": "file",
-      "sha256": "74f98ae2781989117302fee0557fec16d10150637648a9d8d1c7fe3fc1c5d361"
+      "sha256": "ed1859b25277f750fa67906a147fc149777a90dce173f4136928205029cf572a"
     },
     {
       "path": "ai/vendor/references/contracts/index.json",
       "role": "file",
-      "sha256": "0f2eb81058b65bf13ad4a3d23c3ff1366dec394389da6e0a55d33797c6352095"
+      "sha256": "5fbadf28596ef3513ee52fd0543f47d2c62d646377569e97f1fa2ecdb5285068"
     },
     {
       "path": "ai/vendor/references/contracts/NGB.Platform.Accounting.json",
       "role": "file",
-      "sha256": "022c0dd3b92e2410e4d7002f1243a29e8ff854564a7174be0e054199fff5d3ef"
+      "sha256": "434293aa1569c5257853f954a7678f5649369b8efe2081c443fc6978b433c811"
     },
     {
       "path": "ai/vendor/references/contracts/NGB.Platform.AiAssistant.Anthropic.json",
       "role": "file",
-      "sha256": "05722f80cf0bb2dab22812892bad1a76c8020c30c50c0a2e95c12b8118700ca2"
+      "sha256": "f36cfd1d9673eb7d72078e818f2945b848214215f528ae56190533112e7e730e"
     },
     {
       "path": "ai/vendor/references/contracts/NGB.Platform.AiAssistant.AspNetCore.json",
       "role": "file",
-      "sha256": "9fd69f26df9309d5ff3da7c47710eb1cfd1a9e8103bbebb44098c95bc0f7483b"
+      "sha256": "ca59ba95382bb39485262f716b5c2366bb871210cfecd1144db57dc3d1e543fd"
     },
     {
       "path": "ai/vendor/references/contracts/NGB.Platform.AiAssistant.Bedrock.json",
       "role": "file",
-      "sha256": "a4bd3abc62b59d1799b53359b04a219de51842f2be6aee1d36534ba10f04280a"
+      "sha256": "d327d77e6cdf59e28ddc9873bd7b259b3be89d1ce09a54d6b849cdd33b510355"
     },
     {
       "path": "ai/vendor/references/contracts/NGB.Platform.AiAssistant.json",
       "role": "file",
-      "sha256": "598444738bce82402402dd897b4e58c94ffa2d56585d08308ea36144ee00fa00"
+      "sha256": "04d7a79710485c88adf8939d753a93265a1e7f618f4704a7741bd8e3af176e90"
     },
     {
       "path": "ai/vendor/references/contracts/NGB.Platform.AiAssistant.Ollama.json",
       "role": "file",
-      "sha256": "5de5b50ded2a68225bf5e66b94cdcc22ec24fcf478ea1c0c0ee7c51360dd8882"
+      "sha256": "0b9baf45d4f2f42e6c7ca6e0e01dc1eae1453c41f34430d02668b7ff5b221062"
     },
     {
       "path": "ai/vendor/references/contracts/NGB.Platform.AiAssistant.OpenAI.json",
       "role": "file",
-      "sha256": "0996f2ac3515893450f42ce24718f8e102b87d9bfffd2d64e7b08658c4ea0df9"
+      "sha256": "a17f3c7cc1d7e261b97f3217ee2ce230875714a26e63f3b9c8b7c29e80aa412b"
     },
     {
       "path": "ai/vendor/references/contracts/NGB.Platform.Api.json",
       "role": "file",
-      "sha256": "0cd3ce4fd579389301ed032fe93d80f514e97646adcd7a9fc129670c52ad3ba7"
+      "sha256": "6eae048b8041f3158f6b3d71bd96976994cdf9abe584a3b212039cabf2858244"
     },
     {
       "path": "ai/vendor/references/contracts/NGB.Platform.Application.Abstractions.json",
       "role": "file",
-      "sha256": "526f1a17c2e2dacc60e4376f83fdb41349a3132f163c0dba5ff0ca6472324c3e"
+      "sha256": "8478fad2996c2cdb90626f9212d40d6096c35790b29fa1daa983b34211c9c1fc"
     },
     {
       "path": "ai/vendor/references/contracts/NGB.Platform.Attachments.json",
       "role": "file",
-      "sha256": "d04c304d25098b334a538247a2cd8ba2b367478f9a0c6ddb7beb4d673c5f0e31"
+      "sha256": "d182773731c330aed25e43dbba4a43fda5b9be3161b4bc46b0aea3bdca6370ad"
     },
     {
       "path": "ai/vendor/references/contracts/NGB.Platform.Attachments.MinIO.json",
       "role": "file",
-      "sha256": "39cd0d95d3e9ace23126efdf4c263e42374a74606235118be81ea3e389bbe8d1"
+      "sha256": "05871d96e1751ccea3f5db70e179288281e8992858fcc6fa377527600e42c2ee"
     },
     {
       "path": "ai/vendor/references/contracts/NGB.Platform.BackgroundJobs.json",
       "role": "file",
-      "sha256": "4211631ada82c7269b16673e8288ca5f057d47533d1572bd5bbd109927600cb2"
+      "sha256": "e38dd6fc872992c22ed8de1aa3443ba306575f86a79a91eec78ce4a57f06db3b"
     },
     {
       "path": "ai/vendor/references/contracts/NGB.Platform.BackgroundJobs.PostgreSql.json",
       "role": "file",
-      "sha256": "9fda6744f6b4117b16e4dab54e7c3c0d580ba45cd012b1595956ce81d549eeca"
+      "sha256": "509e7ff8e9b76aea50851e3aaea5f501b892e5872087c534ad8e70678d846114"
     },
     {
       "path": "ai/vendor/references/contracts/NGB.Platform.Contracts.json",
       "role": "file",
-      "sha256": "e35521c2b07b36b829b6550a0a2b36c01b12ec37520d270042dfa9761dc17ee6"
+      "sha256": "73e1fd4a8081e803feebd88d9de9fd453ffe157d6414439b9d8f0f47f8c43c12"
     },
     {
       "path": "ai/vendor/references/contracts/NGB.Platform.Core.json",
       "role": "file",
-      "sha256": "385e6ab367c9309c606e1a997271b72d061ded773ac6f0efcde4867240fe8c41"
+      "sha256": "3b0fffc2b3f4e921442d37e0340b5060393b11d1be8f6c72fc66e62786f5f6f0"
     },
     {
       "path": "ai/vendor/references/contracts/NGB.Platform.Definitions.json",
       "role": "file",
-      "sha256": "dbe020175b2a382bf57b4e1af33a1175aa0db27d8a77b8f6fdb72212000d2775"
+      "sha256": "2a7c26866f72815cc420f07c0d6db902d45bd702b2c1037d6137d3c5f47b4b9c"
     },
     {
       "path": "ai/vendor/references/contracts/NGB.Platform.Hosting.AspNetCore.json",
       "role": "file",
-      "sha256": "fe597de9b4c472b60a1492fd6a0a299b59a1f55a70b8af52dfae7b4364415a0d"
+      "sha256": "bf5278ddd6f14ab11bbfbf58b952bab1aeb9caa865a9e44c4d5b23821bc1385a"
     },
     {
       "path": "ai/vendor/references/contracts/NGB.Platform.Mcp.AspNetCore.json",
       "role": "file",
-      "sha256": "a450919e28a17a728109dd79533ab40b594ee78ff3b75d40db6de3799e0c7d79"
+      "sha256": "d4af078dbbae6bd277d43487ca20e419d4063525d30d3c184e0e10ff66c79df3"
     },
     {
       "path": "ai/vendor/references/contracts/NGB.Platform.Mcp.json",
       "role": "file",
-      "sha256": "1f2b8ca1fdc33d39647be0a64c454f563eec14ac61896eb2ff06ffb40f4c8c5f"
+      "sha256": "e5af46c14c93604beace70bd7478ba50573425f11c7a7ba00caebf6fc52e796c"
     },
     {
       "path": "ai/vendor/references/contracts/NGB.Platform.Metadata.json",
       "role": "file",
-      "sha256": "d0e7553ee706f1ef9860ccd497f1c372b055bf5f3ecb887ada68b406f0e6ed7c"
+      "sha256": "bbc211a197f427692165508d988bb66c25ff385f65937c062175327dddcb51dd"
     },
     {
       "path": "ai/vendor/references/contracts/NGB.Platform.Migrator.Core.json",
       "role": "file",
-      "sha256": "fb95cf1063d28231a4a8128aa3af5ecda45c168e4e1d8c56e87b13c9dce72fc2"
+      "sha256": "bf9caad8e60328c5c35b71dc6d2104b0fa41808ff09043fa791011469b6f57e6"
     },
     {
       "path": "ai/vendor/references/contracts/NGB.Platform.Notes.json",
       "role": "file",
-      "sha256": "8593a58f5640d757974d8aad9c4444c917444c0d3259ad8cf9c7d2c214b59fbb"
+      "sha256": "13de1fc78f31a5f82486018d2ed84a91f8a29ce9d0dae0a2701d4877894f39b5"
     },
     {
       "path": "ai/vendor/references/contracts/NGB.Platform.OperationalRegisters.json",
       "role": "file",
-      "sha256": "188a89cf326db011bdab305d8cb43fab019606d71d9815f4795416d86b0a3933"
+      "sha256": "3625a7a72015c851c7a2b374c5a6abfae14e20b9f162e6c3fdd076f1138ebcb1"
     },
     {
       "path": "ai/vendor/references/contracts/NGB.Platform.Persistence.json",
       "role": "file",
-      "sha256": "541940ac3f6a6558d8f1ef09e45102434b08a00b3ba5d4f8e26278a4152d8224"
+      "sha256": "3f9bbde149390f115484d3e2e2342f45a07136956f89c20bccbe2be2cb46a739"
     },
     {
       "path": "ai/vendor/references/contracts/NGB.Platform.PostgreSql.AspNetCore.json",
       "role": "file",
-      "sha256": "acfc76c6b0a1ed74e9f23b196f36bd96fbd2828dec4667920f4eed063761d0cb"
+      "sha256": "2d70565f3067233f3ef06b551e426f0f1ab36af17a0cec3669905bf35584836f"
     },
     {
       "path": "ai/vendor/references/contracts/NGB.Platform.PostgreSql.json",
       "role": "file",
-      "sha256": "c447995fb062e28a4462b6ceb9506cc0d67d187f4b5e7b71c6a6ac29c0af522f"
+      "sha256": "2f79c15dfb9cb6e1e7978d702823d96682a974d00f15bf08c3bce60dfbf70b94"
     },
     {
       "path": "ai/vendor/references/contracts/NGB.Platform.ReferenceRegisters.json",
       "role": "file",
-      "sha256": "c745de39039f75ec45d510db5d7f8551d6f83c49aaa4a26dd89bace55959d637"
+      "sha256": "d53bea4a445849e0607501ade49025cb3297467ca53557db0aaef40f7e802403"
     },
     {
       "path": "ai/vendor/references/contracts/NGB.Platform.Runtime.Hosting.json",
       "role": "file",
-      "sha256": "629db62ba484b3a78ff67568e1749238527de42d3fa29a1d9419a34c26723b77"
+      "sha256": "412ea9990a5ccca226c839b846229e753e1186ef85d68520bfc146573ce26f6f"
     },
     {
       "path": "ai/vendor/references/contracts/NGB.Platform.Runtime.json",
       "role": "file",
-      "sha256": "3412e7ab35727aac3349956228d313c09cd46ce603b091024df03cfd54300f9d"
+      "sha256": "45919b289e6bcf5c9f7820b8f6d306bb320a6869e91732a588975b67c15af0c9"
     },
     {
       "path": "ai/vendor/references/contracts/NGB.Platform.Tools.json",
       "role": "file",
-      "sha256": "280a2779f79bd3c0071e5c0933715e389286c360338ae82d356de53a99048e76"
+      "sha256": "f1e0ff0f296b2e92464e5d5910469907ee2a6f459510e6ac20bb37e3f44f1ce4"
     },
     {
       "path": "ai/vendor/references/contracts/NGB.Platform.Watchdog.json",
       "role": "file",
-      "sha256": "163205d7072762e9191e662f0c27c0d1aede1d675505b579a37b2408b164c18a"
+      "sha256": "ebe07a96ea076cb69b90413545b309c6669b8d6d1679afc35a575a3f7bce0f26"
     },
     {
       "path": "ai/vendor/references/contracts/ui.json",
@@ -1563,7 +1563,7 @@
     {
       "path": "ai/vendor/skills/ngb-application/SKILL.md",
       "role": "file",
-      "sha256": "bd7b374f671b381c1367112feea0fc35957d21964a9839d12a6782cdb588f5fb"
+      "sha256": "7e075d3e0dc6a8876dda73e5d4402bec47dbb657fcf91e7c63e13691947e2287"
     },
     {
       "path": "ai/vendor/skills/ngb-background-jobs/SKILL.md",
@@ -1578,7 +1578,7 @@
     {
       "path": "ai/vendor/skills/ngb-content/SKILL.md",
       "role": "file",
-      "sha256": "f262b3c2e854764c8bb2727f43c65a10d709a63e36bd8ca818e7de3be7588db2"
+      "sha256": "3773396f29e4908d2ebfffd53212d77c31b805e7d9691755f89f4046638ff307"
     },
     {
       "path": "ai/vendor/skills/ngb-documents/SKILL.md",

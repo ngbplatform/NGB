@@ -3,6 +3,7 @@ x-application-environment: &application-environment
   KeycloakSettings__Issuer: http://localhost:5180/realms/ngb-app
   KeycloakSettings__MetadataAddress: http://keycloak:8080/realms/ngb-app/.well-known/openid-configuration
   KeycloakSettings__RequireHttpsMetadata: "false"
+  Serilog__WriteTo__1__Args__serverUrl: http://seq
 
 services:
   postgres:
@@ -13,11 +14,77 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql
       - ./infrastructure/init.sql:/docker-entrypoint-initdb.d/10-keycloak.sql:ro
+    ports:
+      - "127.0.0.1:5187:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d application"]
       interval: 3s
       timeout: 3s
       retries: 30
+
+  pgadmin:
+    image: dpage/pgadmin4:9.14
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-${BOOTSTRAP_EMAIL:?Initialize private configuration}}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:?Initialize private configuration}
+      PGADMIN_CONFIG_SERVER_MODE: "True"
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+      PGADMIN_CONFIG_ALLOW_SPECIAL_EMAIL_DOMAINS: '["test"]'
+    ports:
+      - "127.0.0.1:5186:80"
+    volumes:
+      - pgadmin-data:/var/lib/pgadmin
+      - ./infrastructure/pgadmin/servers.json:/pgadmin4/servers.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  seq:
+    image: datalust/seq:2025.2
+    environment:
+      ACCEPT_EULA: "Y"
+      SEQ_FIRSTRUN_ADMINUSERNAME: ${BOOTSTRAP_EMAIL:?Initialize private configuration}
+      SEQ_FIRSTRUN_ADMINPASSWORD: ${SEQ_PASSWORD:?Initialize private configuration}
+    ports:
+      - "127.0.0.1:5183:80"
+    volumes:
+      - seq-data:/data
+
+  minio:
+    image: ghcr.io/coollabsio/minio:RELEASE.2025-10-15T17-29-55Z@sha256:69b55a1c1c5dc285ce04db96689f5b2102317fc77a50680a1874ca6efd1c87f9
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Initialize private configuration}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Initialize private configuration}
+      MINIO_API_CORS_ALLOW_ORIGIN: http://localhost:5182,http://127.0.0.1:5182
+      MC_HOST_health: http://localhost:9000
+    ports:
+      - "127.0.0.1:5188:9000"
+      - "127.0.0.1:5189:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "health"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  minio-init:
+    image: ghcr.io/coollabsio/minio:RELEASE.2025-10-15T17-29-55Z@sha256:69b55a1c1c5dc285ce04db96689f5b2102317fc77a50680a1874ca6efd1c87f9
+    entrypoint: ["sh", "/bootstrap/attachments.sh"]
+    environment:
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Initialize private configuration}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Initialize private configuration}
+      MINIO_BUCKET: ngb-attachments
+      MINIO_APP_ACCESS_KEY: ${MINIO_APP_ACCESS_KEY:?Initialize private configuration}
+      MINIO_APP_SECRET_KEY: ${MINIO_APP_SECRET_KEY:?Initialize private configuration}
+    volumes:
+      - ./infrastructure/minio/attachments.sh:/bootstrap/attachments.sh:ro
+    depends_on:
+      minio:
+        condition: service_healthy
+    restart: "no"
 
   keycloak:
     image: quay.io/keycloak/keycloak:26.5.6
@@ -30,6 +97,8 @@ services:
       KC_HOSTNAME: http://localhost:5180
       KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
       KC_HEALTH_ENABLED: "true"
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${BOOTSTRAP_EMAIL:?Initialize private configuration}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_MASTER_PASSWORD:?Initialize private configuration}
       BOOTSTRAP_EMAIL: ${BOOTSTRAP_EMAIL:?Initialize private configuration}
       BOOTSTRAP_PASSWORD: ${BOOTSTRAP_PASSWORD:?Initialize private configuration}
       KEYCLOAK_ADMIN_CLIENT_SECRET: ${KEYCLOAK_ADMIN_CLIENT_SECRET:?Initialize private configuration}
@@ -71,6 +140,17 @@ services:
     environment:
       <<: *application-environment
       Ngb__Hosting__PublicApiUrl: ${API_PUBLIC_URL:-http://localhost:5181}
+      FeatureManagement__Attachments: ${FEATURE_ATTACHMENTS:-true}
+      FeatureManagement__Notes: ${FEATURE_NOTES:-true}
+      Attachments__UploadExpirationEnabled: "false"
+      Attachments__MinIO__InternalEndpoint: http://minio:9000
+      Attachments__MinIO__PublicEndpoint: http://localhost:5188
+      Attachments__MinIO__Bucket: ngb-attachments
+      Attachments__MinIO__AccessKey: ${MINIO_APP_ACCESS_KEY:?Initialize private configuration}
+      Attachments__MinIO__SecretKey: ${MINIO_APP_SECRET_KEY:?Initialize private configuration}
+      Attachments__MinIO__AllowInsecureHttp: "true"
+      ExternalLinksSettings__HealthUiUrl: http://localhost:5185/health-ui
+      ExternalLinksSettings__BackgroundJobsUiUrl: http://localhost:5184/hangfire
       FeatureManagement__Mcp: ${FEATURE_MCP:-false}
       FeatureManagement__AiAssistant: ${FEATURE_AI_ASSISTANT:-false}
       AiAssistant__Ollama__Endpoint: ${AI_OLLAMA_ENDPOINT:-http://host.docker.internal:11434}
@@ -87,6 +167,10 @@ services:
     ports:
       - "127.0.0.1:5181:8080"
     depends_on:
+      minio-init:
+        condition: service_completed_successfully
+      seq:
+        condition: service_started
       migrator:
         condition: service_completed_successfully
       keycloak:
@@ -102,13 +186,50 @@ services:
     environment:
       <<: *application-environment
       KeycloakSettings__ClientIds__0: ngb-jobs
+      FeatureManagement__Attachments: ${FEATURE_ATTACHMENTS:-true}
+      FeatureManagement__Notes: ${FEATURE_NOTES:-true}
+      Operations__PublicOrigin: http://localhost:5184
     ports:
       - "127.0.0.1:5184:8080"
     depends_on:
+      seq:
+        condition: service_started
       migrator:
         condition: service_completed_successfully
       keycloak:
         condition: service_healthy
+
+  watchdog:
+    build:
+      context: .
+      dockerfile: infrastructure/Dockerfile
+      args:
+        PROJECT: NgbApplication.Watchdog
+        NUGET_CONFIG: ${NGB_NUGET_CONFIG:-NuGet.Config}
+    environment:
+      <<: *application-environment
+      KeycloakSettings__ClientIds__0: ngb-watchdog
+      Operations__PublicOrigin: http://localhost:5185
+      WebClient: http://web:8080/
+      HealthChecksUI__HealthChecks__0__Name: NgbApplication Watchdog
+      HealthChecksUI__HealthChecks__0__Uri: http://watchdog:8080/health
+      HealthChecksUI__HealthChecks__1__Name: NgbApplication API
+      HealthChecksUI__HealthChecks__1__Uri: http://api:8080/health
+      HealthChecksUI__HealthChecks__2__Name: NgbApplication Background Jobs
+      HealthChecksUI__HealthChecks__2__Uri: http://jobs:8080/health
+    ports:
+      - "127.0.0.1:5185:8080"
+    depends_on:
+      keycloak:
+        condition: service_healthy
+      seq:
+        condition: service_started
+      api:
+        condition: service_started
+      jobs:
+        condition: service_started
+      web:
+        condition: service_started
 
   web:
     build: ./web
@@ -119,3 +240,6 @@ services:
 
 volumes:
   postgres-data:
+  pgadmin-data:
+  seq-data:
+  minio-data:

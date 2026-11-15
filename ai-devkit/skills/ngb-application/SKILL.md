@@ -11,6 +11,9 @@ For generation from business requirements, read
 [architecture, navigation, demo and acceptance]({{references}}/application-generation.md).
 Make platform implementation choices yourself; keep the business specification
 independent of NGB vocabulary. Do not remove all built-in menu contributors.
+Keep the [complete local stack]({{references}}/application.md#default-local-deployment)
+and default-enabled Attachments/Notes when generating an application. Infrastructure
+is an architectural responsibility, not something the business prompt must enumerate.
 
 1. Inspect `ai/kit.json`, `ngb.config.json`, solution/project files and the existing
    host composition. Confirm exact SDK/UI/CLI/Kit alignment with

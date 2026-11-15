@@ -1,0 +1,13 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "NgbApplication",
+      "Group": "NGB",
+      "Host": "postgres",
+      "Port": 5432,
+      "MaintenanceDB": "application",
+      "Username": "postgres",
+      "SSLMode": "prefer"
+    }
+  }
+}

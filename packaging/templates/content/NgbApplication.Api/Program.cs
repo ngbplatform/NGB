@@ -1,13 +1,16 @@
 using NgbApplication;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using NGB.AiAssistant.AspNetCore;
 using NGB.AiAssistant.Ollama;
 using NGB.Api;
 using NGB.Api.Attachments;
 using NGB.Api.WorkCenter;
 using NGB.Application.Abstractions.Services;
+using NGB.Attachments.MinIO;
 using NGB.Hosting.AspNetCore;
 using NGB.Hosting.AspNetCore.ErrorHandling;
+using NGB.Hosting.AspNetCore.Health;
 using NGB.Hosting.AspNetCore.Identity;
 using NGB.Mcp.AspNetCore;
 using NGB.PostgreSql.AspNetCore.DependencyInjection;
@@ -39,7 +42,8 @@ builder.Services.AddHealthChecks().AddNgbPostgresHealthCheck(connectionString).A
 builder.Services.AddControllersApi();
 builder.Services.AddNgbWorkCenterRealtime();
 builder.Services.AddNgbWorkCenterOutboxProcessing(builder.Configuration);
-builder.Services.AddNgbAttachmentsNotesApi(builder.Configuration);
+builder.Services.AddNgbAttachmentsNotesApi(builder.Configuration, services =>
+    services.AddNgbMinioAttachments(builder.Configuration.GetSection("Attachments:MinIO").Bind));
 // This minimal starter has no Accounting controllers or UI routes. When adding
 // Accounting, retain these contributors and compose their destinations together.
 // Preserve every other contributor registered by application or platform modules.
@@ -73,7 +77,10 @@ app.MapControllers();
 app.MapNgbMcp();
 app.MapNgbAiAssistant();
 app.MapNgbWorkCenterHub();
-app.MapHealthChecks("/health").AllowAnonymous();
+app.MapHealthChecks("/health", new HealthCheckOptions
+{
+    ResponseWriter = NgbHealthCheckResponseWriter.WriteAsync
+}).AllowAnonymous();
 app.Run();
 
 public partial class Program

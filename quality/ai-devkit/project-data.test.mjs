@@ -8,6 +8,7 @@ function configuration() {
     { path: 'App.Runtime/App.Runtime.csproj', role: 'runtime' },
     { path: 'App.PostgreSql/App.PostgreSql.csproj', role: 'persistence' },
     { path: 'App.Api/App.Api.csproj', role: 'api' },
+    { path: 'App.Watchdog/App.Watchdog.csproj', role: 'monitor' },
     { path: 'App.Tests/App.Tests.csproj', role: 'tests' },
     { path: 'App.IntegrationTests/App.IntegrationTests.csproj', role: 'tests' },
   ], frontend: { path: 'web' }, tests: { unit: ['App.Tests/App.Tests.csproj'],

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { posix } from 'node:path'
 import { distinctPaths, objectKeys, portablePath } from './kit-contracts.mjs'
 
-const roles = ['definitions', 'runtime', 'persistence', 'api', 'worker', 'migrator', 'tests', 'tooling']
+const roles = ['definitions', 'runtime', 'persistence', 'api', 'worker', 'monitor', 'migrator', 'tests', 'tooling']
 
 export function validateConfiguration(value) {
   objectKeys(value, ['schemaVersion', 'solution', 'projects', 'frontend', 'tests'])

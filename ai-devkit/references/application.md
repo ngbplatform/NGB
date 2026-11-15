@@ -1,8 +1,41 @@
 # Public application composition
 
-The official template supplies API, Migrator, BackgroundJobs and Vue hosts.
+The official template supplies API, Migrator, BackgroundJobs, Watchdog and Vue hosts.
 Applications add Definitions, Runtime and PostgreSQL projects when needed. Declare
 roles explicitly in `ngb.config.json`; project suffixes are not an authority.
+The Watchdog HTTP host uses the `monitor` project role, separately from the business
+API used by browser-test infrastructure.
+
+## Default local deployment
+
+Preserve the complete starter Compose stack: API, Watchdog, BackgroundJobs, web,
+Seq, PostgreSQL, pgAdmin, Keycloak and MinIO. Migrator and MinIO initialization are
+one-shot prerequisites. A generated application must not omit operational services
+merely because the business prompt does not name deployment infrastructure.
+
+Attachments and Notes are enabled by default in new applications. Compose supplies
+the MinIO adapter configuration, a private bucket and a separate bucket-scoped
+application identity. Notes use PostgreSQL. Respect an explicit request to disable
+a feature; installing or synchronizing Kit guidance into an existing application
+does not change its deployment flags. See [content configuration](content.md).
+
+Keep the Health UI link at the actual Watchdog `/health-ui` route and Background
+Jobs at `/hangfire`. Register separate console clients/callbacks in Keycloak and
+retain the ID-token realm-role mapper. Configure Watchdog to poll the API, worker
+and its own health endpoint, including a web check. API health must use
+`NgbHealthCheckResponseWriter`, not the plain-text default response, so Watchdog can
+read its entries. Send host logs to Seq in addition to stdout. pgAdmin connects to
+the internal PostgreSQL service, not its own container's localhost.
+
+Generate private random credentials with the starter initializer; never copy demo
+deployment passwords. Persist PostgreSQL, MinIO, Seq and pgAdmin data in named
+volumes. Wait for successful migrations and storage initialization before API
+startup. After startup, verify actual service readiness, console sign-in and one
+tab per menu click, Watchdog's collected results, Seq ingestion and a real private
+attachment upload/download plus note lifecycle on an accessible parent object.
+Keep this deployment verification distinct from unit coverage and release certification.
+
+## Application modules
 
 `IDefinitionsContributor.Contribute(DefinitionsBuilder)` registers catalog and
 document metadata. `DefinitionsBuilder.Build()` produces the immutable registry.

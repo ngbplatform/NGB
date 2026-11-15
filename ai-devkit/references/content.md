@@ -39,8 +39,11 @@ that may contain signed URLs.
 
 The equipment-inspection example already composes
 `AddNgbAttachmentsNotesApi(configuration)` in its API host. Enable
-`FeatureManagement:Notes` explicitly (environment key `FeatureManagement__Notes`);
-the default is disabled. Notes require PostgreSQL persistence but no object store.
+`FeatureManagement:Notes` explicitly (environment key `FeatureManagement__Notes`).
+The SDK feature is opt-in; the official application template enables both Notes
+and Attachments by default and supplies their infrastructure. Preserve those
+application defaults unless the user explicitly requests otherwise. Notes require
+PostgreSQL persistence but no object store.
 `Notes:MaxTextLength` defaults to 10,000 characters; the API also bounds request
 size. Keep feature configuration independent of user roles. An administrator can
 use an enabled feature without manual permission grants, but cannot enable a

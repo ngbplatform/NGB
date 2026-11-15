@@ -5,8 +5,13 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <None Include="../infrastructure/minio/attachments.sh" Link="attachments.sh" CopyToOutputDirectory="PreserveNewest" />
+    </ItemGroup>
+
+    <ItemGroup>
         <ProjectReference Include="../NgbApplication.Api/NgbApplication.Api.csproj" />
         <ProjectReference Include="../NgbApplication.BackgroundJobs/NgbApplication.BackgroundJobs.csproj" Aliases="Worker" />
+        <ProjectReference Include="../NgbApplication.Watchdog/NgbApplication.Watchdog.csproj" Aliases="Monitor" />
         <ProjectReference Include="../NgbApplication.Migrator/NgbApplication.Migrator.csproj" Aliases="Migrator" />
     </ItemGroup>
 

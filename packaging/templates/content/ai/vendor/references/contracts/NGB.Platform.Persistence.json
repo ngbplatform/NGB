@@ -2,11 +2,11 @@
   "schemaVersion": 1,
   "package": "NGB.Platform.Persistence",
   "version": "3.4.0",
-  "packageSha256": "0aac32800b9fbde7f72fb4008e0a2580d59767c224a9b3d9e07fe3d50cfad30d",
+  "packageSha256": "eafe729849c3701301e547dc0249f178114732674aab5848cf30ed51665e4804",
   "assembly": {
     "name": "NGB.Persistence",
     "version": "3.0.0.0",
-    "sha256": "095ae75801f6fc6d6cdecdf9a2a90e3ecbace9e31bf07031b8d4f8d3287e2ff3"
+    "sha256": "ccc7103e3ec2a6fc6835ac7355315896da4d428ff80cce6eb6f018d7a176c183"
   },
   "contractSha256": "7c670d0d7c430f1b957461b73e6be1a40a88898cf03b30114ad8875cc8e180b9",
   "types": [

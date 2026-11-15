@@ -43,6 +43,10 @@ work; do not create standalone `Reports` or `Administration` groups. Use `Accoun
 for accounting documents/reports and `Setup & Controls` for settings and controls.
 These are application-generation conventions, not vocabulary required in the
 user's business specification.
+Preserve the [complete default local deployment](application.md#default-local-deployment),
+including Watchdog, BackgroundJobs, Seq, PostgreSQL, pgAdmin, Keycloak and MinIO
+alongside the API and web application. Attachments and Notes are enabled by default;
+absence from the business prompt is not a request to omit them or their infrastructure.
 
 Make Dashboard the first standalone root link, before the business-area groups.
 Register it as a singleton group whose label matches its item, with an earlier
@@ -146,7 +150,7 @@ outcome and the actual test result:
 | Documents | Head and Lines are entered through the browser, dependent values populate/recalculate, lookup choices respect the parent, and values survive save/reload; incomplete Draft and invalid Post differ; Post/Unpost/Repost, retry, competing operations and dependency rejection preserve all effects |
 | Document Flow | A related document chain is visible in the actual shared UI, with working links and inaccessible nodes excluded |
 | Demo | Every employee role has a usable active identity and assignment; seed is repeatable; each role completes its permitted scenario |
-| Operations/branding | Real worker and Health dashboards are reachable by authorized staff; favicon is linked, served with the correct media type and loaded by the browser |
+| Operations/branding | The complete Compose stack starts; real worker and Health dashboards accept authorized sign-in; Watchdog collects API/worker/web results; Seq receives logs; private attachments and notes work with their default flags; favicon loads correctly |
 
 A SQL sum or dashboard assertion is not execution of a report endpoint. A graph
 API response is not proof of UI rendering. Component mocks do not prove role

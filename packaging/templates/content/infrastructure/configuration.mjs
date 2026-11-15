@@ -10,6 +10,15 @@ export async function initializeConfiguration(path, email) {
     `BOOTSTRAP_PASSWORD=${randomBytes(32).toString('base64url')}`,
     `POSTGRES_PASSWORD=${randomBytes(32).toString('base64url')}`,
     `KEYCLOAK_ADMIN_CLIENT_SECRET=${randomBytes(32).toString('base64url')}`,
+    `KEYCLOAK_MASTER_PASSWORD=${randomBytes(32).toString('base64url')}`,
+    `PGADMIN_PASSWORD=${randomBytes(32).toString('base64url')}`,
+    `SEQ_PASSWORD=${randomBytes(32).toString('base64url')}`,
+    `MINIO_ROOT_USER=${randomBytes(15).toString('base64url')}`,
+    `MINIO_ROOT_PASSWORD=${randomBytes(32).toString('base64url')}`,
+    `MINIO_APP_ACCESS_KEY=${randomBytes(15).toString('base64url')}`,
+    `MINIO_APP_SECRET_KEY=${randomBytes(32).toString('base64url')}`,
+    'FEATURE_ATTACHMENTS=true',
+    'FEATURE_NOTES=true',
   ]
   await writeFile(path, `${values.join('\n')}\n`, { mode: 0o600, flag: 'wx' })
 }
