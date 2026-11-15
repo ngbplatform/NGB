@@ -2,11 +2,11 @@
   "schemaVersion": 1,
   "package": "NGB.Platform.Api",
   "version": "3.4.0",
-  "packageSha256": "7f747b28e6982984056056b4aa714fe5343c49c5874b2906c000182fcbebf21e",
+  "packageSha256": "7ebac5f4be806cd9ff377ccf8e477f438b0cde2fe5682b0b0fde2fa5f3f1b988",
   "assembly": {
     "name": "NGB.Api",
     "version": "3.0.0.0",
-    "sha256": "d3b4a34bf67a599b5ce50ef19c0e30ebab74f13ee40c2880e6d4e1f78a92cd2e"
+    "sha256": "ecc5319ee4b1c6d47de4792017132dd954a385e7103bdb435cddf14e4648b6cb"
   },
   "contractSha256": "18ddb0b616559426acdd99465fcd2ea1d8646051cf0ec58190d7292126b09c73",
   "types": [

@@ -2,11 +2,11 @@
   "schemaVersion": 1,
   "package": "NGB.Platform.AiAssistant.AspNetCore",
   "version": "3.4.0",
-  "packageSha256": "7b7d49f7d1ae493a729d2b5e74735c5442b37f9273edfb15377ae00aa3142990",
+  "packageSha256": "cb68856a3a0937334794e4af915ccec58835813ce29aa8a3ef83e2beec86bc50",
   "assembly": {
     "name": "NGB.AiAssistant.AspNetCore",
     "version": "3.0.0.0",
-    "sha256": "82ed67d54fd473974f311b9ce4ff4c039798676cf5123b47ba0d1b350e49936a"
+    "sha256": "4bce5140d0bbbf960eab65e6e7e120b3879d358218b659086dc347edef643f80"
   },
   "contractSha256": "9dc3b3255574b55754c53edbce581197d34248b06a8f4ed42610aa30b6bb072d",
   "types": [
