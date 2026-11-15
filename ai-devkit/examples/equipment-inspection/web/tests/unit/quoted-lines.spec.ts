@@ -18,7 +18,7 @@ function line(id: string): QuotedLine {
   return { id, item: '', quantity: 1, unitPriceMinor: null, pricingDate: null, totalMinor: null }
 }
 
-async function fixture(initial: QuotedLine[] = []) {
+async function fixture(initial: QuotedLine[] = [], loadItem?: (id: string, signal: AbortSignal) => Promise<{ preparationMinutes: number }>) {
   const rows = ref(initial)
   const date = ref('2026-11-01')
   const readonly = ref(false)
@@ -33,6 +33,7 @@ async function fixture(initial: QuotedLine[] = []) {
       readonly: readonly.value,
       items: [{ value: null, label: 'Choose an item' }, { value: 'inspection', label: 'Inspection' }, { value: 'service', label: 'Service' }],
       quote,
+      loadItem,
       'onUpdate:modelValue': value => { rows.value = value },
     }),
   }))
@@ -59,6 +60,25 @@ it('defaults a new line and quotes before saving, then recalculates quantity and
   await state.select('Choose an item')
   expect(state.rows.value[0].unitPriceMinor).toBeNull()
   expect(state.rows.value[0].totalMinor).toBeNull()
+})
+
+it('reopens saved rows, hydrates all reference details and updates the header after adding and removing lines', async () => {
+  const stored = { ...line('saved'), item: 'inspection', unitPriceMinor: 900, pricingDate: '2026-10-10', totalMinor: 900 }
+  const loadItem = vi.fn(async (id: string) => ({ preparationMinutes: id === 'inspection' ? 20 : 10 }))
+  const state = await fixture([stored], loadItem)
+  await expect.element(state.screen.getByText('Preparation (minutes): 20')).toBeVisible()
+  expect(state.quote).not.toHaveBeenCalled()
+  await state.screen.getByRole('button', { name: 'Add line' }).click()
+  await expect.element(state.screen.getByText('Preparation (minutes): —')).toBeVisible()
+  await state.select('Service', 1)
+  await expect.element(state.screen.getByText('Preparation (minutes): 30')).toBeVisible()
+  await state.screen.getByRole('spinbutton', { name: 'Quantity' }).nth(1).fill('3')
+  await expect.element(state.screen.getByText('Preparation (minutes): 50')).toBeVisible()
+  expect(state.rows.value[0]).toEqual(stored)
+  expect(state.quote).toHaveBeenCalledTimes(1)
+  await state.screen.getByRole('button', { name: 'Delete row 2' }).click()
+  await expect.element(state.screen.getByText('Preparation (minutes): 20')).toBeVisible()
+  expect(state.rows.value).toEqual([stored])
 })
 
 it('hydrates stored values without repricing and keeps readonly documents unchanged', async () => {

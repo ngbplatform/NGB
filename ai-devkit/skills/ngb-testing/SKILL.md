@@ -15,6 +15,12 @@ setup is for prerequisites, not a substitute for the action being verified. Asse
 resulting business values and exactly one navigation per click; a visible shell or
 a screenshot does not prove the workflow. Follow the
 [interactive acceptance sequence]({{references}}/interactive-workflows.md#browser-acceptance).
+Include save/reopen followed by row edits, valid/rejected/cleared source changes,
+late responses from every calculation stage, visible dependency-refusal reasons,
+reference opening in readonly Lines and keyboard popup geometry. Use real shared
+controls for these claims; service-boundary doubles do not prove end-to-end behavior.
+Reconcile registered documents and roles with named, executed acceptance scenarios;
+100% coverage of a handpicked subset is not complete workflow evidence.
 
 1. Read [verification profiles]({{references}}/testing.md). Inspect `ngb.config.json`,
    discovered production/test projects and the exact source/package versions.

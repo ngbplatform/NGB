@@ -1,4 +1,4 @@
-import { ref } from 'vue'
+import { effectScope, nextTick, ref } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mountedCallbacks = vi.hoisted(() => [] as Array<() => void>)
@@ -138,6 +138,46 @@ describe('useFloatingDropdownPosition', () => {
       width: '0px',
       maxHeight: '288px',
     })
+  })
+
+  it('positions on overlay mount and stops observing when its owner scope is disposed', async () => {
+    const anchor = new globalThis.HTMLElement()
+    anchor.getBoundingClientRect = () => ({ left: 120, top: 80, bottom: 112, width: 200 } as DOMRect)
+    const overlay = ref<HTMLElement | null>(null)
+    const scope = effectScope()
+    const state = scope.run(() => useFloatingDropdownPosition(ref(anchor), [overlay]))!
+    try {
+      overlay.value = new globalThis.HTMLElement()
+      await nextTick()
+      expect(state.floatingStyle.value.left).toBe('120px')
+      expect(state.floatingStyle.value.top).toBe('120px')
+
+      overlay.value = null
+      await nextTick()
+      anchor.getBoundingClientRect = () => ({ left: 300, top: 80, bottom: 112, width: 200 } as DOMRect)
+      expect(state.floatingStyle.value.left).toBe('120px')
+      scope.stop()
+      overlay.value = new globalThis.HTMLElement()
+      await nextTick()
+      expect(state.floatingStyle.value.left).toBe('120px')
+    } finally {
+      scope.stop()
+      runBeforeUnmountHooks()
+    }
+  })
+
+  it('can initialize without DOM globals during server rendering', () => {
+    globalThis.HTMLElement = undefined as never
+    globalThis.window = undefined as never
+    const scope = effectScope()
+    try {
+      const state = scope.run(() => useFloatingDropdownPosition(ref(null), [ref(null)]))!
+      expect(() => state.updatePosition()).not.toThrow()
+      expect(state.floatingStyle.value.width).toBe('0px')
+    } finally {
+      scope.stop()
+      runBeforeUnmountHooks()
+    }
   })
 
   it('computes bounded coordinates and skips animation scheduling without a browser window', () => {

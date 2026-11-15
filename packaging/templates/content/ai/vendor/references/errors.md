@@ -47,6 +47,27 @@ context for a recognized provider failure; return null for unrelated exceptions.
 Keep provider dependencies out of Runtime. Do not map an unknown storage failure
 to a successful business result or replace the platform's authorization checks.
 
+`NgbExceptionHttpMapping` does **not** supply a public detail message. Putting a
+business explanation in `context.reason` alone leaves the standard conflict detail
+on screen; `ApiError.message` does not automatically promote that context value.
+For an expected business refusal, translate the specific recognized condition at
+the application/provider boundary into an application `NgbConflictException` with
+a stable code and a deliberately public, actionable message. Preserve the original
+exception only as `InnerException`. Match an explicit constraint/error code; do
+not copy arbitrary PostgreSQL message text or turn every database error into a
+business conflict. Keep the existing transactional guard and rollback behavior.
+
+For example, a dependency refusal should tell the user to reverse dependent
+documents first (and provide authorized links where supported). It should not
+surface merely as “conflict with the current state”. This does not authorize
+removing the guard or changing the business correction order. Test HTTP `detail`
+and the **visible browser error** after the actual action. Searching the raw JSON
+for a phrase in `context` is not proof that the user sees it. The derived-editor
+[browser example](../examples/equipment-inspection/web/tests/unit/derived-lines.spec.ts)
+exercises a 409 Problem Details response through the actual HTTP client and UI;
+its network boundary is simulated, so generated applications still need a real
+backend refusal scenario.
+
 The independent `ErrorBoundaryContractTests` exercise the real Production HTTP
 middleware on a loopback server. They verify argument and application error
 families, field details, tracing, timeout/fallback behavior and a synthetic

@@ -32,6 +32,17 @@ or document persistence; those require the generated application's authorized
 server workflow and browser acceptance described in
 [interactive workflows](../../references/interactive-workflows.md).
 
+`DerivedLinesEditor.vue` demonstrates complete invalidation of source-dependent
+headers and readonly charges, including a two-stage asynchronous calculation,
+replacement, clear, retry, document reload and readonly transitions. Its actual
+Lookup cells keep permission-aware Open actions and use Name as the primary label.
+`LineReferenceSummary.vue`, optionally composed by `QuotedLinesEditor.vue`, loads
+auxiliary attributes for every saved row and updates totals after row edits without
+repricing stored snapshots. `PriceAdjustment.vue` lets an authorized draft user
+enter the reason before the discount and explains the conditional validation.
+The browser tests use real SDK controls, with service callbacks/network responses
+as bounded test doubles. They do not claim server authorization or persistence.
+
 `DocumentDrivenReferenceRegisterTests` demonstrates a document handler writing
 an independent periodic register inside real Post/Repost/Unpost HTTP actions.
 It verifies global reads, retry, Effects and append-only history. Its withdrawal

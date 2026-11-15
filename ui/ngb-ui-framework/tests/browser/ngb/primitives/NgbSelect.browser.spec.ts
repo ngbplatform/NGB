@@ -83,6 +83,37 @@ test('opens from the keyboard and updates aria-expanded for assistive navigation
   expect(button.getAttribute('aria-expanded')).toBe('true')
 })
 
+test.each(['{ArrowUp}', '{ArrowDown}', '{Enter}', ' ', 'click'])('positions the listbox after opening with %s without a pointer event', async (trigger) => {
+  await page.viewport(1280, 900)
+  const view = await render(SelectHarness)
+  const container = view.getByTestId('overflow-container').element() as HTMLElement
+  container.style.margin = '160px 0 0 280px'
+  const button = view.getByRole('button', { name: /Open/i }).element() as HTMLButtonElement
+
+  for (const margin of ['280px', '420px']) {
+    container.style.marginLeft = margin
+    button.focus()
+    if (trigger === 'click') {
+      button.click()
+    } else {
+      await userEvent.keyboard(trigger)
+    }
+
+    await expect.poll(() => {
+      const listbox = document.querySelector('[role="listbox"]')
+      if (!listbox) return false
+      const anchor = button.getBoundingClientRect()
+      const overlay = listbox.getBoundingClientRect()
+      return Math.abs(overlay.left - anchor.left) <= 1
+        && Math.abs(overlay.width - anchor.width) <= 1
+        && Math.abs(overlay.top - anchor.bottom - 8) <= 1
+    }).toBe(true)
+    await expect.poll(() => document.activeElement?.getAttribute('role')).toBe('listbox')
+    await userEvent.keyboard('{Escape}')
+    await expect.element(view.getByRole('listbox')).not.toBeInTheDocument()
+  }
+})
+
 test('repositions the teleported listbox when the anchor moves after resize', async () => {
   await page.viewport(1280, 900)
 
@@ -117,6 +148,31 @@ test('repositions the teleported listbox when the anchor moves after resize', as
   expect(listbox?.style.left).toBe('44px')
   expect(listbox?.style.top).toBe('74px')
   expect(listbox?.style.width).toBe('220px')
+})
+
+test('tracks real scrolling and selects an option from the keyboard', async () => {
+  await page.viewport(1280, 900)
+  const view = await render(SelectHarness)
+  const container = view.getByTestId('overflow-container').element() as HTMLElement
+  container.style.cssText = 'margin: 140px 0 0 280px; height: 180px; overflow: auto'
+  const button = view.getByRole('button', { name: /Open/i }).element() as HTMLButtonElement
+  const field = button.parentElement!.parentElement!
+  field.style.marginTop = '220px'
+  container.style.paddingBottom = '120px'
+  container.scrollTop = 200
+  button.focus()
+  await userEvent.keyboard('{ArrowUp}')
+  await expect.poll(() => document.activeElement?.getAttribute('role')).toBe('listbox')
+  const before = button.getBoundingClientRect().top
+  container.scrollTop -= 20
+  await expect.poll(() => {
+    const overlay = document.querySelector('[role="listbox"]')!.getBoundingClientRect()
+    const anchor = button.getBoundingClientRect()
+    return anchor.top > before && Math.abs(overlay.top - anchor.bottom - 8) <= 1
+      && Math.abs(overlay.left - anchor.left) <= 1 && Math.abs(overlay.width - anchor.width) <= 1
+  }).toBe(true)
+  await userEvent.keyboard('{ArrowDown}{Enter}')
+  await expect.element(view.getByTestId('select-state')).toHaveTextContent('state:closed')
 })
 
 test('flips the teleported listbox above the field when the viewport runs out of space below', async () => {

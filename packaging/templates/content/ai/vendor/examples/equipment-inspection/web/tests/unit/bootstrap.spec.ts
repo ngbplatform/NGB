@@ -28,11 +28,12 @@ vi.mock('@ngbplatform/ui', () => ({
   createDefaultNgbWorkCenterConfig: vi.fn(), executeDocumentAction: vi.fn(), getDocumentById: vi.fn(),
   getDocumentEditorState: vi.fn(), getDocumentEffects: vi.fn(), getDocumentGraph: vi.fn(), getEntityAuditLog: vi.fn(),
   useAuthStore: () => state.auth, useAccessStore: () => state.access,
+  buildLookupFieldTargetUrl: vi.fn(), normalizeLookupValue: vi.fn(),
+  searchResolvedLookupItems: vi.fn(), useLookupStore: vi.fn(),
 }))
 vi.mock('@ngbplatform/ui/navigation', () => ({ configureNgbNavigation: vi.fn() }))
 vi.mock('../../src/router', () => ({ router: state.router }))
 vi.mock('../../src/App.vue', () => ({ default: {} }))
-vi.mock('../../src/metadata', () => ({ metadataFormBehavior: {} }))
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -54,6 +55,8 @@ it('loads access before mounting protected pages and waits for the router', asyn
   await started
   expect(state.app.mount).toHaveBeenCalledWith('#app')
   expect(state.router.isReady).toHaveBeenCalledOnce()
+  const { metadataFormBehavior } = await import('../../src/metadata')
+  expect(state.metadata.mock.calls[0][0].formBehavior).toBe(metadataFormBehavior)
   const metadata = { catalogCode: 'example.equipment' }
   state.catalogMetadata.mockResolvedValue(metadata)
   state.normalizeMetadata.mockReturnValue({ normalized: true })

@@ -1,8 +1,11 @@
 import { mount } from '@vue/test-utils'
 import { h, nextTick } from 'vue'
 import { describe, expect, test, vi } from 'vitest'
+import { page, userEvent } from 'vitest/browser'
 
 import NgbDocumentLines from '../../../../src/ngb/editor/NgbDocumentLines.vue'
+import NgbInput from '../../../../src/ngb/primitives/NgbInput.vue'
+import NgbLookup from '../../../../src/ngb/primitives/NgbLookup.vue'
 
 const columns = [{ key: 'name', label: 'Name', width: '260px' }]
 const rows = [{ id: 'a', name: 'First' }, { id: 'b', name: 'Second' }]
@@ -19,6 +22,61 @@ function render(props: Record<string, unknown> = {}) {
 }
 
 describe('NgbDocumentLines', () => {
+  test.each([false, true])('centers real controls and text in tall rows and retains source navigation (readonly=%s)', async (readonly) => {
+    await page.viewport(1280, 900)
+    const open = vi.fn()
+    const wrapper = mount(NgbDocumentLines, {
+      attachTo: document.body,
+      props: {
+        title: 'Lines',
+        rows: [{ id: 'one' }],
+        columns: [
+          { key: 'description', label: 'Description' },
+          { key: 'source', label: 'Source' },
+          { key: 'quantity', label: 'Quantity' },
+          { key: 'amount', label: 'Amount' },
+        ],
+        readonly,
+        readonlyActions: 'disable',
+      },
+      slots: {
+        cell: ({ column }: { column: { key: string } }) => {
+          if (column.key === 'description') {
+            return h('div', { style: 'height: 96px' }, 'A multiline description makes this row taller than a control.')
+          }
+          if (column.key === 'source') {
+            return h(NgbLookup, {
+              modelValue: { id: 'source-one', label: 'Approved order' },
+              items: [],
+              readonly,
+              showOpen: true,
+              variant: 'grid',
+              onOpen: open,
+            })
+          }
+          if (column.key === 'quantity') {
+            return h(NgbInput, { modelValue: 2, type: 'number', variant: 'grid', readonly })
+          }
+          return h('span', { class: 'inline-flex min-h-8 items-center px-2', 'data-testid': 'amount' }, '25.00')
+        },
+      },
+    })
+    try {
+      const row = wrapper.get('tbody tr').element.getBoundingClientRect()
+      for (const selector of ['input[role="combobox"]', 'input[type="number"]', '[data-testid="amount"]', 'button[title="Delete"]']) {
+        const rect = wrapper.get(selector).element.getBoundingClientRect()
+        expect(Math.abs((rect.top + rect.bottom) / 2 - (row.top + row.bottom) / 2)).toBeLessThanOrEqual(1)
+      }
+      await userEvent.click(wrapper.get('button[title="Open"]').element)
+      expect(open).toHaveBeenCalledOnce()
+      await wrapper.setProps({ errors: { 0: { quantity: 'Quantity exceeds the available amount.' } } })
+      expect(wrapper.text()).toContain('Quantity exceeds the available amount.')
+      expect(getComputedStyle(wrapper.get('[data-validation-cell="0:quantity"]').element).verticalAlign).toBe('middle')
+    } finally {
+      wrapper.unmount()
+    }
+  })
+
   test('renders data, errors and empty state independently of pagination', async () => {
     const wrapper = render({ errors: { 0: { name: [' ', 'Required'], ordinal: 'Invalid order' } } })
     expect(wrapper.findAll('tbody tr')).toHaveLength(2)

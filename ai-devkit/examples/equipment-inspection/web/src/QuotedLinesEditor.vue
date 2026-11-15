@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, reactive, shallowRef, watch } from 'vue'
 import { NgbDocumentLines, NgbInput, NgbSelect } from '@ngbplatform/ui'
+import LineReferenceSummary from './LineReferenceSummary.vue'
 
 export type QuotedLine = {
   id: string
@@ -17,6 +18,7 @@ const props = defineProps<{
   documentKey: string
   readonly?: boolean
   items: { value: string | null, label: string }[]
+  loadItem?: (id: string, signal: AbortSignal) => Promise<{ preparationMinutes: number }>
   quote: (item: string, date: string, signal: AbortSignal) => Promise<{
     unitPriceMinor: number
     pricingDate: string
@@ -172,7 +174,8 @@ onBeforeUnmount(() => {
         variant="grid"
         @update:model-value="value => quantity(row, value)"
       />
-      <span v-else>{{ row[column.key as keyof QuotedLine] ?? '—' }}</span>
+      <span v-else class="inline-flex min-h-8 items-center px-2">{{ row[column.key as keyof QuotedLine] ?? '—' }}</span>
     </template>
   </NgbDocumentLines>
+  <LineReferenceSummary v-if="loadItem" :rows="draftRows" :document-key="documentKey" :load-item="loadItem" />
 </template>

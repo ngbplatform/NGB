@@ -109,6 +109,8 @@ public sealed class ErrorBoundaryContractTests
                 Assert.Equal("Record a result.", Assert.Single(error.GetProperty("errors").GetProperty("result").EnumerateArray()).GetString());
             if (failure.Name == "provider")
                 Assert.Equal("probe", error.GetProperty("context").GetProperty("service").GetString());
+            if (failure.Name == "conflict")
+                Assert.Equal("Reverse the dependent documents before withdrawing this document.", body.GetProperty("detail").GetString());
         }
     }
 
@@ -116,7 +118,7 @@ public sealed class ErrorBoundaryContractTests
         : NgbNotFoundException("Inspection was not found.", "example.inspection.missing");
 
     private sealed class InspectionConflict()
-        : NgbConflictException("Reload the inspection.", "example.inspection.conflict");
+        : NgbConflictException("Reverse the dependent documents before withdrawing this document.", "example.inspection.conflict");
 
     private sealed class InspectionForbidden()
         : NgbForbiddenException("Inspection access is denied.", "example.inspection.forbidden");

@@ -6,11 +6,13 @@ export default defineConfig({
   plugins: [vue()],
   resolve: { dedupe: ['vue'] },
   optimizeDeps: {
-    include: ['@ngbplatform/ui/editor', '@ngbplatform/ui/layout',
-      '@ngbplatform/ui/lazy', '@ngbplatform/ui/navigation'],
+    exclude: ['@ngbplatform/ui'],
+    include: ['@headlessui/vue', '@microsoft/signalr', 'keycloak-js', 'pinia', 'vue-router'],
   },
   test: {
     include: ['tests/unit/**/*.spec.ts'],
+    // Browser files share an orchestrator; avoid cross-iframe teardown during navigation.
+    fileParallelism: false,
     browser: {
       enabled: true,
       headless: true,

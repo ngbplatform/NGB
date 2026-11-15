@@ -1,4 +1,4 @@
-import { computed, onBeforeUnmount, onMounted, ref, type ComponentPublicInstance, type Ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch, type ComponentPublicInstance, type Ref } from 'vue'
 
 type FloatingHost = Element | ComponentPublicInstance | null
 type FloatingHostRef = Ref<FloatingHost>
@@ -9,7 +9,7 @@ const DEFAULT_DROPDOWN_HEIGHT_PX = 288
 
 function resolveHostElement(host: FloatingHost | undefined): HTMLElement | null {
   const raw = host && '$el' in host ? host.$el : host
-  return raw instanceof HTMLElement ? raw : null
+  return typeof HTMLElement !== 'undefined' && raw instanceof HTMLElement ? raw : null
 }
 
 export function useFloatingDropdownPosition(anchorRef: FloatingHostRef, overlayRefs: FloatingHostRef[]) {
@@ -105,6 +105,12 @@ export function useFloatingDropdownPosition(anchorRef: FloatingHostRef, overlayR
     if (!hasVisibleOverlay) return
     computePosition()
   }
+
+  // Keyboard and assistive activation can open an overlay without a pointer event.
+  // Observe the exposed element as HeadlessUI keeps the component mounted while closed.
+  watch(() => overlayRefs.map((overlayRef) => resolveHostElement(overlayRef.value)), (elements) => {
+    if (elements.some((element) => element !== null)) updatePosition()
+  }, { flush: 'post' })
 
   onMounted(() => {
     if (typeof window === 'undefined') return

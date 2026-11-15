@@ -199,7 +199,7 @@ defineExpose<DocumentLinesHandle>({ focusCell, focusFirstError })
           <tr
             v-for="{ row, rowIndex } in visibleRows"
             :key="rowKey?.(row, rowIndex) ?? rowIndex"
-            class="border-t border-ngb-border align-top transition-colors hover:bg-ngb-bg"
+            class="border-t border-ngb-border align-middle transition-colors hover:bg-ngb-bg"
             :class="rowHasErrors(rowIndex) ? 'bg-red-50/40 dark:bg-red-950/10' : ''"
             :draggable="canReorder"
             @dragstart="onDragStart(rowIndex, $event)"
@@ -229,7 +229,7 @@ defineExpose<DocumentLinesHandle>({ focusCell, focusFirstError })
             <td
               v-for="column in columns"
               :key="column.key"
-              class="border-r border-dotted border-ngb-border px-0 py-1 align-top"
+              class="border-r border-dotted border-ngb-border px-0 py-1 align-middle"
               :data-validation-cell="`${rowIndex}:${column.key}`"
             >
               <slot name="cell" :row="row" :row-index="rowIndex" :column="column" :readonly="readonly" />

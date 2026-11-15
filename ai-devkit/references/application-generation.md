@@ -167,6 +167,17 @@ content. Test a real Sidebar; a mock that emits only one of its two events hides
 duplicate navigation. Match test names and acceptance claims to the actions and
 assertions that actually executed.
 
+Maintain one acceptance row per registered document and role-sensitive workflow,
+including input dependencies and reference columns. Record: registration code,
+role, initial state, UI actions, expected values/target identities, executable test
+name, run artifact and outcome (`passed`, `failed`, `not-run` or an explicitly
+justified `not-applicable`). Compare that inventory with registrations after every
+generation change. Unmatched registrations or required `failed`/`not-run` rows are
+unfinished work, even when a subset of tests has 100% code coverage. Include the
+[reopen, source replacement and browser interaction cases](interactive-workflows.md#browser-acceptance)
+and [visible business refusals](errors.md). Do not report generated tests as passing
+until their assertions have actually run against the current implementation.
+
 An unsupported required workflow is an unfinished item, even when documented.
 Do not silently accept it as complete or substitute a manual procedure for an
 enforced business rule. Keep existing SDK limits explicit and separate from

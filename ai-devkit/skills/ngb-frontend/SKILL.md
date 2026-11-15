@@ -14,6 +14,10 @@ including defaults, source snapshots, filtered lookups and recalculation. Readon
 derived values must actually populate. Use the shell's `navigate` event once;
 `select` is not a second navigation command. Preserve the full product name and
 place Dashboard first as a standalone root link.
+Use the runnable examples in that reference for whole-chain invalidation, readonly
+source navigation and saved-row reference hydration. Preserve primary Name displays;
+put disambiguating codes in secondary metadata. Explain conditional editability and
+surface actionable [business errors]({{references}}/errors.md), not context-only reasons.
 
 1. Read [frontend contracts]({{references}}/frontend.md). Inspect the installed
    export, component props/emits/slots and corresponding backend metadata.
