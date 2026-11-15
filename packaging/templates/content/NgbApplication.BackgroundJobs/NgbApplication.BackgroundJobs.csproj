@@ -5,6 +5,10 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <Compile Include="../Shared/OperationalConsoleConfiguration.cs" Link="OperationalConsoleConfiguration.cs" />
+    </ItemGroup>
+
+    <ItemGroup>
         <PackageReference Include="NGB.Platform.BackgroundJobs" Version="[$(NgbPlatformVersion)]" />
         <PackageReference Include="NGB.Platform.BackgroundJobs.PostgreSql" Version="[$(NgbPlatformVersion)]" />
         <PackageReference Include="NGB.Platform.PostgreSql" Version="[$(NgbPlatformVersion)]" />

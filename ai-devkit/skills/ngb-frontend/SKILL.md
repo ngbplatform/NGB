@@ -9,6 +9,11 @@ components to bypass a missing public extension.
 Use public `NgbDocumentLines` for document parts and keep business behavior in
 the application. Apply the [navigation and UI conventions]({{references}}/application-generation.md#navigation-and-standard-surfaces),
 including uniform document/report icons and explicit favicon linkage.
+Generate [interactive field dependencies]({{references}}/interactive-workflows.md),
+including defaults, source snapshots, filtered lookups and recalculation. Readonly
+derived values must actually populate. Use the shell's `navigate` event once;
+`select` is not a second navigation command. Preserve the full product name and
+place Dashboard first as a standalone root link.
 
 1. Read [frontend contracts]({{references}}/frontend.md). Inspect the installed
    export, component props/emits/slots and corresponding backend metadata.

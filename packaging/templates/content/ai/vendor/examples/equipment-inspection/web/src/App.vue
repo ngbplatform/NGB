@@ -43,7 +43,6 @@ const nodes = computed(() => [
     :nodes="nodes"
     :selected-id="route.path"
     @navigate="router.push($event)"
-    @select="(_id, target) => router.push(target)"
     @sign-out="auth.logout()"
     @open-palette="palette.open()"
   >

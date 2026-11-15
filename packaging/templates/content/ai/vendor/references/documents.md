@@ -104,6 +104,37 @@ creates produce distinct numbers, and failed Post, Post, Repost and Unpost retai
 the original number. Do not allocate a number in an API controller or derive it
 from the current row count.
 
+### Document identity and dates
+
+Use one document presentation in lists, lookups, page titles and Document Flow:
+singular document name, assigned number and formatted business date. The default
+formatter uses `PREFIX-YYYY-000001`, deriving its prefix from the type code's final
+snake_case segment. Choose stable explicit prefixes when that code does not match
+the intended document name; do not derive numbering from translated UI labels.
+
+`ComputedDisplay: true` and `HideSystemFieldsInEditor: true` describe presentation;
+they do not by themselves create a stored display expression. Generate the
+provider-side computation and its synchronization on number/date changes, and
+verify the same text through all API/UI surfaces. Keep business notes separate
+from `display`; do not expose a technical display as an editable Description.
+
+Resolve the registry business date before initial number allocation through the
+supported draft service and authorized application workflow. The generic CRUD
+date-binding limit above still applies. Define how changing the date of a numbered
+draft is handled; never silently renumber issued documents. Test a backdated draft
+across a year boundary and the application's business time zone, not only today's
+date. A familiar-looking number does not prove that its year came from that date.
+
+Demo data uses the same numbering policy and computed display as ordinary work.
+Use a separate deterministic seed identity/mapping for replay; do not pass a demo
+key as a number to bypass the allocator. Repeat the seed and create a normal draft
+afterward to verify uniqueness, continuation and unchanged existing identities.
+The [draft-service example](../examples/equipment-inspection/EquipmentInspection.IntegrationTests/DocumentBatchTests.cs)
+checks supplied dates across a year boundary, independent yearly sequences and
+rollback of reserved numbers. It does not establish generic HTTP date binding or
+computed display for the fixture's minimal inspection editor; implement and test
+those application-specific boundaries explicitly.
+
 Document pages use explicit `limit`, `cursor` and `includeTotal` parameters. Follow
 the returned cursor without interpreting it, and keep search and other filters
 unchanged between pages. The HTTP controller requires total-count opt-in even

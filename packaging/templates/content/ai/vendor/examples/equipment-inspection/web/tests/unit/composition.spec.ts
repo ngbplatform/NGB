@@ -111,7 +111,7 @@ it('shows only authorized navigation and forwards shell actions', async () => {
   await screen.getByRole('button', { name: 'Select' }).click()
   await screen.getByRole('button', { name: 'Sign out' }).click()
   await screen.getByRole('button', { name: 'Search' }).click()
-  expect(state.push.mock.calls).toEqual([['/documents/example.inspection'], ['/catalogs/example.equipment']])
+  expect(state.push.mock.calls).toEqual([['/documents/example.inspection']])
   expect(state.logout).toHaveBeenCalledOnce()
   expect(state.openPalette).toHaveBeenCalledOnce()
 })

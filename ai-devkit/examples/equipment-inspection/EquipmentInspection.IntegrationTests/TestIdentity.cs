@@ -54,7 +54,25 @@ internal sealed class TestIdentity : IAsyncDisposable
                     standardFlowEnabled = true,
                     directAccessGrantsEnabled = true,
                     redirectUris = new[] { browserOrigin is null ? "http://127.0.0.1/*" : browserOrigin + "/*", "https://localhost/signin-oidc" },
-                    webOrigins = new[] { "+" }
+                    webOrigins = new[] { "+" },
+                    protocolMappers = new[]
+                    {
+                        new
+                        {
+                            name = "console-realm-roles",
+                            protocol = "openid-connect",
+                            protocolMapper = "oidc-usermodel-realm-role-mapper",
+                            config = new Dictionary<string, string>
+                            {
+                                ["claim.name"] = "realm_access.roles",
+                                ["jsonType.label"] = "String",
+                                ["multivalued"] = "true",
+                                ["id.token.claim"] = "true",
+                                ["access.token.claim"] = "true",
+                                ["userinfo.token.claim"] = "true"
+                            }
+                        }
+                    }
                 },
                 new
                 {

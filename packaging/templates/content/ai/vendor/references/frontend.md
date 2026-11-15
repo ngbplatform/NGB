@@ -75,6 +75,10 @@ this actual composition path; no frontend override may grant server-denied right
 
 ## Document Lines
 
+Generate the [interactive field dependencies](interactive-workflows.md) around the
+shared component. A table with readonly calculated columns and empty synchronization
+hooks is not a complete editor when the business requires automatic population.
+
 Import `NgbDocumentLines` and `DocumentLinesColumn`/`DocumentLinesHandle` from
 `@ngbplatform/ui/editor` (also exported at the package root). This is the standard
 tabular editor surface: title, fixed columns, dotted separators, row numbers,

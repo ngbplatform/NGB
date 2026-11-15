@@ -17,6 +17,28 @@ namespace EquipmentInspection.IntegrationTests;
 public sealed class DocumentBatchTests
 {
     [Fact]
+    public async Task Standard_numbers_use_the_supplied_document_year_and_continue_each_year_independently()
+    {
+        await using var host = new InspectionHost();
+        await host.StartAsync();
+        await using var scope = host.Services.CreateAsyncScope();
+        var drafts = Assert.IsAssignableFrom<IDocumentDraftBatchService>(scope.ServiceProvider.GetRequiredService<IDocumentDraftService>());
+        var repository = scope.ServiceProvider.GetRequiredService<IDocumentRepository>();
+        // The application has already resolved these business dates to UTC. This
+        // tests the public draft service, not generic HTTP payload date binding.
+        var priorYear = new DateTime(2024, 12, 31, 12, 0, 0, DateTimeKind.Utc);
+        var nextYear = priorYear.AddDays(1);
+        DateTime[] dates = [priorYear, nextYear, priorYear, nextYear];
+        var ids = await drafts.CreateDraftsAsync(dates.Select(date =>
+            new DocumentDraftCreateRequest(EquipmentDefinitions.InspectionCode, null, date)).ToArray());
+        var created = await repository.GetByIdsAsync(ids);
+
+        Assert.Equal(new[] { "I-2024-000001", "I-2025-000001", "I-2024-000002", "I-2025-000002" },
+            ids.Select(id => created[id].Number));
+        Assert.Equal(dates, ids.Select(id => created[id].DateUtc));
+    }
+
+    [Fact]
     public async Task Draft_batch_rollback_preserves_number_reservations_and_post_batch_is_atomic()
     {
         await using var host = new InspectionHost(configureServices: services =>

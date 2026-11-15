@@ -17,6 +17,7 @@ public sealed class Program
         var builder = WebApplication.CreateBuilder(args);
         var bootstrap = builder.AddNgbBackgroundJobs(PostgresHangfireJobStorageFactory.Create,
             options => options.WorkerCount = 2);
+        builder.Services.ConfigureOperationalConsole(builder.Configuration["Operations:PublicOrigin"]);
         builder.Services.AddNgbRuntime()
             .AddNgbRuntimeStartupValidation()
             .AddNgbPostgres(bootstrap.ApplicationConnectionString)

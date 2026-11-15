@@ -103,6 +103,40 @@ Do not replace that policy or infer authorization from the page title. Health-ch
 network exposure, production HTTPS and the identity-provider login flow remain host
 deployment concerns. A green health result alone does not certify a deployment.
 
+The default dashboard URL ends in `/health-ui`; `/health` is its probe and `/`
+is not a dashboard alias. Configure menu URLs from the same deployment settings
+as the hosts. Test both the HTML and its data requests after a real identity-provider
+login, and assert that one menu click opens exactly one destination.
+
+For explicit local HTTP origins, use the application-owned
+[operational-console configuration](../examples/equipment-inspection/EquipmentInspection.BackgroundJobs/OperationalConsoleConfiguration.cs)
+after `AddNgbWatchdog` or `AddNgbBackgroundJobs`. The starter worker uses the same
+recipe with `Operations:PublicOrigin`. It composes named ASP.NET authentication
+options, preserves the platform's authorization and events, and keeps HTTPS
+defaults when no origin is configured. HTTP is accepted only for loopback origins;
+its authorization-code callback uses GET and matching local cookie settings.
+Do not register the authentication schemes a second time or disable dashboard
+authorization. For Jobs the public hosting options also expose
+`AdminConsolePublicOrigin`; the shared recipe additionally covers Watchdog and
+local HTTP cookies without changing either SDK.
+The [real OIDC login test](../examples/equipment-inspection/EquipmentInspection.IntegrationTests/OperationalConsoleLoginTests.cs)
+starts a disposable Keycloak realm, follows the authorization-code callback and
+checks the protected Health UI/data, the actual worker dashboard and a denied
+non-administrator on both hosts. The separate
+[options tests](../examples/equipment-inspection/EquipmentInspection.IntegrationTests/OperationalConsoleConfigurationTests.cs)
+cover callback/logout origins, cookie settings and rejected nonlocal HTTP origins.
+
+Register the exact public callback origin/path and post-logout destination in
+Keycloak. `RequireHttpsMetadata: false` concerns discovery transport; it does not
+change the callback URI. Verify externally configured HTTPS origins behind a
+proxy separately from local HTTP. Keep deployment feature flags independent of
+permissions and retain the administrative host's `ngb-admin` requirement.
+Configure the console client's realm-role mapper to include `realm_access.roles`
+in its **ID token**, as in the starter's `console-realm-roles` mapper. API access
+tokens carrying roles do not prove that the console's cookie principal receives
+them during OIDC login. Verify an actual administrator login and an unprivileged
+login; do not grant administrative roles to ordinary demo employees to pass this check.
+
 `WatchdogOptions` normalizes route paths and titles and rejects blank required
 values. Custom stylesheet files must exist at the resolved absolute path, application
 base directory or content root. Missing assets fail mapping before startup. The

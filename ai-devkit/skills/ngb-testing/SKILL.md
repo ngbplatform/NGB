@@ -10,6 +10,11 @@ For generated applications, use the [registered-inventory acceptance matrix]({{r
 Run all report endpoints, visible document chains and role scenarios. Test actual
 withdrawal rejection with dependent documents; registration of a handler is not
 proof that its check is invoked.
+Create/edit/calculate/post browser scenarios must operate the real controls. API
+setup is for prerequisites, not a substitute for the action being verified. Assert
+resulting business values and exactly one navigation per click; a visible shell or
+a screenshot does not prove the workflow. Follow the
+[interactive acceptance sequence]({{references}}/interactive-workflows.md#browser-acceptance).
 
 1. Read [verification profiles]({{references}}/testing.md). Inspect `ngb.config.json`,
    discovered production/test projects and the exact source/package versions.

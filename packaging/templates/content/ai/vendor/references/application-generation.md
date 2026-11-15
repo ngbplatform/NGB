@@ -44,6 +44,18 @@ for accounting documents/reports and `Setup & Controls` for settings and control
 These are application-generation conventions, not vocabulary required in the
 user's business specification.
 
+Make Dashboard the first standalone root link, before the business-area groups.
+Register it as a singleton group whose label matches its item, with an earlier
+group ordinal; preserve the starter shell's singleton-to-root mapping. Do not put
+Dashboard inside the first business group. A partial capability example without a
+dashboard is not a complete application's navigation template.
+
+Preserve the user's complete product name in the shell, browser title and login
+branding. Keep the product display name separate from code namespaces and route
+identifiers. Do not shorten it to fit the sidebar; verify the actual rendered name.
+Use only the shell's `navigate` event to perform navigation. `select` also fires for
+the same click and must not perform another router push or `window.open`.
+
 Use `file-text` for every document menu item and `bar-chart` for every report menu
 item, including reports registered as pages. Validate names against the installed
 `NGB_ICON_NAMES`; a renderer fallback is a generation error, not a valid icon.
@@ -71,12 +83,26 @@ labels. Use configured URLs and the existing administrative-host authorization;
 API `/health` is not the Health dashboard. Respect explicitly disabled services
 and feature flags and describe that intentional omission. See
 [application composition](application.md#watchdog-host) and the background-jobs skill.
+The default Watchdog UI path is `/health-ui`; its root is not an implicit dashboard.
+Check the complete external URL and an actual OIDC sign-in, including the callback
+scheme, hostname, port and path. A running worker or healthy probe does not verify
+its interactive dashboard. Never disable authorization to make the link work.
 
 ## UI and traceability
 
 Use the public `NgbDocumentLines` component for tabular document parts. Keep
 calculations, defaults, lookup filters and validation in application-owned code;
 share rendering, paging and row interactions. Follow [the Lines contract](frontend.md#document-lines).
+Generate the field dependency behavior as well as the table: see
+[interactive workflows](interactive-workflows.md). A saved-document calculation
+command does not satisfy a requirement to populate a value when a row is added.
+
+Use the standard numbering policy for demo and user-created documents alike.
+Give seeded records separate stable identities; do not replace business numbers
+with fixture keys. Generate a server-owned document display from singular type
+name, assigned number and business date, and hide that technical display field
+from editing. Business notes remain separate. See
+[document identity and dates](documents.md#document-identity-and-dates).
 
 All reports need meaningful drill-down: grouped figures lead to filtered details,
 and detail rows lead to their source documents or records. Preserve the selected
@@ -116,8 +142,8 @@ outcome and the actual test result:
 | Surface | Required evidence |
 | --- | --- |
 | Reports | Every registered report executes through its authorized endpoint with valid parameters; known figures reconcile; grouped/detail drill-down and source navigation work in the browser |
-| Navigation | Document/report icons exist and follow the convention; menu destinations resolve; Accounting/Setup & Controls are complete for enabled services; forbidden items and direct requests are denied |
-| Documents | Head and Lines survive save/reload; incomplete Draft and invalid Post differ; Post/Unpost/Repost, retry, competing operations and dependency rejection preserve all effects |
+| Navigation | Dashboard is the first root link; the full product name is visible; document/report icons follow the convention; each click navigates once; all destinations resolve; Accounting/Setup & Controls are complete; forbidden items and direct requests are denied |
+| Documents | Head and Lines are entered through the browser, dependent values populate/recalculate, lookup choices respect the parent, and values survive save/reload; incomplete Draft and invalid Post differ; Post/Unpost/Repost, retry, competing operations and dependency rejection preserve all effects |
 | Document Flow | A related document chain is visible in the actual shared UI, with working links and inaccessible nodes excluded |
 | Demo | Every employee role has a usable active identity and assignment; seed is repeatable; each role completes its permitted scenario |
 | Operations/branding | Real worker and Health dashboards are reachable by authorized staff; favicon is linked, served with the correct media type and loaded by the browser |
@@ -126,3 +152,19 @@ A SQL sum or dashboard assertion is not execution of a report endpoint. A graph
 API response is not proof of UI rendering. Component mocks do not prove role
 authorization. Unsupported public contracts, unexecuted checks and missing
 prerequisites remain explicit gaps; do not claim completion from coverage alone.
+
+Use API calls to prepare unrelated prerequisites in browser tests, not to perform
+the workflow named by the test. A create/edit/price/post scenario must use the
+actual fields and action controls. Opening the shell, reloading API-prepared data,
+checking a route or taking a screenshot does not establish the business outcome.
+Verify the report's rows/figures and drill-down result, not just its surrounding
+layout. For external links, assert exactly one new page and successful authorized
+content. Test a real Sidebar; a mock that emits only one of its two events hides
+duplicate navigation. Match test names and acceptance claims to the actions and
+assertions that actually executed.
+
+An unsupported required workflow is an unfinished item, even when documented.
+Do not silently accept it as complete or substitute a manual procedure for an
+enforced business rule. Keep existing SDK limits explicit and separate from
+generation omissions. Exercise each conflicting operation pair, including
+effective-dated value changes, rather than extrapolating from a single race test.

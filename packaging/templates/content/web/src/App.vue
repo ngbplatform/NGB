@@ -8,11 +8,25 @@ const route = useRoute()
 const auth = useAuthStore()
 const access = useAccessStore()
 const menu = useMainMenuStore()
-const nodes = computed(() => menu.groups.map((group) => ({
-  id: group.label,
-  label: group.label,
-  children: group.items.map((item) => ({ id: item.route, label: item.label, route: item.route, icon: item.icon })),
-})))
+const nodes = computed(() => menu.groups.map((group) => {
+  const items = group.items.map((item) => ({
+    id: item.route,
+    label: item.label,
+    route: item.route,
+    icon: item.icon,
+  }))
+  // A one-item group with the same label represents a standalone root link.
+  if (items.length === 1 && items[0].label === group.label) return items[0]
+  return { id: group.label, label: group.label, icon: group.icon, children: items }
+}))
+
+function navigate(target: string): void {
+  if (/^https?:\/\//i.test(target)) {
+    window.open(target, '_blank', 'noopener')
+    return
+  }
+  void router.push(target)
+}
 
 onMounted(async () => {
   await access.load()
@@ -29,8 +43,7 @@ onMounted(async () => {
     :recent="[]"
     :nodes="nodes"
     :selected-id="route.path"
-    @navigate="router.push($event)"
-    @select="(_id, target) => router.push(target)"
+    @navigate="navigate($event)"
     @sign-out="auth.logout()"
   >
     <router-view />

@@ -11,6 +11,10 @@ or inventing movements; distinguish it from a missing handler configuration.
 Choose engines autonomously from [business effects](../../../ai/vendor/references/application-generation.md#choose-effects-before-implementation).
 Use periodic RR for effective-dated values and OR for required operational balances;
 define their correction and reconciliation semantics before writing handlers.
+Independent record mode is supported inside a document posting handler; it is not
+the same thing as invoking the separate independent-write service. Use null recorder
+IDs and explicit compensation for Unpost/Repost. Read the executable document-driven
+example linked from the register reference before declaring this path unsupported.
 
 1. Read [register contracts](../../../ai/vendor/references/registers.md) and the installed
    definition/runtime signatures. Choose the engine and define dimensions,

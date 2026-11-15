@@ -33,6 +33,26 @@ require different records. Reference-register history is append-only; a logical
 deletion is represented by the supported tombstone semantics, not physical removal.
 `IReferenceRegisterIndependentWriteService` is a separate write path; do not use it
 to bypass the document lifecycle or its transaction.
+This is a distinction between write APIs, not a prohibition on document-driven
+registers in `Independent` mode. A document handler can add independent records
+with `RecorderDocumentId: null`; the lifecycle tracks the write and commits it in
+the document transaction. Unpost/Repost require explicit compensation for that
+mode: the engine does not automatically remove independent keys. Do not conclude
+that independent registers cannot be written by documents from the name of the
+separate independent-write service.
+The [document-driven independent RR test](../examples/equipment-inspection/EquipmentInspection.IntegrationTests/DocumentDrivenReferenceRegisterTests.cs)
+uses real Post/Repost/Unpost HTTP actions, reads the global periodic value without
+a recorder, checks Effects, verifies retry and preserves the original history.
+Its explicit withdrawal ends the value; it does not claim to restore a preceding
+price schedule or resolve competing same-date corrections.
+
+For a global effective-dated schedule, specify one unambiguous value per business
+key/effective point, shared locking of competing changes, correction provenance,
+and restoration semantics before implementing the handler. Withdrawing a change
+must not erase a later unrelated change. A tombstone means deletion, not necessarily
+"restore the previously approved price". Test the chosen rule with multiple
+documents, future dates, backdating, same-date corrections, repeated lifecycle
+actions and an injected rollback. Snapshot applied values in consumer documents.
 Read [independent writes and temporal semantics](independent-reference-registers.md)
 for transaction ownership, command identity, periodic buckets, as-of bounds and
 tombstone-aware paging. Its example exercises public services in a trusted fixture;

@@ -17,6 +17,28 @@ public `lazy` entry; the application's unknown-route page composes the public
 layout header. Browser acceptance also checks theme changes, mobile width,
 configured navigation and the public assets emitted by the Vite plugin.
 
+This is a collection of bounded capability examples, not a finished application's
+navigation or field design. In particular, the minimal inspection uses an editable
+name to exercise generic payloads. A generated business application must implement
+its server-owned document presentation and complete dashboard/menu conventions from
+[application generation](../../references/application-generation.md).
+
+`QuotedLinesEditor.vue` composes the real `NgbDocumentLines`, select and input
+controls with an injected quote callback. Its browser component tests cover item
+and date defaults, whole-quantity calculations in minor currency units, missing
+values, retry, stale responses, row identity across reorder/removal, readonly
+controls and stored-value hydration. This fixture does not implement a quote API
+or document persistence; those require the generated application's authorized
+server workflow and browser acceptance described in
+[interactive workflows](../../references/interactive-workflows.md).
+
+`DocumentDrivenReferenceRegisterTests` demonstrates a document handler writing
+an independent periodic register inside real Post/Repost/Unpost HTTP actions.
+It verifies global reads, retry, Effects and append-only history. Its withdrawal
+explicitly ends the value; restoration of an earlier schedule and concurrent
+same-date corrections require a separate business policy. See
+[register selection and lifecycle](../../references/registers.md).
+
 The fixture distinguishes two configurations. `InspectionRuntimeDefinitions`
 adds completion validation. Adding `InspectionWorkflowDefinitions` also registers
 `InspectionWorkflowPostingHandler` in the definition, and the host registers that
@@ -698,6 +720,15 @@ The synthetic sign-in route exists only inside the test host. The fixture does n
 claim external OIDC login or production TLS verification. It does not install a
 monitoring deployment or change platform authorization. See the
 [Watchdog host contract](../../references/application.md#watchdog-host).
+
+Separately, `OperationalConsoleLoginTests` uses a real disposable Keycloak realm
+and loopback Kestrel hosts for both Watchdog and the actual worker entry point.
+It follows the authorization-code callback, verifies administrator UI/data access
+and refuses an ordinary user. The test realm mirrors the starter's ID-token
+realm-role mapper. `OperationalConsoleConfigurationTests` checks public callback
+and logout origins, preservation of existing events, cookie settings and rejection
+of nonlocal HTTP origins. The shared application-owned configuration keeps SDK
+authorization intact; production proxy/TLS verification remains separate.
 
 `PostgresCompositionTests` verifies provider options at host startup, application
 clock preservation and scoped connection ownership without opening a database

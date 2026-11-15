@@ -5,9 +5,11 @@ using NGB.PostgreSql.AspNetCore.DependencyInjection;
 using NGB.PostgreSql.DependencyInjection;
 using NGB.Runtime.DependencyInjection;
 using NGB.Runtime.Hosting;
+using NgbApplication.Hosting;
 
 var builder = WebApplication.CreateBuilder(args);
 var bootstrap = builder.AddNgbBackgroundJobs(PostgresHangfireJobStorageFactory.Create);
+builder.Services.ConfigureOperationalConsole(builder.Configuration["Operations:PublicOrigin"]);
 builder.Services.AddNgbRuntime()
     .AddNgbRuntimeStartupValidation()
     .AddNgbPostgres(bootstrap.ApplicationConnectionString)
