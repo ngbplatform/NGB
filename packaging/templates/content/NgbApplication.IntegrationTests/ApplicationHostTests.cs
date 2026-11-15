@@ -64,6 +64,7 @@ public sealed class ApplicationHostTests
         {
             "/api/main-menu",
             "/api/catalogs/metadata",
+            "/api/documents/metadata",
             "/api/audit/entities/SecurityRole/019a0c12-8000-7000-8000-000000000001"
         })
         {

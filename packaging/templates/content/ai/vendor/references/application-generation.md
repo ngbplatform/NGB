@@ -183,3 +183,7 @@ Do not silently accept it as complete or substitute a manual procedure for an
 enforced business rule. Keep existing SDK limits explicit and separate from
 generation omissions. Exercise each conflicting operation pair, including
 effective-dated value changes, rather than extrapolating from a single race test.
+
+Complete the [executed browser acceptance matrix](browser-acceptance.md) before declaring generation complete.
+The E2E CLI gate must reconcile runtime documents and roles with current-run Playwright
+UI evidence. Passing test counts or a prose checklist alone are insufficient.

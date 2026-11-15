@@ -21,7 +21,7 @@ public sealed class InspectionCompositionContractTests
         var extended = builder.Build().GetDocument(EquipmentDefinitions.InspectionCode);
         Assert.Same(original.Metadata, extended.Metadata);
         Assert.Equal(original.TypeCode, extended.TypeCode);
-        Assert.Equal(typeof(InspectionPostValidator), Assert.Single(extended.PostValidatorTypes));
+        Assert.Equal([typeof(InspectionPostValidator), typeof(ReinspectionSourceValidator)], extended.PostValidatorTypes);
         Assert.Equal(typeof(InspectionNumberingPolicy), extended.NumberingPolicyType);
         Assert.Throws<NgbConfigurationViolationException>(() => builder.ExtendDocument(EquipmentDefinitions.InspectionCode,
             document => document.NumberingPolicy<object>()));
@@ -51,7 +51,7 @@ public sealed class InspectionCompositionContractTests
         var derivation = registry.GetDocumentDerivation(InspectionDerivationDefinitions.ActionCode);
         Assert.Equal(EquipmentDefinitions.InspectionCode, derivation.FromTypeCode);
         Assert.Equal(EquipmentDefinitions.InspectionCode, derivation.ToTypeCode);
-        Assert.Equal(relationship.Code, Assert.Single(derivation.RelationshipCodes));
+        Assert.Equal([relationship.Code, "created_from"], derivation.RelationshipCodes);
         Assert.Null(derivation.HandlerType);
         Assert.Throws<NgbConfigurationViolationException>(() => new InspectionDerivationDefinitions().Contribute(builder));
         Assert.Throws<NgbConfigurationViolationException>(() =>

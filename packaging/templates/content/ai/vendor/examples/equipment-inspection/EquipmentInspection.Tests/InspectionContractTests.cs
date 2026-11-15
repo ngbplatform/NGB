@@ -24,7 +24,7 @@ public sealed class InspectionContractTests
 
         var inspection = registry.GetDocument(EquipmentDefinitions.InspectionCode);
         Assert.Empty(inspection.DraftValidatorTypes);
-        Assert.Equal([typeof(InspectionPostValidator)], inspection.PostValidatorTypes);
+        Assert.Equal([typeof(InspectionPostValidator), typeof(ReinspectionSourceValidator)], inspection.PostValidatorTypes);
         Assert.Null(inspection.PostingHandlerType);
         Assert.Null(inspection.OperationalRegisterPostingHandlerType);
         Assert.Null(inspection.ReferenceRegisterPostingHandlerType);
@@ -82,7 +82,7 @@ public sealed class InspectionContractTests
         var inspection = builder.Build().GetDocument(EquipmentDefinitions.InspectionCode);
 
         Assert.Equal(typeof(InspectionWorkflowPostingHandler), inspection.ReferenceRegisterPostingHandlerType);
-        Assert.Equal([typeof(InspectionPostValidator)], inspection.PostValidatorTypes);
+        Assert.Equal([typeof(InspectionPostValidator), typeof(ReinspectionSourceValidator)], inspection.PostValidatorTypes);
         Assert.Null(inspection.PostingHandlerType);
         Assert.Null(inspection.OperationalRegisterPostingHandlerType);
     }

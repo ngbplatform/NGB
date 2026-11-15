@@ -15,6 +15,7 @@ public static class EquipmentPersistence
     public static IServiceCollection AddEquipmentPersistence(this IServiceCollection services)
     {
         services.AddScoped<IInspectionReader, InspectionReader>();
+        services.AddScoped<IInspectionSourceReader, InspectionSourceReader>();
         services.AddScoped<ICatalogTypeStorage>(provider => new PostgresHeadCatalogTypeStorage(
             provider.GetRequiredService<IUnitOfWork>(),
             EquipmentCategoryDefinitions.TypeCode,

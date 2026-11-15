@@ -3547,7 +3547,7 @@
           "cases": [
             "EquipmentInspection.IntegrationTests.AssistantConfigurationTests.Invalid_selected_provider_and_limits_fail_startup_validation_without_exposing_secrets(provider: \"OpenAI\", key: \"AiAssistant:OpenAI:ApiKey\", value: \"\")",
             "EquipmentInspection.IntegrationTests.AssistantConfigurationTests.Invalid_selected_provider_and_limits_fail_startup_validation_without_exposing_secrets(provider: \"OpenAI\", key: \"AiAssistant:OpenAI:Endpoint\", value: \"http://provider.example.test/v1\")",
-            "EquipmentInspection.IntegrationTests.AssistantConfigurationTests.Invalid_selected_provider_and_limits_fail_startup_validation_without_exposing_secrets(provider: \"OpenAI\", key: \"AiAssistant:OpenAI:Endpoint\", value: \"https://user:example-fixture-key@provider.example.\"···)",
+            "EquipmentInspection.IntegrationTests.AssistantConfigurationTests.Invalid_selected_provider_and_limits_fail_startup_validation_without_exposing_secrets(provider: \"OpenAI\", key: \"AiAssistant:OpenAI:Endpoint\", value: \"https://user:example-fixture-key@provider.example.\"\u00b7\u00b7\u00b7)",
             "EquipmentInspection.IntegrationTests.AssistantConfigurationTests.Invalid_selected_provider_and_limits_fail_startup_validation_without_exposing_secrets(provider: \"OpenAI\", key: \"AiAssistant:OpenAI:Model\", value: \"\")"
           ]
         },
@@ -5722,7 +5722,9 @@
         "ngb-documents"
       ],
       "references": [
-        "references/documents.md"
+        "references/documents.md",
+        "references/interactive-workflows.md",
+        "references/browser-acceptance.md"
       ],
       "validators": [
         "architecture.layers",
@@ -5748,6 +5750,46 @@
           "test": "Derivation_direction_cardinality_and_identity_are_explicit_and_duplicate_definitions_are_rejected",
           "cases": [
             "EquipmentInspection.Tests.InspectionCompositionContractTests.Derivation_direction_cardinality_and_identity_are_explicit_and_duplicate_definitions_are_rejected"
+          ]
+        },
+        {
+          "id": "documents.derivation-definition.source-eligibility",
+          "kind": "integration",
+          "outcome": "Server lookup filters before pagination and revalidates status, equipment scope, permissions and competing source consumption at Post.",
+          "source": "examples/equipment-inspection/EquipmentInspection.IntegrationTests/InspectionSourceTests.cs",
+          "test": "Search_filters_before_paging_and_preview_rechecks_status_scope_and_permission",
+          "cases": [
+            "EquipmentInspection.IntegrationTests.InspectionSourceTests.Search_filters_before_paging_and_preview_rechecks_status_scope_and_permission"
+          ]
+        },
+        {
+          "id": "documents.derivation-definition.source-eligibility-concurrency",
+          "kind": "integration",
+          "outcome": "Server lookup filters before pagination and revalidates status, equipment scope, permissions and competing source consumption at Post.",
+          "source": "examples/equipment-inspection/EquipmentInspection.IntegrationTests/InspectionSourceTests.cs",
+          "test": "Competing_confirmations_consume_one_source_and_unpost_restores_eligibility",
+          "cases": [
+            "EquipmentInspection.IntegrationTests.InspectionSourceTests.Competing_confirmations_consume_one_source_and_unpost_restores_eligibility"
+          ]
+        },
+        {
+          "id": "documents.derivation-definition.source-browser",
+          "kind": "browser",
+          "outcome": "A real browser selects only server-eligible sources, clears the preview and displays denied lookup access for a separate role.",
+          "source": "examples/equipment-inspection/web/tests/e2e/source-eligibility.spec.ts",
+          "test": "server eligibility excludes draft and consumed sources before real lookup selection",
+          "cases": [
+            "[\"\",\"server eligibility excludes draft and consumed sources before real lookup selection\"]"
+          ]
+        },
+        {
+          "id": "documents.derivation-definition.source-browser-denied",
+          "kind": "browser",
+          "outcome": "A real browser selects only server-eligible sources, clears the preview and displays denied lookup access for a separate role.",
+          "source": "examples/equipment-inspection/web/tests/e2e/source-eligibility.spec.ts",
+          "test": "reader cannot load source choices and the browser displays a usable failure",
+          "cases": [
+            "[\"\",\"reader cannot load source choices and the browser displays a usable failure\"]"
           ]
         }
       ]
@@ -10230,9 +10272,9 @@
           "cases": [
             "EquipmentInspection.IntegrationTests.PostgresCompositionTests.Invalid_connection_or_publication_timeout_prevents_host_start(connectionString: \" \", publicationTimeout: 5)",
             "EquipmentInspection.IntegrationTests.PostgresCompositionTests.Invalid_connection_or_publication_timeout_prevents_host_start(connectionString: \"\", publicationTimeout: 5)",
-            "EquipmentInspection.IntegrationTests.PostgresCompositionTests.Invalid_connection_or_publication_timeout_prevents_host_start(connectionString: \"Host=127.0.0.1;Port=1;Database=composition-only;Us\"···, publicationTimeout: -1)",
-            "EquipmentInspection.IntegrationTests.PostgresCompositionTests.Invalid_connection_or_publication_timeout_prevents_host_start(connectionString: \"Host=127.0.0.1;Port=1;Database=composition-only;Us\"···, publicationTimeout: 0)",
-            "EquipmentInspection.IntegrationTests.PostgresCompositionTests.Invalid_connection_or_publication_timeout_prevents_host_start(connectionString: \"Host=127.0.0.1;Port=1;Database=composition-only;Us\"···, publicationTimeout: 4294968)"
+            "EquipmentInspection.IntegrationTests.PostgresCompositionTests.Invalid_connection_or_publication_timeout_prevents_host_start(connectionString: \"Host=127.0.0.1;Port=1;Database=composition-only;Us\"\u00b7\u00b7\u00b7, publicationTimeout: -1)",
+            "EquipmentInspection.IntegrationTests.PostgresCompositionTests.Invalid_connection_or_publication_timeout_prevents_host_start(connectionString: \"Host=127.0.0.1;Port=1;Database=composition-only;Us\"\u00b7\u00b7\u00b7, publicationTimeout: 0)",
+            "EquipmentInspection.IntegrationTests.PostgresCompositionTests.Invalid_connection_or_publication_timeout_prevents_host_start(connectionString: \"Host=127.0.0.1;Port=1;Database=composition-only;Us\"\u00b7\u00b7\u00b7, publicationTimeout: 4294968)"
           ]
         },
         {

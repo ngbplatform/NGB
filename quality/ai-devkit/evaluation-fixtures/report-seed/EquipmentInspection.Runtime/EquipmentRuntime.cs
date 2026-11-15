@@ -59,6 +59,9 @@ public static class EquipmentRuntime
         services.AddScoped<IDocumentReferenceRegisterPostingHandler>(services =>
             services.GetRequiredService<InspectionWorkflowPostingHandler>());
         services.AddScoped<InspectionPostValidator>();
+        services.AddScoped<ReinspectionSourceValidator>();
+        services.AddScoped<IDocumentPostValidator>(services =>
+            services.GetRequiredService<ReinspectionSourceValidator>());
         services.AddScoped<IDocumentPostValidator>(services =>
             services.GetRequiredService<InspectionPostValidator>());
         services.AddScoped<EquipmentUsagePostValidator>();

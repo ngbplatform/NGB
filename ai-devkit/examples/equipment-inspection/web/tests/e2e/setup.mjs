@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { randomUUID } from 'node:crypto'
 import { spawn } from 'node:child_process'
 import { createWriteStream } from 'node:fs'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
@@ -45,6 +46,8 @@ export default async function setup() {
       }
       if (name === 'api' && child.exitCode !== 0) failures.push(`API cleanup failed; see ${privateRoot}/api.log`)
     }
+    delete process.env.NGB_TEST_ORIGIN
+    delete process.env.NGB_TEST_RUN_ID
     delete process.env.NGB_EXAMPLE_ORIGIN
     delete process.env.NGB_EXAMPLE_PASSWORD
     await rm(settingsFile, { force: true })
@@ -95,6 +98,8 @@ export default async function setup() {
       await new Promise(resolve => setTimeout(resolve, 200))
     }
     assert.ok(available, 'Web preview startup timed out.')
+    process.env.NGB_TEST_ORIGIN = origin
+    process.env.NGB_TEST_RUN_ID = randomUUID()
     process.env.NGB_EXAMPLE_ORIGIN = origin
     process.env.NGB_EXAMPLE_PASSWORD = settings.password
     return stop

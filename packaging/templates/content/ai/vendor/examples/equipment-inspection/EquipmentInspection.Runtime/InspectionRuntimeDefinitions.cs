@@ -10,6 +10,7 @@ public sealed class InspectionRuntimeDefinitions : IDefinitionsContributor
         builder.ExtendDocument(EquipmentDefinitions.InspectionCode,
             document => document
                 .AddPostValidator<InspectionPostValidator>()
+                .AddPostValidator<ReinspectionSourceValidator>()
                 .NumberingPolicy<InspectionNumberingPolicy>());
     }
 }

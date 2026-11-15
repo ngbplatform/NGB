@@ -15,6 +15,7 @@ import { assemblyMetadata, resolvedProject } from './resolved-data.mjs'
 import { classifyCoverageExclusion, evaluateCoverage, mergeCoverage, parseCobertura } from './coverage.mjs'
 import { startTestEnvironment } from './environment.mjs'
 import { runLoadProfile } from './performance-runner.mjs'
+import { acceptancePlan, browserAcceptance, prepareAcceptanceActors, readAcceptanceInventory, reconcileAcceptance } from './acceptance.mjs'
 
 function processCheck(id, result) {
   return { id, required: true, state: result.state,
@@ -241,16 +242,28 @@ export async function executeProfile(root, options) {
           if (suite === 'e2e') {
             const path = `${relativeOutput}/browser.json`
             let environment
+            let acceptance
+            let actors = {}
             try {
               environment = await startTestEnvironment(root, { signal: abort.signal })
               checks.push({ id: 'test.e2e.environment', required: true, state: 'passed',
                 message: 'Disposable application and identity services are healthy.', runId: environment.runId })
+              await inspectEvidence('test.e2e.acceptance-plan', 'ai/acceptance.json', async text => {
+                const plan = acceptancePlan(JSON.parse(text))
+                const inventory = await readAcceptanceInventory(environment)
+                const required = reconcileAcceptance(plan, inventory)
+                actors = await prepareAcceptanceActors(environment, inventory)
+                acceptance = { plan, inventory, runId: environment.runId, origin: environment.origin }
+                await writeFile(join(output, 'acceptance-inventory.json'), JSON.stringify(inventory, null, 2), { mode: 0o600 })
+                return { required, inventorySha256: digest(JSON.stringify(inventory)) }
+              })
               await run('test.e2e', 'npm', ['run', 'test:e2e', '--', '--config',
                 resolve(root, config.tests.e2e.config), '--reporter=json'], web, {
                 PLAYWRIGHT_JSON_OUTPUT_FILE: join(output, 'browser.json'),
                 NGB_TEST_RUN_ID: environment.runId,
                 NGB_TEST_ORIGIN: environment.origin,
                 NGB_TEST_PASSWORD: environment.password,
+                NGB_TEST_ACTORS: JSON.stringify(actors),
               })
               if (options.command === 'certify') {
                 const load = await runLoadProfile({ environment, output, env, signal: abort.signal })
@@ -273,6 +286,10 @@ export async function executeProfile(root, options) {
               }
             }
             await inspectEvidence('test.e2e.discovery', path, text => browserTestCounts(JSON.parse(text)))
+            await inspectEvidence('test.e2e.acceptance', path, text => {
+              assert.ok(acceptance, 'Runtime inventory and acceptance plan must be verified before browser execution.')
+              return browserAcceptance(acceptance.plan, acceptance.inventory, JSON.parse(text), acceptance)
+            })
           } else {
             for (const [index, project] of config.tests[suite].entries()) {
               const id = `test.${suite}.${index}`
@@ -319,7 +336,8 @@ export async function executeProfile(root, options) {
       const suites = profile === 'all' || options.command === 'certify' ? ['unit', 'integration', 'e2e'] : [profile]
       for (const suite of suites) {
         if (suite === 'e2e') {
-          required.push('test.e2e.environment', 'test.e2e', 'test.e2e.discovery', 'test.e2e.cleanup')
+          required.push('test.e2e.environment', 'test.e2e', 'test.e2e.discovery', 'test.e2e.cleanup',
+            'test.e2e.acceptance-plan', 'test.e2e.acceptance')
         } else {
           for (const [index] of config.tests[suite].entries()) {
             required.push(`test.${suite}.${index}`, `test.${suite}.${index}.discovery`, `test.${suite}.${index}.coverage-report`)

@@ -12,6 +12,7 @@ import {
   loadNgbWorkCenterPage,
 } from '@ngbplatform/ui/lazy'
 import EntityEditor from './EntityEditor.vue'
+import InspectionSourcePicker from './InspectionSourcePicker.vue'
 import CatalogPage from './pages/CatalogPage.vue'
 import InspectionPage from './pages/InspectionPage.vue'
 import NotFoundPage from './pages/NotFoundPage.vue'
@@ -19,6 +20,7 @@ import NotFoundPage from './pages/NotFoundPage.vue'
 export const router = createRouter({
   history: createWebHistory(),
   routes: [
+    { path: '/inspection-sources/:equipmentId', component: InspectionSourcePicker, props: true },
     { path: '/', redirect: '/catalogs/example.equipment' },
     { path: '/catalogs/:catalogType', component: CatalogPage },
     { path: '/catalogs/:catalogType/:id', component: loadNgbMetadataCatalogEditPage, props: { editorComponent: EntityEditor } },

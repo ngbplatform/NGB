@@ -24,3 +24,18 @@ test('a signed-in user without permission cannot read roles through UI navigatio
   await rejected
   await expect(page.getByRole('button', { name: 'Save', exact: true })).toHaveCount(0)
 })
+
+test('an isolated application administrator signs in with its own role and can open the role editor', async ({ page }) => {
+  const actors = JSON.parse(process.env.NGB_TEST_ACTORS!) as Record<string, string>
+  const username = actors['application.administrator']
+  expect(username).toBeTruthy()
+  const accessResponse = page.waitForResponse(response =>
+    response.url() === `${process.env.NGB_TEST_ORIGIN}/api/security/me/access` && response.status() === 200)
+  await signIn(page, username)
+  const access = await (await accessResponse).json()
+  expect(access.isActive).toBe(true)
+  expect(access.isBootstrapAdmin).toBe(false)
+  expect(access.roles.map((role: { code: string }) => role.code)).toEqual(['application.administrator'])
+  await page.goto(`${process.env.NGB_TEST_ORIGIN}/admin/security/roles/new`)
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeVisible()
+})

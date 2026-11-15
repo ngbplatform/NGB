@@ -15,6 +15,7 @@ public static class EquipmentPersistence
     public static IServiceCollection AddEquipmentPersistence(this IServiceCollection services)
     {
         services.AddScoped<IInspectionReader, InspectionReader>();
+        services.AddScoped<IInspectionSourceReader, InspectionSourceReader>();
         services.AddScoped<IEquipmentUsageReader, EquipmentUsageReader>();
         services.AddScoped<IEquipmentConditionReader, EquipmentConditionReader>();
         services.AddScoped<IEquipmentServiceReader, EquipmentServiceReader>();

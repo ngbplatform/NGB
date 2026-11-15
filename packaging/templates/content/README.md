@@ -1,9 +1,9 @@
 # NgbApplication
 
-An independent NGB application: API, one-shot Migrator, Background Jobs and
-Vue. It uses official NuGet/npm packages. No NGB repository checkout is required.
+An independent NGB application: API, one-shot Migrator, Background Jobs, Watchdog
+and Vue. It uses official NuGet/npm packages. No NGB repository checkout is required.
 The initial UI provides users, roles, permission editing, role audit history and
-Work Center. Notes and Attachments are disabled by default.
+Work Center. Notes and Attachments are enabled by default in the local deployment.
 
 ## AI Development Kit and verification
 
@@ -50,6 +50,14 @@ The complete test profile checks the full compiled backend source inventory at
 functions and statements. Missing tests, skipped tests and missing required
 evidence fail the profile. Reports and logs are under `.ngb/reports/<run-id>/`.
 
+Maintain `ai/acceptance.json` as documents and roles are added. The E2E gate compares
+it with the running application's document metadata and active roles, provisions
+one isolated user per role, and requires current-run Playwright UI evidence for
+every mandatory scenario. See `ai/vendor/references/browser-acceptance.md` and the
+supplied `web/tests/e2e/acceptance.ts` helper. The starter already exposes the
+standard document API; extend its definitions and reuse its controller instead of
+registering another controller with identical routes.
+
 Integration/E2E use disposable PostgreSQL and Keycloak resources. They do not use
 the deployment `.env`. Docker with Compose and Playwright Chromium are required
 for browser tests; the CLI installs the browser into its isolated execution home.
@@ -58,8 +66,8 @@ a successful build or unit profile alone does not establish certification.
 
 Installed reference examples live in `ai/vendor/examples/`. Copy an example to a
 separate directory before restoring/building it, and follow its README. The
-document example records the SDK's unsupported zero-effect Post; it does not
-change the platform lifecycle or introduce a fictitious effect handler.
+document example exercises standard lifecycle actions, workflow state and genuine
+register effects. It does not introduce fictitious movements solely to allow Post.
 
 ## Start locally
 

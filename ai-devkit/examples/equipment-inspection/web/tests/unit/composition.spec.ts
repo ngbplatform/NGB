@@ -35,6 +35,9 @@ vi.mock('@ngbplatform/ui', () => ({
   useCommandPaletteStore: () => ({ open: state.openPalette }),
   useCommandPaletteHotkeys: vi.fn(),
   NgbCommandPaletteDialog: defineComponent({ render: () => null }),
+  ApiError: class extends Error {},
+  httpGet: vi.fn(),
+  NgbLookup: defineComponent({ render: () => null }),
   createAuthGuard: state.guard,
   getCatalogPage: state.catalog,
   getDocumentPage: state.document,
@@ -190,7 +193,7 @@ it('composes head-only documents without inventing tabular data', async () => {
 it('guards list and direct editor routes with the public authentication guard', async () => {
   await import('../../src/router')
   expect(state.createRouter.mock.lastCall![0].routes.map((route: { path: string }) => route.path)).toEqual([
-    '/', '/catalogs/:catalogType', '/catalogs/:catalogType/:id', '/documents/:documentType', '/documents/:documentType/:id',
+    '/inspection-sources/:equipmentId', '/', '/catalogs/:catalogType', '/catalogs/:catalogType/:id', '/documents/:documentType', '/documents/:documentType/:id',
     '/documents/:documentType/:id/effects', '/documents/:documentType/:id/flow', '/documents/:documentType/:id/print',
     '/reports/:reportCode', '/admin/accounting/period-closing', '/work-center', '/settings/notifications', '/:pathMatch(.*)*',
   ])

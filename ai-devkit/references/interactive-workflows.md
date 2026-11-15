@@ -142,3 +142,24 @@ with stubs cannot establish editing, focus, geometry or navigation behavior.
 Record browser outcomes separately from API and component tests. A readonly
 computed field passing a unit assertion does not prove that the user can populate
 the document. A successful backend calculator test does not prove its UI is wired.
+
+## Executable source eligibility
+
+See `EquipmentInspection.Api/InspectionSourcesController.cs`,
+`EquipmentInspection.PostgreSql/InspectionSourceReader.cs`,
+`EquipmentInspection.Runtime/ReinspectionSourceValidator.cs` and
+`web/src/InspectionSourcePicker.vue` in the equipment-inspection example. The real
+HTTP/PostgreSQL tests are `InspectionSourceTests`; the browser uses the actual
+lookup, identity server and API in `web/tests/e2e/source-eligibility.spec.ts`.
+
+This bounded workflow permits a posted inspection of the selected equipment to
+have one posted follow-up. Drafts do not consume the source. Search and preview
+share the same server predicate; filtering precedes stable pagination. Post locks
+the source and rechecks eligibility, excluding the current document on Repost.
+Concurrent confirmations cannot both consume the source; Unpost releases it.
+The endpoint requires both source View and target Create. Adapt business status,
+remaining quantity, tenant/customer scope and uniqueness to the generated workflow;
+never copy a rule from an unrelated business. An authorized lookup is guidance,
+not a reservation or authorization to post later.
+
+Use the [executed browser matrix](browser-acceptance.md) for the generated app.

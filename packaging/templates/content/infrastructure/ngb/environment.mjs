@@ -126,6 +126,10 @@ export function testCompose(config, { runId, applicationSha256, postgresPassword
           KeycloakSettings__RequireHttpsMetadata: 'false',
           KeycloakSettings__ClientIds__0: 'ngb-web',
           KeycloakSettings__ClientIds__1: 'ngb-load',
+          KeycloakAdminClientSettings__BaseUrl: 'http://keycloak:8080',
+          KeycloakAdminClientSettings__Realm: 'ngb-test',
+          KeycloakAdminClientSettings__ClientId: 'ngb-acceptance-admin',
+          KeycloakAdminClientSettings__ClientSecret: digest(`identity:${postgresPassword}`),
           FeatureManagement__Mcp: 'false',
           FeatureManagement__AiAssistant: 'false',
           FeatureManagement__Attachments: 'false',
@@ -233,11 +237,15 @@ export async function startTestEnvironment(root, { signal } = {}) {
         { clientId: 'ngb-web', publicClient: true, standardFlowEnabled: true,
           redirectUris: [`${origin}/*`], webOrigins: [origin], attributes: { 'pkce.code.challenge.method': 'S256' } },
         { clientId: 'ngb-load', publicClient: true, standardFlowEnabled: false, directAccessGrantsEnabled: true },
+        { clientId: 'ngb-acceptance-admin', publicClient: false, standardFlowEnabled: false,
+          serviceAccountsEnabled: true, secret: digest(`identity:${postgresPassword}`) },
       ],
-      users: ['administrator', 'reader'].map(username => ({ username, firstName: 'Test', lastName: username,
+      users: [...['administrator', 'reader'].map(username => ({ username, firstName: 'Test', lastName: username,
         email: `${username}@example.test`, enabled: true, emailVerified: true,
         realmRoles: username === 'administrator' ? ['ngb-admin'] : [],
         credentials: [{ type: 'password', value: password, temporary: false }] })),
+        { username: 'service-account-ngb-acceptance-admin', enabled: true,
+          serviceAccountClientId: 'ngb-acceptance-admin', clientRoles: { 'realm-management': ['manage-users', 'view-users'] } }],
     }
     // The container's non-root identity must read this file. Its parent staging
     // directory remains private (0700), and these credentials exist only for this run.

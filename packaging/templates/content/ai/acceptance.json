@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "documents": [],
+  "roles": ["ngb-admin", "application.administrator"],
+  "cases": []
+}
