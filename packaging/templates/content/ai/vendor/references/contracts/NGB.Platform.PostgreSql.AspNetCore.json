@@ -2,11 +2,11 @@
   "schemaVersion": 1,
   "package": "NGB.Platform.PostgreSql.AspNetCore",
   "version": "3.4.0",
-  "packageSha256": "769c786fb82627880d58ae532e1f7c24b69727c9501e43e666403f6abd915137",
+  "packageSha256": "cda2b1a085a2d509ada25602a0e9ec96c804fec1a64a9a9e5fddc5714bba8a93",
   "assembly": {
     "name": "NGB.PostgreSql.AspNetCore",
     "version": "3.0.0.0",
-    "sha256": "3051f460538d51c6f2d5cf4063be8efb4298cf217068b3f3dad1ec1c4ec67133"
+    "sha256": "be169eb3a004da1cd2120d182b5ffcd685ac09298c9682b2bbb185b985d3e5bf"
   },
   "contractSha256": "0d40d1a284242d921fb9b345b8b86566d626aa9b33ceda91ec5996ce210f298e",
   "types": [

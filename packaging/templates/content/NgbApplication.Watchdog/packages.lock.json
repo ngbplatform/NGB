@@ -6,7 +6,7 @@
         "type": "Direct",
         "requested": "[3.4.0, 3.4.0]",
         "resolved": "3.4.0",
-        "contentHash": "YqMYpD74spJhsZci3YfsuKpaLr5LeEbnrgvvG/alhvK+Ra6L0C+F5CJi052v/0sj3Sneb1iOonPAgC0Xbrzh1g==",
+        "contentHash": "28o1k3mHSMKipxHw2L84Dtg+85tLbXmyxWdqycWxIn33ltfd4lvsKbjrNtumVL6zkhDq3k8j7Ito59O8ICQtQw==",
         "dependencies": {
           "AspNetCore.HealthChecks.UI": "9.0.0",
           "AspNetCore.HealthChecks.UI.InMemory.Storage": "9.0.0",
@@ -297,7 +297,7 @@
       "NGB.Platform.Hosting.AspNetCore": {
         "type": "Transitive",
         "resolved": "3.4.0",
-        "contentHash": "PmR91Bx4rMj0OLzamlVSRNud6DE6iBEeBlw4D1cdPmt5hp3ZmkRGmSZWXLyTJvKeXAGJdING6s7cJSctNbO5/Q==",
+        "contentHash": "9Cpt+Z/pN6OJJu2q3u+zYKI0Yc9tP64da69bNPi8OY7kxXbixIWz4N5Hhv0UNoLIviTasv9NxDrB2RcXb0jmNw==",
         "dependencies": {
           "AspNetCore.HealthChecks.UI.Client": "9.0.0",
           "IdentityModel": "5.2.0",
@@ -310,7 +310,7 @@
       "NGB.Platform.Tools": {
         "type": "Transitive",
         "resolved": "3.4.0",
-        "contentHash": "T6XzpY0AkjGrny2oDAV0OUuwyyYRsqqk+7qlN6mqpiSKgr6Skp4TVW9IfodUUYQZtPqvm1aP7xCAVKU5XdYyEQ==",
+        "contentHash": "oqlQOrnzAZk+B1ZipEtnxlWwF2i9urCCFYEpK1MOBmYjfXfr4sECXSDb2KGQ2jTNdcli48boXPFcPHzh1Y/YQg==",
         "dependencies": {
           "FastEnum": "2.0.8"
         }

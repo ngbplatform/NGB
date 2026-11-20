@@ -31,7 +31,7 @@
         "type": "Direct",
         "requested": "[3.4.0, 3.4.0]",
         "resolved": "3.4.0",
-        "contentHash": "r9Wux/7n5nJnS20XOKodLetObFY44pYzCo2dnV2CgKeSyjUrn2TOWpmFbPUnluvq09OByv9vAX09D4uQnlYiJw==",
+        "contentHash": "zg23/PDwm388sbKTbc7SQx1mpOqlAsM/U/4inuPHA//0zDV5Yo55iJe7oVGanYvLaN2EXmazlbmrh6lMHgbMXw==",
         "dependencies": {
           "NGB.Platform.Contracts": "3.4.0",
           "NGB.Platform.Core": "3.4.0"
@@ -41,7 +41,7 @@
         "type": "Direct",
         "requested": "[3.4.0, 3.4.0]",
         "resolved": "3.4.0",
-        "contentHash": "N1+NKJzAQQnAvJZIGpO7P63IUg/G/YeTB0xuv9FHSQCceHdpnPRvJRZU6/kis0LbQIN1qTmWWmm8BbaOViLQoA==",
+        "contentHash": "80iQ3l+qVhG5YH0uf+C/zu4i/aUWA/ggl5Zg3qlURo+0diNBQL2ckC+spNsii85AipUOfX19w+UnuoVQ0a9Bbg==",
         "dependencies": {
           "NGB.Platform.Tools": "3.4.0"
         }
@@ -50,7 +50,7 @@
         "type": "Direct",
         "requested": "[3.4.0, 3.4.0]",
         "resolved": "3.4.0",
-        "contentHash": "FyTO5JHnPrdwIxLSRx5LpOdxySiETM5rbWPdgEvI5eW8SwXHmStnq5FtKMjNAxtS3bryBwU7T/IH9Q/bN0N80Q==",
+        "contentHash": "2lg0UjOt+JQO2ojSaIVojwVHFfAEKbZ3Q5DZVRxQsBZrHtNer5oPtyI7IFpKBaGLL288EeHtvxAjvTkl7LoSfw==",
         "dependencies": {
           "NGB.Platform.Tools": "3.4.0"
         }
@@ -59,7 +59,7 @@
         "type": "Direct",
         "requested": "[3.4.0, 3.4.0]",
         "resolved": "3.4.0",
-        "contentHash": "LT0EWkwu48tXJNNgEqWqSRYSOClUgnR0ObrFHsgGFn1UBTMhpWaroT84YLbsljjjXC3skOZLrv2jsiYluNjl0g==",
+        "contentHash": "xTGhy22OLKUXR4UX+fzcNOnHljsymQf+MGl9MlppN4+nlZ7SSuu154mIa+WAlgZFnORwYirmSaoBs4DAdPLyyg==",
         "dependencies": {
           "NGB.Platform.Accounting": "3.4.0",
           "NGB.Platform.Attachments": "3.4.0",
@@ -76,7 +76,7 @@
         "type": "Direct",
         "requested": "[3.4.0, 3.4.0]",
         "resolved": "3.4.0",
-        "contentHash": "j5qRrqjNj6eQq9CflB0HO5s+6LvZYBQKY/hZOrpemt3HPWj1kkpDyx3LXMWMlkH8WgVO4SyUy3en6MUQUpKBPA==",
+        "contentHash": "KGKDdl+KafxSpInyM6zEfALJKvWq/rHtwaFS/Z3Rba2e68dEny/XkTt4xORLubb2gc5iw4GnVPujON+zXmX+aQ==",
         "dependencies": {
           "Microsoft.Extensions.Caching.Memory": "10.0.14",
           "Microsoft.Extensions.Configuration": "10.0.14",
@@ -264,7 +264,7 @@
       "NGB.Platform.Accounting": {
         "type": "Transitive",
         "resolved": "3.4.0",
-        "contentHash": "zkHo0rKvR8BUYjlDZhKv6K3hNTtgJUD/+K5U4ShLsT/QGA7f1k/Eo14YOQ12hYxZNQgB3ki98eBtcU9aZJL9/g==",
+        "contentHash": "1lW31jwX/LnP5nRdolTx0hR6vLmqyD7Jy/G7sCdN5NhFl8Rb5/vYyyK41Jx1nz+PjP9gfeq6KUBq6el/V9xtYg==",
         "dependencies": {
           "NGB.Platform.Core": "3.4.0",
           "NGB.Platform.Tools": "3.4.0"
@@ -273,7 +273,7 @@
       "NGB.Platform.Attachments": {
         "type": "Transitive",
         "resolved": "3.4.0",
-        "contentHash": "gX57VoN2HYsPWNs9Dvx4swa1pyf4PH6xvlQsGPbpfH89fUW5Ew349zQvNP+OlXgCVOUn7k1RTIVg7Y/DYKyFuQ==",
+        "contentHash": "Ed037p3FtGHvWntjOZtx5K55ZheIqqbgbggw8cECz7dd0jkLL2/cSS5ZD+9vgxleCy5PKjN9fuZsEaiCcKUgJg==",
         "dependencies": {
           "NGB.Platform.Contracts": "3.4.0",
           "NGB.Platform.Tools": "3.4.0"
@@ -282,7 +282,7 @@
       "NGB.Platform.Definitions": {
         "type": "Transitive",
         "resolved": "3.4.0",
-        "contentHash": "FlJlKettL4L73W+RfBFSVjvASmcCW6qBSjJ5/xt09ikxeWNP8WxDs7z05pJLa/nnBtAqFKg2wgC2q0hVzSgzQg==",
+        "contentHash": "bIgMDs/uoRlJ49EtFVmXF/m+Mz8KH1dnd0nGhEfKLZZkyuLrfvCx6x3tmSEfwJpUFjaKj392SKml1LsPtp72Hg==",
         "dependencies": {
           "NGB.Platform.Accounting": "3.4.0",
           "NGB.Platform.Core": "3.4.0",
@@ -295,7 +295,7 @@
       "NGB.Platform.Metadata": {
         "type": "Transitive",
         "resolved": "3.4.0",
-        "contentHash": "WImTFreSb7ljTR0etHCxzZZQF9Wbe/F6BTguNmml9vLVbwNwonq+w0lJ2a3jYFbuiCuNibfwfLY+vB5kmfCAmw==",
+        "contentHash": "cTKKzGGhxQdiGw0QsHg2MkkXVvbuBV3P/r2gyAGMgSkiqNexWBMAz8v7jk2EAQUL35LK6NKc+eb5ERE1HWEoSw==",
         "dependencies": {
           "NGB.Platform.Core": "3.4.0",
           "NGB.Platform.Tools": "3.4.0"
@@ -304,7 +304,7 @@
       "NGB.Platform.Notes": {
         "type": "Transitive",
         "resolved": "3.4.0",
-        "contentHash": "CJq7M7FNColmicSvvcbfaPE27+hwQQB281YdrGcr32WxW8TC1BlKp1dsPRjHppMBJNAgDELTVhtpREn54FYXIQ==",
+        "contentHash": "+x8Q9WZPLP5aDcQZJ+4achT23/jcKiu2uwoPC3u83I8FIo1od6S1+H4hM3egL8zQf3NDHwGh2OjjNYuhe/IMQA==",
         "dependencies": {
           "NGB.Platform.Contracts": "3.4.0",
           "NGB.Platform.Tools": "3.4.0"
@@ -313,7 +313,7 @@
       "NGB.Platform.OperationalRegisters": {
         "type": "Transitive",
         "resolved": "3.4.0",
-        "contentHash": "OApPbNBuOS4lLR1ABK4lDh9L1KuenXP3RoFgqHUAgDzTCpBBzDd4xTKIUHvX22VAA2ZTCVMYaZpz6EyDIy32LA==",
+        "contentHash": "KrLHitgrvf9L9mWrMAOGH2ZrGeU96lvXgtELMDvMxXCssWfJW18Fez5QOfZuouZsqX68AuiYZZVRruBnmObtIg==",
         "dependencies": {
           "NGB.Platform.Core": "3.4.0",
           "NGB.Platform.Tools": "3.4.0"
@@ -322,7 +322,7 @@
       "NGB.Platform.ReferenceRegisters": {
         "type": "Transitive",
         "resolved": "3.4.0",
-        "contentHash": "9GyHy2hZmYvzt/pXMuEDMAUFAKGv/haJtWJiGhXlEnopuXSqkp2W7LzHMZNDVS9c8G/4JVW1A2hAEl27L+eXjA==",
+        "contentHash": "sBxNDhXx1re9bt0z+end75dkQsYfwhDkocyOcqVWtlinUPZSPRrT/N9wDEsQHMoV6aarp2S+Zd04wqlg+ZoCIQ==",
         "dependencies": {
           "NGB.Platform.Core": "3.4.0",
           "NGB.Platform.Metadata": "3.4.0",
@@ -332,7 +332,7 @@
       "NGB.Platform.Tools": {
         "type": "Transitive",
         "resolved": "3.4.0",
-        "contentHash": "T6XzpY0AkjGrny2oDAV0OUuwyyYRsqqk+7qlN6mqpiSKgr6Skp4TVW9IfodUUYQZtPqvm1aP7xCAVKU5XdYyEQ==",
+        "contentHash": "oqlQOrnzAZk+B1ZipEtnxlWwF2i9urCCFYEpK1MOBmYjfXfr4sECXSDb2KGQ2jTNdcli48boXPFcPHzh1Y/YQg==",
         "dependencies": {
           "FastEnum": "2.0.8"
         }
