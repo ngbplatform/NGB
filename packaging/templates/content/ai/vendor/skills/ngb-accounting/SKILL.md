@@ -10,6 +10,9 @@ document that only needs another supported effect engine.
    dimension, currency, period and reversal semantics in the resolved SDK.
 2. Define expected debit/credit entries and report totals before implementation.
    Implement the public per-document strategy in the lifecycle transaction.
+   Reconcile issued amounts with partial and full settlement. Allocate partial
+   adjustments at currency precision and verify the final residual against the
+   frozen original. Follow the [cross-document checks](../../references/business-outcome-checks.md#cross-document-processes).
 3. Compose the supported authorized GJE/period services for interactive workflows;
    keep trusted system operations out of ordinary client endpoints.
 4. Test balanced results, closed-period refusal, idempotency, concurrent versions,

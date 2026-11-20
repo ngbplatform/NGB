@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { acceptancePlan, browserAcceptance, readAcceptanceInventory, reconcileAcceptance } from '../../packaging/templates/content/infrastructure/ngb/acceptance.mjs'
-import { reconcileSurfaces, scenarioOutcomes, validateOutcomes, verifyOutcomeProof } from '../../packaging/templates/content/infrastructure/ngb/acceptance-outcomes.mjs'
+import { businessReferences, reconcileSurfaces, reconcileWorkflows, scenarioOutcomes, validateOutcomes, verifyOutcomeProof } from '../../packaging/templates/content/infrastructure/ngb/acceptance-outcomes.mjs'
 
 function fixture() {
   const inventory = {
@@ -25,6 +25,8 @@ function fixture() {
   const plan = {
     schemaVersion: 2, documents: [{ type: 'example.order', sourceDriven: false, priced: false, asynchronous: false }],
     roles: inventory.roles, surfaces, cases,
+    workflows: { flows: [], chains: [], settlements: [], adjustments: [], historicalGroups: [],
+      concurrentWrites: [], replays: [], dashboards: [], metrics: [] },
     requirements: [{ id: 'business-1', description: 'Find and correct an order, retaining its audit trail.',
       scenarios: [...new Set(cases.map(item => item.scenario))], cases: cases.map(item => item.id) }],
   }
@@ -52,7 +54,8 @@ test('a denial cannot stand in for allowed withdrawal and one cleared line canno
   for (const scenario of ['lifecycle', 'source-change-clear', 'async-race', 'pricing', 'temporal-restoration',
     'prerequisite-withdrawal', 'dashboard-complete', 'historical-as-of', 'numbering-date']) {
     const entry = { id: scenario, outcomes: scenarioOutcomes[scenario] }
-    verifyOutcomeProof(entry, { outcomes: entry.outcomes })
+    verifyOutcomeProof(entry, { outcomes: entry.outcomes,
+      evidence: { 'metric-scope': ['metric-drilldown'], 'reconciled-total': ['figure'] } })
     for (const missing of entry.outcomes) {
       assert.throws(() => verifyOutcomeProof(entry, { outcomes: entry.outcomes.filter(item => item !== missing) }),
         /every expected outcome/)
@@ -132,7 +135,8 @@ test('schema 2 binds the named outcomes to each successful current-run browser c
       results: [{ status: 'passed', retry: 0, attachments: [{ name: 'ngb-acceptance', contentType: 'application/json',
         body: Buffer.from(JSON.stringify({ schemaVersion: 2, ...context, caseId: entry.id, role: entry.role,
           subject: 'subject', url: context.origin, interactions: 2, assertions: entry.outcomes.length,
-          outcomes: entry.outcomes })).toString('base64') }] }] }],
+          outcomes: entry.outcomes, evidence: { figures: ['figure'], 'source-target': ['record'],
+            'opened-target': ['record'] } })).toString('base64') }] }] }],
   })) }], stats: { expected: plan.cases.length, unexpected: 0, flaky: 0, skipped: 0 } }
   assert.equal(browserAcceptance(plan, inventory, report, context).cases.length, plan.cases.length)
   const attachment = report.suites[0].specs[3].tests[0].results[0].attachments[0]
@@ -140,6 +144,98 @@ test('schema 2 binds the named outcomes to each successful current-run browser c
   proof.outcomes = ['reason']
   attachment.body = Buffer.from(JSON.stringify(proof)).toString('base64')
   assert.throws(() => browserAcceptance(plan, inventory, report, context), /every expected outcome/)
+})
+
+test('every persisted business reference requires its own graph evidence, including an unmirrored line lookup', () => {
+  const { inventory, plan } = fixture()
+  const metadata = inventory.documents[0]
+  const lookup = { kind: 'document', documentTypes: ['source'] }
+  metadata.form = { sections: [{ rows: [{ fields: [
+    { key: 'base_id', lookup, mirroredRelationship: { relationshipCode: 'based_on' } },
+    { key: 'info_id', lookup }, { key: 'customer_id', lookup: { kind: 'catalog' } },
+  ] }] }] }
+  metadata.parts = [{ partCode: 'lines', list: { columns: [{ key: 'source_id', lookup }] } }]
+  const informational = [{ field: 'info_id', reason: 'Optional comparison with another document.' }]
+  plan.documents[0].informationalReferences = informational
+  assert.deepEqual(businessReferences(metadata, informational), ['base_id', 'lines.source_id'])
+  assert.throws(() => businessReferences(metadata, [{ ...informational[0], field: 'base_id' }]), /mirrored/)
+  assert.throws(() => businessReferences(metadata, [{ ...informational[0], field: 'missing' }]), /Unknown/)
+  assert.throws(() => reconcileAcceptance(plan, inventory), /Missing document-flow proof.*base_id/)
+  const entry = { ...plan.cases[0], id: 'linked', title: 'source links', scenario: 'document-flow',
+    outcomes: [...scenarioOutcomes['document-flow'], 'reference:base_id'] }
+  plan.cases.push(entry)
+  plan.requirements[0].cases.push(entry.id)
+  plan.requirements[0].scenarios.push(entry.scenario)
+  plan.workflows.flows.push(plan.requirements[0].id)
+  assert.throws(() => reconcileAcceptance(plan, inventory), /lines.source_id/)
+  assert.throws(() => verifyOutcomeProof(entry, { outcomes: entry.outcomes,
+    evidence: { 'linked-records': ['flow'], 'linked-target': ['record'], 'reference:base_id': ['flow'] } }), /reference:base_id/)
+})
+
+test('journal reversal remains mandatory for legacy and corrected metadata', () => {
+  for (const canUnpost of [false, true]) {
+    const { inventory, plan } = fixture()
+    inventory.documents[0] = { documentType: 'general_journal_entry', capabilities: { canPost: true, canUnpost } }
+    plan.documents[0].type = 'general_journal_entry'
+    plan.surfaces[0] = 'document:general_journal_entry'
+    for (const entry of plan.cases.filter(item => item.target.startsWith('document:'))) entry.target = plan.surfaces[0]
+    assert.throws(() => reconcileAcceptance(plan, inventory), /general_journal_entry\/reversal/)
+    const journal = plan.cases.find(entry => entry.scenario === 'lifecycle')
+    journal.scenario = 'reversal'
+    journal.outcomes = scenarioOutcomes.reversal
+    plan.requirements[0].scenarios = plan.requirements[0].scenarios.map(name => name === 'lifecycle' ? 'reversal' : name)
+    reconcileAcceptance(plan, inventory)
+  }
+})
+
+test('summary and empty diagnostic cases only count for the corresponding built-in report', () => {
+  for (const [code, scenario] of [['accounting.cash_flow_statement_indirect', 'summary-report'], ['accounting.consistency', 'diagnostic-report']]) {
+    const { inventory, plan } = fixture()
+    const report = plan.cases.find(entry => entry.scenario === 'report')
+    report.scenario = scenario
+    assert.throws(() => reconcileSurfaces(plan, inventory), /Missing surface acceptance/)
+    inventory.reports[0].reportCode = code
+    plan.surfaces[2] = report.target = `report:${code}`
+    reconcileSurfaces(plan, inventory)
+  }
+})
+
+test('each dashboard role and each competing or replayable operation has evidence of its own', () => {
+  const { inventory, plan } = fixture()
+  inventory.menu[0].route = '/dashboard'
+  assert.throws(() => reconcileWorkflows(plan, inventory), /Missing role coverage/)
+  const dashboard = { ...plan.cases.at(-1), id: 'dashboard-admin', scenario: 'dashboard-access' }
+  plan.cases.push(dashboard)
+  plan.requirements[0].cases.push(dashboard.id)
+  plan.requirements[0].scenarios.push(dashboard.scenario)
+  assert.throws(() => reconcileWorkflows(plan, inventory), /workflows.dashboards/)
+  plan.workflows.dashboards.push(plan.requirements[0].id)
+  inventory.roles.push('reader')
+  assert.throws(() => reconcileWorkflows(plan, inventory), /orders\/reader/)
+  plan.cases.push({ ...dashboard, id: 'dashboard-reader', role: 'reader' })
+  plan.requirements[0].cases.push('dashboard-reader')
+  reconcileWorkflows(plan, inventory)
+  for (const [kind, scenario] of [['replays', 'request-replay'], ['concurrentWrites', 'concurrent-operation'], ['metrics', 'dashboard-complete']]) {
+    const duplicate = structuredClone(plan)
+    duplicate.cases.push({ ...dashboard, id: 'one-test', scenario })
+    for (const id of ['first', 'second']) {
+      duplicate.workflows[kind].push(id)
+      duplicate.requirements.push({ id, scenarios: [scenario], cases: ['one-test'] })
+    }
+    assert.throws(() => reconcileWorkflows(duplicate, inventory), /dedicated/)
+  }
+})
+
+test('financial, navigation and graph outcomes reject generic assertions and mismatched check types', () => {
+  for (const [outcome, check] of [['remaining-balance', 'figure'], ['final-residual', 'figure'], ['original-group-total', 'figure'],
+    ['linked-chain', 'chain'], ['source-target', 'record'], ['metric-scope', 'metric-drilldown'], ['competing-requests', 'concurrent'],
+    ['same-request', 'replay'], ['conflicting-request', 'conflicting-replay']]) {
+    const entry = { id: 'expected', outcomes: [outcome] }
+    for (const value of [undefined, check, ['text']]) {
+      assert.throws(() => verifyOutcomeProof(entry, { outcomes: entry.outcomes, evidence: { [outcome]: value } }), /Use the/)
+    }
+    verifyOutcomeProof(entry, { outcomes: entry.outcomes, evidence: { [outcome]: [check] } })
+  }
 })
 
 test('full inventory reads actual catalogs and reports and rejects unavailable enabled sources', async t => {

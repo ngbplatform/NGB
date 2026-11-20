@@ -59,9 +59,14 @@ test('server eligibility excludes draft and consumed sources before real lookup 
 
   const narrowed = searchResults(available.number)
   await lookup.fill(available.number)
-  expect((await narrowed).ok()).toBe(true)
-  await expect(page.getByRole('option')).toHaveCount(1)
+  const narrowedResponse = await narrowed
+  expect(narrowedResponse.ok()).toBe(true)
+  expect((await narrowedResponse.json()).map((item: { id: string }) => item.id)).toEqual([available.id])
+  const option = page.getByRole('option', { name: available.number, exact: true })
+  await expect(option).toBeVisible()
+  await expect(lookup).toHaveAttribute('aria-expanded', 'true')
   await lookup.press('ArrowDown')
+  await expect(lookup).toHaveAttribute('aria-activedescendant', (await option.getAttribute('id'))!)
   await lookup.press('Enter')
   await proof.text(page.getByRole('status'), 'Confirmed safety check')
   await page.getByRole('button', { name: 'Clear', exact: true }).click()

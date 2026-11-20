@@ -168,9 +168,14 @@ inaccessible document types and their edges. Use explicit depth and node bounds.
 A bidirectional relationship persists both directions; this is separate from a
 head reference field's `MirroredDocumentRelationshipMetadata`. A mirrored field
 must be a Guid document lookup on the head table with a registered relationship
-and compatible endpoint types. The fixture checks rejection of an invalid String
-mirror at startup; it does not claim field synchronization acceptance for that
-invalid definition.
+and compatible endpoint types. In the provider migration, call
+`ngb_install_mirrored_document_relationship_trigger(table_name, column_name, relationship_code)`
+after creating the head column. Installing the trigger covers subsequent writes.
+For a new mirror over an existing populated column, backfill the matching
+relationships idempotently, preserving provenance, and test an upgrade with existing data.
+The reference application's optional `source_inspection_id` demonstrates a
+`based_on` edge on manual create, replacement and clear. Invalid String mirrors
+are separately rejected at startup.
 
 `ExtendDocument` adds bindings while preserving the original metadata. Extend
 relationship and derivation definitions by their existing codes. The contract

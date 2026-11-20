@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using NGB.Accounting.Documents;
 using NGB.Definitions;
 using NGB.Runtime.DependencyInjection;
+using NGB.Runtime.Documents;
 using NGB.Runtime.Documents.GeneralJournalEntry.Policies;
 using Xunit;
 
@@ -24,6 +25,11 @@ public sealed class GeneralJournalEntry_Definitions_Patch9Tests
 
         def!.NumberingPolicyType.Should().Be(typeof(GeneralJournalEntryNumberingPolicy));
         def.ApprovalPolicyType.Should().Be(typeof(GeneralJournalEntryApprovalPolicy));
+
+        var capabilities = DocumentService.ToDto(def.Metadata).Capabilities!;
+        capabilities.CanPost.Should().BeTrue();
+        capabilities.CanUnpost.Should().BeFalse();
+        capabilities.CanRepost.Should().BeFalse();
 
         def.Metadata.Tables.Should().NotBeEmpty();
         def.Metadata.Tables.Select(t => t.TableName).Should().Contain(new[]

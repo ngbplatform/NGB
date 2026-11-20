@@ -41,6 +41,10 @@ Example plan fragment (repeat for every runtime surface and required scenario):
   ],
   "roles": ["ngb-admin", "example.operator", "example.reader"],
   "surfaces": ["document:example.order"],
+  "workflows": {
+    "flows": [], "chains": [], "settlements": [], "adjustments": [], "historicalGroups": [],
+    "concurrentWrites": [], "replays": [], "dashboards": [], "metrics": []
+  },
   "requirements": [
     {
       "id": "order-source-consistency",
@@ -74,6 +78,13 @@ prose while their tests are absent.
 
 Mandatory scenarios:
 
+Populate each `workflows` array with requirement IDs from the original brief. An empty
+array means that the application has no such business workflow. Review classification
+against the brief before coding. Populate this section when upgrading an existing
+schema 2 plan and collect fresh evidence. Bind each metric, replayable operation and
+competing write independently. For dashboard access, cover every runtime role using
+its own identity. An invalid plan fails before Playwright starts and retains its reason.
+
 - `access` for **each document × role**, including expected denial for roles without
   permission. Exercise direct navigation as well as visible controls; do not merely
   assert that a menu item is absent.
@@ -96,6 +107,21 @@ Mandatory scenarios:
   editable reason, rounding and preservation of persisted snapshots.
 - `async-race` for asynchronous dependencies: delayed old success and failure after
   source/date replacement, clear, document reload and leaving the editor.
+- `document-flow` for business document references in the header or parts, including
+  manual entry, and for relationships created by actions. Bind a `document-chain`
+  case to each multistep process in `workflows.chains`. Use `flow(type, id, links)`
+  with independently seeded endpoint IDs and directed standard relationship codes.
+  Open a related record in the tree and check its exact identity with `record(path, id)`.
+  Include a named `reference:<field>` outcome for each persisted business lookup.
+  Use `reference(type, id, field, expectedSourceIds, code)` to verify the saved
+  header or part and the visible edges against the independently seeded sources.
+  For a lookup used solely as an informational reference, document its purpose in
+  the document entry's optional `informationalReferences` array of `{field, reason}`.
+  Use the field key for headers and `partCode.fieldKey` for lines. Mirrored fields
+  always require Flow coverage.
+- The built-in general journal uses `reversal`. Post, use the journal's Reverse action,
+  open the separate reversal, verify the original and reconcile the combined effects.
+  This applies to older SDK releases whose generic metadata advertised Unpost as well.
 
 Classify these behaviors truthfully from the implementation and business process.
 The generator must not turn a classification off to avoid writing its tests. The
@@ -115,6 +141,28 @@ Classify the business requirements for `numbering-date`, `temporal-restoration`,
 where applicable. See [business outcome checks](business-outcome-checks.md) for
 concrete cases and `infrastructure/ngb/acceptance-outcomes.mjs` for the authoritative
 named outcomes. Do not remove a required scenario to make the gate green.
+
+Use `settlement`, `partial-adjustment`, `historical-classification`,
+`dashboard-access`, `dashboard-complete`, `concurrent-operation` and `request-replay`
+for the corresponding workflows. The SDK indirect cash flow statement can use
+`summary-report` for its aggregate output. The SDK integrity report can use
+`diagnostic-report` for a healthy, empty result. Execute both for the expected
+scope. When the brief requires actionable details or drill-down, add a populated
+case exercising those details or record the unmet requirement.
+
+Use `figure(locator, expected)` with a precomputed formatted amount or count,
+`record(path, id)` for a particular entity and `metricReport(tile, code, parameters, filters)`
+to click the dashboard figure and verify the resulting report request. A figure
+opening a standard document or catalog list can use `metricList` with the expected
+query parameters. Include
+every filter, its value and the applicable descendant option. A report-to-report
+drill-down may use `reportRecord` with the target record ID in the submitted filters
+or parameters. For dashboard roles, use `permissions` to verify allowed values
+and omitted restricted fields in the response or a forbidden request. Use
+`navigation(control, path)` to open a permitted link or pass null to verify a
+restricted link is hidden. Also verify authorization on direct navigation. Use `concurrent` against the same
+business key and `replay` followed by `conflictingReplay` against the same endpoint.
+Check the committed version, balances, effects and history after reopening.
 
 Use the supplied `web/tests/e2e/acceptance.ts` helper with real SDK controls:
 

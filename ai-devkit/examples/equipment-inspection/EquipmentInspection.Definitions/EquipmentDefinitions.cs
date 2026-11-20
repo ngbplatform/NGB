@@ -45,6 +45,9 @@ public sealed class EquipmentDefinitions : IDefinitionsContributor
                         new("display", ColumnType.String, MaxLength: 200, UiLabel: "Inspection name"),
                         new("equipment_id", ColumnType.Guid, UiLabel: "Equipment",
                             Lookup: new CatalogLookupSourceMetadata(EquipmentCode)),
+                        new("source_inspection_id", ColumnType.Guid, UiLabel: "Source inspection",
+                            Lookup: new DocumentLookupSourceMetadata([InspectionCode]),
+                            MirroredRelationship: new MirroredDocumentRelationshipMetadata("based_on")),
                         new("result", ColumnType.String, MaxLength: 2000, UiLabel: "Inspection result")
                     ])
             ])));

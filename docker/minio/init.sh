@@ -31,7 +31,8 @@ bootstrap_dir="$(mktemp -d)"
 trap 'rm -rf "$bootstrap_dir"' EXIT
 export MC_CONFIG_DIR="$bootstrap_dir/mc"
 
-mc alias set ngb "$MINIO_ENDPOINT" "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null
+# Read credentials on stdin so rotated secrets remain data, including a leading dash.
+printf '%s\n%s\n' "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" | mc alias set ngb "$MINIO_ENDPOINT" >/dev/null
 mc mb --ignore-existing "ngb/$MINIO_BUCKET" >/dev/null
 mc anonymous set none "ngb/$MINIO_BUCKET" >/dev/null
 
@@ -84,5 +85,5 @@ POLICY
 
 policy_name="ngb-attachments-$MINIO_BUCKET"
 mc admin policy create ngb "$policy_name" "$bootstrap_dir/attachment-policy.json" >/dev/null
-mc admin user add ngb "$MINIO_APP_ACCESS_KEY" "$MINIO_APP_SECRET_KEY" >/dev/null
+printf '%s\n%s\n' "$MINIO_APP_ACCESS_KEY" "$MINIO_APP_SECRET_KEY" | mc admin user add ngb >/dev/null
 mc admin policy attach ngb "$policy_name" --user "$MINIO_APP_ACCESS_KEY" >/dev/null

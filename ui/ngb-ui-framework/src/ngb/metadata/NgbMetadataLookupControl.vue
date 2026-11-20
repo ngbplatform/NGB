@@ -23,6 +23,7 @@ const route = useRoute()
 
 const behavior = computed(() => resolveNgbMetadataFormBehavior(props.behavior))
 const lookupItems = ref<LookupItem[]>([])
+const resultsFor = ref('')
 const lookupValueId = computed(() => tryExtractReferenceId(props.modelValue))
 const canOpenLookup = computed(() => !!lookupValueId.value && !!behavior.value.buildLookupTargetUrl)
 
@@ -46,6 +47,7 @@ async function onLookupQuery(queryText: string) {
   const query = queryText.trim()
   if (!query || !behavior.value.searchLookup) {
     lookupItems.value = []
+    resultsFor.value = ''
     return
   }
 
@@ -53,7 +55,10 @@ async function onLookupQuery(queryText: string) {
   queryController = controller
   try {
     const items = await behavior.value.searchLookup({ hint: props.hint, query, signal: controller.signal })
-    if (queryController === controller && !controller.signal.aborted) lookupItems.value = items
+    if (queryController === controller && !controller.signal.aborted) {
+      lookupItems.value = items
+      resultsFor.value = query
+    }
   } catch {
     if (queryController !== controller) return
     lookupItems.value = []
@@ -95,6 +100,7 @@ async function openLookupValue() {
   <NgbLookup
     :model-value="selectedItem"
     :items="lookupItems"
+    :results-for="resultsFor"
     :disabled="disabled"
     :readonly="readonly"
     :show-open="canOpenLookup"

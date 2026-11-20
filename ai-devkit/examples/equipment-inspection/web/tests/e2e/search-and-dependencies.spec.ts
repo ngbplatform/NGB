@@ -35,7 +35,7 @@ async function seed(page: Page) {
     return document
   }
   const document = await inspect('Safety check passed')
-  return { ...session, equipment, document, name, code, inspect }
+  return { ...session, equipment, document, name, code, inspect, send }
 }
 
 async function search(page: Page, value: string) {
@@ -45,6 +45,166 @@ async function search(page: Page, value: string) {
   await input.fill(value)
   return page.getByRole('dialog')
 }
+
+test('Document Flow shows both derivations and opens the original document from the grandchild', async ({ page }, info) => {
+  const proof = await acceptanceProbe(page, info)
+  const data = await seed(page)
+  const path = '/api/documents/example.inspection'
+  async function action(id: string, code: string) {
+    const state = await page.request.get(`${data.origin}${path}/${id}/editor-state`, { headers: data.headers })
+    expect(state.ok()).toBe(true)
+    return data.send(`${path}/${id}/actions/${code}`, { expectedVersion: (await state.json()).documentVersion })
+  }
+  const original = data.document.id
+  const child = (await action(original, 'example.reinspect')).createdDocument.id
+  const saved = await page.request.put(`${data.origin}${path}/${child}`, {
+    headers: data.headers, data: { fields: { equipment_id: data.equipment.id, result: 'Second check' } },
+  })
+  expect(saved.ok()).toBe(true)
+  await action(child, 'post')
+  const leaf = (await action(child, 'example.reinspect')).createdDocument.id
+  const graph = page.waitForResponse(response => new URL(response.url()).pathname === `${path}/${leaf}/graph`)
+  await proof.outcome('linked-chain', checks => checks.flow('example.inspection', leaf, [
+    { from: leaf, to: child, code: 'created_from' }, { from: child, to: original, code: 'created_from' },
+  ]))
+  const nodes: { entityId: string, title: string }[] = (await (await graph).json()).nodes
+  const source = nodes.find(node => node.entityId === original)!
+  await page.getByRole('button', { name: source.title, exact: true }).click()
+  await proof.outcome('linked-target', checks => checks.record(`/documents/example.inspection/${original}`, original))
+  await proof.finish('inspection-related-chain', 'ngb-admin')
+})
+
+test('filtered report reconciles to its seeded records and excludes a second group', async ({ page }, info) => {
+  const proof = await acceptanceProbe(page, info)
+  const data = await seed(page)
+  const unrelated = await data.send('/api/catalogs/example.equipment', { fields: { display: 'Other group' } })
+  const other = await data.send('/api/documents/example.inspection', { fields: { equipment_id: unrelated.id, result: 'Other check' } })
+  const path = `/api/documents/example.inspection/${other.id}`
+  const state = await page.request.get(`${data.origin}${path}/editor-state`, { headers: data.headers })
+  await data.send(`${path}/actions/post`, { expectedVersion: (await state.json()).documentVersion })
+  const code = 'example.inspection-summary'
+  const day = new Date().toISOString().slice(0, 10)
+  const parameters = { from_utc: day, to_utc: day }
+  const filters = { equipment_id: { value: [data.equipment.id], includeDescendants: false } }
+  const ctx = Buffer.from(JSON.stringify({ reportCode: code, request: { parameters, filters, limit: 50 } })).toString('base64url')
+  const execution = page.waitForResponse(response => new URL(response.url()).pathname === `/api/reports/${code}/execute`)
+  await page.goto(`${data.origin}/reports/${code}?ctx=${ctx}`)
+  const response = await execution
+  await proof.outcome('period', checks => checks.reportScope(response, code, parameters, filters))
+  const sheet = page.getByTestId('report-sheet-table')
+  await proof.outcome('figures', async checks => {
+    await checks.figure(sheet.getByRole('row').last().getByRole('cell').last(), '1')
+    await checks.count(sheet.getByText('Other check', { exact: true }), 0)
+  })
+  await sheet.getByRole('row').last().click()
+  await proof.finish('inspection-filtered-figures', 'ngb-admin')
+})
+
+test('a source selected on a manual draft creates, replaces and clears its visible relationship', async ({ page }, info) => {
+  const proof = await acceptanceProbe(page, info)
+  const data = await seed(page)
+  const type = 'example.inspection'
+  const createSource = async (label: string) => {
+    const display = `${label} ${randomUUID().slice(0, 8)}`
+    const source = await data.send(`/api/documents/${type}`, {
+      fields: { display, equipment_id: data.equipment.id, result: label },
+    })
+    return { id: source.id as string, number: source.number as string, display }
+  }
+  const first = await createSource('Initial review')
+  const second = await createSource('Replacement review')
+  const selector = page.locator('[data-validation-key="source_inspection_id"]')
+  const select = async (query: string, display: string) => {
+    await selector.getByRole('combobox').fill(query)
+    await page.getByRole('option', { name: display, exact: true }).click()
+  }
+  const save = async (method: string, path: string) => {
+    const saved = page.waitForResponse(response => response.request().method() === method && new URL(response.url()).pathname === path)
+    await page.getByRole('button', { name: 'Save', exact: true }).click()
+    const response = await saved
+    expect(response.ok()).toBe(true)
+    return response.json()
+  }
+  await page.goto(`${data.origin}/documents/${type}/new`)
+  await select(first.number, first.display)
+  const draft = await save('POST', `/api/documents/${type}`)
+  const path = `/documents/${type}/${draft.id}`
+  await proof.outcome('reference:source_inspection_id', checks => checks.reference(
+    type, draft.id, 'source_inspection_id', [first.id], 'based_on',
+  ))
+  const openEditor = () => page.goto(`${data.origin}${path}`)
+  await openEditor()
+  await select(second.display, second.display)
+  await save('PUT', `/api${path}`)
+  await proof.outcome('linked-records', async checks => {
+    await checks.flow(type, draft.id, [{ from: draft.id, to: second.id, code: 'based_on' }])
+    await checks.count(page.getByRole('button', { name: first.display, exact: true }), 0)
+  })
+  await page.getByRole('button', { name: second.display, exact: true }).click()
+  await proof.outcome('linked-target', checks => checks.record(`/documents/${type}/${second.id}`, second.id))
+  await openEditor()
+  await selector.getByRole('button', { name: 'Clear', exact: true }).click()
+  await save('PUT', `/api${path}`)
+  const loaded = page.waitForResponse(response => new URL(response.url()).pathname === `/api${path}/graph`)
+  await page.goto(`${data.origin}${path}/flow`)
+  const graph = await (await loaded).json()
+  expect(graph.edges).toHaveLength(0)
+  expect(graph.nodes.map((node: { entityId: string }) => node.entityId)).toEqual([draft.id])
+  await proof.outcome('cleared-reference', checks => checks.count(page.getByRole('button', { name: second.display, exact: true }), 0))
+  await proof.finish('inspection-manual-source', 'ngb-admin')
+})
+
+test('two posting requests for one version commit a single change visible on reopening', async ({ page }, info) => {
+  const proof = await acceptanceProbe(page, info)
+  const data = await seed(page)
+  const draft = await data.send('/api/documents/example.inspection', {
+    fields: { equipment_id: data.equipment.id, result: 'Concurrent check' },
+  })
+  const path = `/documents/example.inspection/${draft.id}`
+  const state = () => page.request.get(`${data.origin}/api${path}/editor-state`, { headers: data.headers })
+  const version = (await (await state()).json()).documentVersion
+  const post = () => page.request.post(`${data.origin}/api${path}/actions/post`, {
+    headers: { ...data.headers, 'Idempotency-Key': randomUUID() }, data: { expectedVersion: version },
+  })
+  await proof.outcome('competing-requests', checks => checks.concurrent([post, post], [200, 409]))
+  const palette = await search(page, draft.number)
+  await palette.getByText(draft.number, { exact: true }).click()
+  await proof.outcome('committed-effects', async checks => {
+    await checks.record(path, draft.id)
+    expect((await (await state()).json()).documentVersion).toBe(version + 1)
+  })
+  await page.reload()
+  await proof.outcome('reopened-state', checks => checks.text(page.getByText('Posted', { exact: true }).first(), 'Posted'))
+  await proof.finish('inspection-concurrent-post', 'ngb-admin')
+})
+
+test('replaying a posting preserves its execution and rejects a changed request', async ({ page }, info) => {
+  const proof = await acceptanceProbe(page, info)
+  const data = await seed(page)
+  const draft = await data.send('/api/documents/example.inspection', {
+    fields: { equipment_id: data.equipment.id, result: 'Repeatable check' },
+  })
+  const path = `/api/documents/example.inspection/${draft.id}`
+  const editor = () => page.request.get(`${data.origin}${path}/editor-state`, { headers: data.headers })
+  const version = (await (await editor()).json()).documentVersion
+  const post = (key: string, expectedVersion: number) => page.request.post(`${data.origin}${path}/actions/post`, {
+    headers: { ...data.headers, 'Idempotency-Key': key }, data: { expectedVersion },
+  })
+  await proof.outcome('same-request', checks => checks.replay(
+    key => post(key, version), (result: { executionId: string }) => result.executionId,
+  ))
+  await proof.outcome('conflicting-request', checks => checks.conflictingReplay(
+    key => post(key, version + 1), 'document_action.idempotency_conflict',
+  ))
+  const dialog = await search(page, draft.number)
+  await dialog.getByText(draft.number, { exact: true }).click()
+  await proof.outcome('committed-effects', async checks => {
+    await checks.record(`/documents/example.inspection/${draft.id}`, draft.id)
+    await checks.text(page.getByText('Posted', { exact: true }).first(), 'Posted')
+    expect((await (await editor()).json()).documentVersion).toBe(version + 1)
+  })
+  await proof.finish('inspection-post-replay', 'ngb-admin')
+})
 
 test('global search finds an existing number and catalog name and opens the exact records', async ({ page }, info) => {
   const proof = await acceptanceProbe(page, info)
@@ -56,7 +216,7 @@ test('global search finds an existing number and catalog name and opens the exac
   palette = await search(page, data.name)
   await expect(palette.getByText(data.name, { exact: true })).toBeVisible()
   await page.keyboard.press('Enter')
-  await proof.outcome('opened-target', checks => checks.url(`${data.origin}/catalogs/example.equipment/${data.equipment.id}`))
+  await proof.outcome('opened-target', checks => checks.record(`/catalogs/example.equipment/${data.equipment.id}`, data.equipment.id))
   await proof.outcome('name', checks => checks.value(page.locator('[data-validation-key="display"] input'), data.name))
   await page.goto(`${data.origin}/catalogs/example.equipment`)
   palette = await search(page, data.code)

@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using NGB.Accounting.Documents;
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Common;
 using NGB.Core.AuditLog;
@@ -1583,7 +1584,9 @@ public sealed class DocumentService(
                     ComputedDisplay: meta.Presentation.ComputedDisplay,
                     HideSystemFieldsInEditor: meta.Presentation.HideSystemFieldsInEditor,
                     AmountField: amountField),
-            Capabilities: new DocumentCapabilitiesDto(SupportsActions: false));
+            Capabilities: new DocumentCapabilitiesDto(
+                CanUnpost: meta.TypeCode != AccountingDocumentTypeCodes.GeneralJournalEntry,
+                CanRepost: meta.TypeCode != AccountingDocumentTypeCodes.GeneralJournalEntry));
     }
 
     internal static string ToTitle(string code)

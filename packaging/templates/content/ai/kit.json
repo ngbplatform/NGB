@@ -12,13 +12,13 @@
     "package": "NGB.Platform.Templates",
     "version": "3.4.0"
   },
-  "payloadSha256": "b607b520e6a9eab7d1ef678580664cc9a4e51d2835358e0f23899b212f236d95",
+  "payloadSha256": "f032baf4895f058c5f46b475d3b51ad04621f9d2fa3f7ef5a0f6b9cae072dae9",
   "capabilitySha256": "750c59faeeff60ea7b174935bb61dd7f5f87d0a65dbd7cdbe676160f77c41e28",
   "files": [
     {
       "path": ".agents/skills/ngb-accounting/SKILL.md",
       "role": "file",
-      "sha256": "32042426915d893a5ea59750624dd75499ddf5921b9cf066dee49b5438c183eb"
+      "sha256": "183a8ac57dcf8138505cdcd7f1b492d7612fb8dd1554cdb90e8245ef3186a99e"
     },
     {
       "path": ".agents/skills/ngb-application/SKILL.md",
@@ -43,7 +43,7 @@
     {
       "path": ".agents/skills/ngb-documents/SKILL.md",
       "role": "file",
-      "sha256": "83321a30b7cde9cfb19cf3d87cbfa00572c73f05b7f5151db6ea9f54180854ca"
+      "sha256": "ec9d902264516b5cd955500bca330ef500e1ed1a0c493c65b7035bcf07fb787a"
     },
     {
       "path": ".agents/skills/ngb-frontend/SKILL.md",
@@ -88,7 +88,7 @@
     {
       "path": ".agents/skills/ngb-testing/SKILL.md",
       "role": "file",
-      "sha256": "134f30753b24bb597254d6ea85db60d07e6f8cf7798ba9c619632f43a2a95186"
+      "sha256": "8cc1e0f19a76c01abd62f56b83eb3c4f10a0cb50c81729c47ace2ef55c8317ae"
     },
     {
       "path": ".agents/skills/ngb-work-center/SKILL.md",
@@ -98,7 +98,7 @@
     {
       "path": ".claude/skills/ngb-accounting/SKILL.md",
       "role": "file",
-      "sha256": "32042426915d893a5ea59750624dd75499ddf5921b9cf066dee49b5438c183eb"
+      "sha256": "183a8ac57dcf8138505cdcd7f1b492d7612fb8dd1554cdb90e8245ef3186a99e"
     },
     {
       "path": ".claude/skills/ngb-application/SKILL.md",
@@ -123,7 +123,7 @@
     {
       "path": ".claude/skills/ngb-documents/SKILL.md",
       "role": "file",
-      "sha256": "83321a30b7cde9cfb19cf3d87cbfa00572c73f05b7f5151db6ea9f54180854ca"
+      "sha256": "ec9d902264516b5cd955500bca330ef500e1ed1a0c493c65b7035bcf07fb787a"
     },
     {
       "path": ".claude/skills/ngb-frontend/SKILL.md",
@@ -168,7 +168,7 @@
     {
       "path": ".claude/skills/ngb-testing/SKILL.md",
       "role": "file",
-      "sha256": "134f30753b24bb597254d6ea85db60d07e6f8cf7798ba9c619632f43a2a95186"
+      "sha256": "8cc1e0f19a76c01abd62f56b83eb3c4f10a0cb50c81729c47ace2ef55c8317ae"
     },
     {
       "path": ".claude/skills/ngb-work-center/SKILL.md",
@@ -273,7 +273,7 @@
     {
       "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Definitions/EquipmentDefinitions.cs",
       "role": "file",
-      "sha256": "4cf59194f9545dbb76d2560de3338cf1a449a7dc0f66d30c860c3650e4b7175e"
+      "sha256": "6b82fe6e841600e656724fe5c2d39acaafb7d3f2b130ef71126f2cf46cb26ce5"
     },
     {
       "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Definitions/EquipmentInspection.Definitions.csproj",
@@ -811,6 +811,11 @@
       "sha256": "c17747aebb93868f4341f60f5a7f74ad3bfcd06d05de777a00255db5bdf074b0"
     },
     {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.PostgreSql/db/migrations/V2026_11_20_0100__inspection_source_relationship.sql",
+      "role": "file",
+      "sha256": "386e3294042199e17914348ba1b1bf358a62ef0f9c0426c57d328c5efbf343d9"
+    },
+    {
       "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.PostgreSql/EquipmentConditionReader.cs",
       "role": "file",
       "sha256": "577ab8e5e63dce93126ebcef8943fd9e24de144192995a2ee5f62fe160eda8e9"
@@ -1173,7 +1178,7 @@
     {
       "path": "ai/vendor/examples/equipment-inspection/README.md",
       "role": "file",
-      "sha256": "b6aeb4d24004e6d1eb41a6bd625031b9d65ba0a62e9347687da754b24b635920"
+      "sha256": "002238a7fca990776b0496c9261fc7862f5d8d5a609e40da995584bf817fce70"
     },
     {
       "path": "ai/vendor/examples/equipment-inspection/web/index.html",
@@ -1293,7 +1298,7 @@
     {
       "path": "ai/vendor/examples/equipment-inspection/web/tests/e2e/acceptance.ts",
       "role": "file",
-      "sha256": "7b7d5025dd72b6d08d001e521a3abe2c16a9bbd7666399aa727ec56353507ffe"
+      "sha256": "b5f8cc4688860e540effdcf4d78a6491984942b900e2154c8ea65d49963c5176"
     },
     {
       "path": "ai/vendor/examples/equipment-inspection/web/tests/e2e/inspection.spec.ts",
@@ -1303,7 +1308,7 @@
     {
       "path": "ai/vendor/examples/equipment-inspection/web/tests/e2e/search-and-dependencies.spec.ts",
       "role": "file",
-      "sha256": "3f327f41295a79127f1f26f0f8d68a7ac13510100156b32ae3eb444a1d744758"
+      "sha256": "5b370358b66cbf8fb53cf42a7aba5176c746128b248a7ef35f6d5a2636c87318"
     },
     {
       "path": "ai/vendor/examples/equipment-inspection/web/tests/e2e/setup.mjs",
@@ -1313,7 +1318,7 @@
     {
       "path": "ai/vendor/examples/equipment-inspection/web/tests/e2e/source-eligibility.spec.ts",
       "role": "file",
-      "sha256": "eb9196814b391889f6d39ef3e7f28a9154e01dac137011f1dfe1e7af4747e061"
+      "sha256": "83cfcb4dac73bebb620d01ea3d6adcc9bc07f6b0fa9a2e903bab7066d0c72fdb"
     },
     {
       "path": "ai/vendor/examples/equipment-inspection/web/tests/unit/bootstrap.spec.ts",
@@ -1378,7 +1383,7 @@
     {
       "path": "ai/vendor/instructions.md",
       "role": "file",
-      "sha256": "7d6afe94bb75223540507b9dfd146944af96ae3194f3a336ea96a2bc54dc996f"
+      "sha256": "64e060f1686294d1118c89671b9784043fc7e6385f9942094c1ace432a5afa62"
     },
     {
       "path": "ai/vendor/known-limitations.json",
@@ -1408,12 +1413,12 @@
     {
       "path": "ai/vendor/references/browser-acceptance.md",
       "role": "file",
-      "sha256": "be2b1bba0e2354c46d27250c40bae845257a5e94494c71d4ce60c80276adce86"
+      "sha256": "7270da4704a65b96d60ce572bd4eb4496ce0eb90c5464e0e7bb4c8d3a30eeeea"
     },
     {
       "path": "ai/vendor/references/business-outcome-checks.md",
       "role": "file",
-      "sha256": "c1316cb7ae94cad2da2ff66e8083973394874819bcecd90299988c8b5caef8c5"
+      "sha256": "8ae1e23229f7a29b9c50194ee0afbe3ed299cac574ce83a7f101d96fe3c07f14"
     },
     {
       "path": "ai/vendor/references/catalogs.md",
@@ -1598,7 +1603,7 @@
     {
       "path": "ai/vendor/references/documents.md",
       "role": "file",
-      "sha256": "7dab912f4562edd3380e0a906b5f0bb1825587b3b13ef9e23eb2eb1c28fc4401"
+      "sha256": "984abf7efb1a02bb5a18f66e2e9dc977ae7ac6689f9ffea1c3825aabc7d101a9"
     },
     {
       "path": "ai/vendor/references/errors.md",
@@ -1608,7 +1613,7 @@
     {
       "path": "ai/vendor/references/frontend.md",
       "role": "file",
-      "sha256": "6384f5f6a704121013e81a69d38526a012837c03b5b31843c686b71c4fd7bc1b"
+      "sha256": "50fdf31710c31ca9f37fa8a0f5c2aeaf24f2fa5dd190c014d01d4861f9ea9222"
     },
     {
       "path": "ai/vendor/references/independent-reference-registers.md",
@@ -1624,6 +1629,11 @@
       "path": "ai/vendor/references/mcp-assistant.md",
       "role": "file",
       "sha256": "afa7de092857f9bab51371f4cebc7c22c93260c88c65489547c31b1ed106a270"
+    },
+    {
+      "path": "ai/vendor/references/partial-adjustment.mjs",
+      "role": "file",
+      "sha256": "1463b3803f160511389e6e4a1331a72759cd3cd71b7509f7fa54016784d3e75d"
     },
     {
       "path": "ai/vendor/references/persistence.md",
@@ -1673,7 +1683,7 @@
     {
       "path": "ai/vendor/skills/ngb-accounting/SKILL.md",
       "role": "file",
-      "sha256": "f31c1e4c13916e9271258832f8855f27824b5c8a06b51f54c8d89ac56158bc13"
+      "sha256": "c943e117013f21f4ff903b358354b5bbdd1075574da4b18b82c098a9225a3cb7"
     },
     {
       "path": "ai/vendor/skills/ngb-application/SKILL.md",
@@ -1698,7 +1708,7 @@
     {
       "path": "ai/vendor/skills/ngb-documents/SKILL.md",
       "role": "file",
-      "sha256": "eedd8bd399e07fb2eb675504c3b241d74efd03383f7c8829576d3cb5d43ac3fa"
+      "sha256": "6704b0d76eb12104cab62f8b98dd11cc9a033cc0d30a00d02f02a1acb11545e5"
     },
     {
       "path": "ai/vendor/skills/ngb-frontend/SKILL.md",
@@ -1743,7 +1753,7 @@
     {
       "path": "ai/vendor/skills/ngb-testing/SKILL.md",
       "role": "file",
-      "sha256": "0c35e8422b5b22f5cb11e4d5c0de07c8452523d91f1db501841ec5a0d5fbf54a"
+      "sha256": "8b4b78aa4d245c981840267b737aa0fcc574cedbe750e202d47eb800d6a1c538"
     },
     {
       "path": "ai/vendor/skills/ngb-work-center/SKILL.md",

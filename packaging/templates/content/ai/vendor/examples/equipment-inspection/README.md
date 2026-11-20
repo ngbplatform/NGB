@@ -76,6 +76,12 @@ bounded pages and cross-type lookup. Graph reads use ViewFlow separately from
 View and hide types the reader cannot view. A test-only bidirectional relationship
 exercises that filtering; invalid mirrored-field metadata is rejected at startup.
 
+For manual entry, an inspection can also reference an existing source inspection.
+The `source_inspection_id` head lookup mirrors a `based_on` edge through the
+provider migration. The browser suite saves a draft with this field, replaces
+the source and clears it, checking the persisted lookup and visible tree. It
+also opens the original from a two-step reinspection chain.
+
 The API-only `example.inspection-checklist` adds real head/part storage. Drafts
 may have no checks or incomplete checks; line numbers must be positive and unique,
 and observation dates cannot be in the future. Post requires complete rows and a

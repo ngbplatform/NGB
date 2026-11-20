@@ -37,7 +37,7 @@ public sealed class MinioIntegrationFixture : IAsyncDisposable
 
     public string AccessKey { get; } = $"ngb-app-{Guid.NewGuid():N}";
 
-    public string SecretKey { get; } = Guid.NewGuid().ToString("N");
+    public string SecretKey { get; } = $"-{Guid.NewGuid():N}";
 
     public string Endpoint => _container.GetConnectionString().TrimEnd('/');
 

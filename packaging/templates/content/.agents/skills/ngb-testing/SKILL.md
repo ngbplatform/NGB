@@ -47,3 +47,6 @@ UI evidence. Passing test counts or a prose checklist alone are insufficient.
 
 Apply the [business outcome checks](../../../ai/vendor/references/business-outcome-checks.md)
 and the named-outcome browser gate before claiming the generated workflow complete.
+Classify relationships, dashboard metrics and roles, historical dimensions,
+settlement and correction scenarios in the application plan. Give each competing
+write and each replayable operation a dedicated executable case.

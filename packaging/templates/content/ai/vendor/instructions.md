@@ -70,3 +70,7 @@ tested or for a release whose required evidence is incomplete.
 Complete the [executed browser acceptance matrix](references/browser-acceptance.md) before declaring generation complete.
 The E2E CLI gate must reconcile runtime documents, catalogs, reports, menu destinations and roles with current-run Playwright
 UI evidence. Passing test counts or a prose checklist alone are insufficient.
+Before implementing the first workflow, enumerate business document relationships, settlements, partial
+adjustments, historical report dimensions, dashboard permissions and drill-downs, concurrent writes and
+idempotent operations from the requirements. Bind each applicable workflow to its own expected records,
+amounts, scope or state transitions in the [business outcome checks](references/business-outcome-checks.md).

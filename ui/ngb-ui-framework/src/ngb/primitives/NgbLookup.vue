@@ -122,6 +122,8 @@ type FloatingTarget = HTMLElement | ComponentPublicInstance | null
 const props = withDefaults(defineProps<{
   modelValue: LookupItem | null
   items: LookupItem[]
+  // When supplied, the owner has searched additional record fields for this exact query.
+  resultsFor?: string
   label?: string
   hint?: string
   placeholder?: string
@@ -218,6 +220,9 @@ const {
 
 const filteredItems = computed(() => {
   const q = query.value.trim().toLowerCase()
+  if (props.resultsFor !== undefined) {
+    return query.value.trim() === props.resultsFor ? props.items.slice(0, 50) : []
+  }
   if (!q) return props.items.slice(0, 50)
   return props.items
     .filter((item) => `${item.label} ${item.meta ?? ''}`.toLowerCase().includes(q))

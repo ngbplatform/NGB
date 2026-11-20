@@ -262,6 +262,27 @@ test('shows a no-results panel after a query resolves without matches', async ()
   await expect.element(view.getByText('No results')).toBeVisible()
 })
 
+test('shows a server match by number and discards it when the search changes', async () => {
+  const matched = { id: 'review', label: 'Initial review' }
+  const view = render(defineComponent({
+    setup() {
+      const items = ref<LookupItem[]>([])
+      const resultsFor = ref('')
+      function search(query: string) {
+        items.value = query === 'D-001' ? [matched] : []
+        resultsFor.value = query
+      }
+      return () => h(NgbLookup, { modelValue: null, items: items.value, resultsFor: resultsFor.value, onQuery: search })
+    },
+  }))
+  const input = view.getByRole('combobox')
+  await input.fill('D-001')
+  await expect.element(page.getByRole('option', { name: matched.label })).toBeVisible()
+  await input.fill('D-002')
+  await expect.element(page.getByRole('option', { name: matched.label })).not.toBeInTheDocument()
+  await expect.element(page.getByText('No results')).toBeVisible()
+})
+
 test('keeps query input readonly while still allowing open and clear actions', async () => {
   await page.viewport(1280, 900)
 

@@ -34,6 +34,10 @@ and [visible flow relationships](../../references/documents.md#visible-document-
    with no register movements, bind the empty handler in Definitions and register
    its implementation in DI. Let the standard action validate and change status.
 4. Route interactive actions through the authorized action dispatcher. Preserve
+   [visible Document Flow](../../references/documents.md#visible-document-flow)
+   for each persisted business reference. Exercise manual creation, replacement
+   and clear as well as derivation, then follow a complete chain in the browser.
+   For those actions preserve
    idempotency keys, expected versions and the existing action availability rules.
    Reload the version after Draft saves. Check the registry date explicitly:
    generic payload dates are not automatically bound to it in 3.4.0, and generic

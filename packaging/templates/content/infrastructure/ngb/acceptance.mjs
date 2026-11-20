@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { digest, objectKeys, portablePath } from './kit-contracts.mjs'
 import { browserTestCounts } from './evidence.mjs'
-import { reconcileSurfaces, scenarioOutcomes, validateOutcomes, verifyOutcomeProof } from './acceptance-outcomes.mjs'
+import { businessReferences, reconcileSurfaces, reconcileWorkflows, scenarioOutcomes, validateOutcomes, verifyOutcomeProof } from './acceptance-outcomes.mjs'
 
 const scenarios = ['access', 'draft-edit', 'lifecycle', 'validation', 'lines',
   'source-change-clear', 'lookup-eligibility', 'pricing', 'async-race']
@@ -17,7 +17,7 @@ function unique(values, description) {
 export function acceptancePlan(value) {
   const current = value.schemaVersion === 2
   objectKeys(value, current ? ['schemaVersion', 'documents', 'roles', 'cases', 'surfaces', 'requirements']
-    : ['schemaVersion', 'documents', 'roles', 'cases'])
+    : ['schemaVersion', 'documents', 'roles', 'cases'], current ? ['workflows'] : [])
   assert.ok(current || value.schemaVersion === 1, 'Unsupported acceptance plan schema.')
   if (current) unique(value.surfaces, 'surface')
   assert.ok(Array.isArray(value.documents) && Array.isArray(value.roles) && Array.isArray(value.cases),
@@ -27,7 +27,7 @@ export function acceptancePlan(value) {
   unique(value.cases.map(item => item.id), 'case')
   unique(value.cases.map(item => JSON.stringify([item.file, item.title, item.project])), 'browser test binding')
   for (const document of value.documents) {
-    objectKeys(document, ['type', 'sourceDriven', 'priced', 'asynchronous'])
+    objectKeys(document, ['type', 'sourceDriven', 'priced', 'asynchronous'], current ? ['informationalReferences'] : [])
     for (const key of ['sourceDriven', 'priced', 'asynchronous']) {
       assert.equal(typeof document[key], 'boolean', `Classify ${document.type}/${key}.`)
     }
@@ -54,7 +54,10 @@ export function reconcileAcceptance(plan, inventory) {
     'Acceptance plan must include every runtime document, without stale entries.')
   assert.deepEqual(unique(plan.roles, 'role'), unique(inventory.roles, 'runtime role'),
     'Acceptance plan must include every active runtime role, including ngb-admin.')
-  if (plan.schemaVersion === 2) reconcileSurfaces(plan, inventory)
+  if (plan.schemaVersion === 2) {
+    reconcileSurfaces(plan, inventory)
+    reconcileWorkflows(plan, inventory)
+  }
   const matches = (entry, type) => plan.schemaVersion === 2 ? entry.target === `document:${type}` : entry.document === type
   const required = []
   for (const metadata of inventory.documents) {
@@ -62,9 +65,20 @@ export function reconcileAcceptance(plan, inventory) {
     const kinds = ['draft-edit', 'validation']
     if (metadata.capabilities?.canPost !== false) {
       const withdrawalDisabled = plan.schemaVersion === 2 && metadata.capabilities?.canUnpost === false
-      kinds.push(withdrawalDisabled ? 'withdrawal-blocked' : 'lifecycle')
+      // Older SDK metadata also advertised Unpost for the typed journal. Its correction is a new journal.
+      if (plan.schemaVersion === 2 && document.type === 'general_journal_entry') kinds.push('reversal')
+      else kinds.push(withdrawalDisabled ? 'withdrawal-blocked' : 'lifecycle')
     }
     if (metadata.parts?.length) kinds.push('lines')
+    if (plan.schemaVersion === 2) {
+      const references = businessReferences(metadata, document.informationalReferences)
+      for (const field of references) {
+        const covered = plan.cases.some(entry => matches(entry, document.type)
+          && ['document-flow', 'document-chain'].includes(entry.scenario) && entry.outcomes.includes(`reference:${field}`))
+        assert.ok(covered, `Missing document-flow proof for ${document.type}/${field}.`)
+        required.push(`${document.type}/reference:${field}`)
+      }
+    }
     if (document.sourceDriven) kinds.push('source-change-clear', 'lookup-eligibility')
     if (document.priced) kinds.push('pricing')
     if (document.asynchronous) kinds.push('async-race')

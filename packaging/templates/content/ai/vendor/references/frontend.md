@@ -79,6 +79,12 @@ Generate the [interactive field dependencies](interactive-workflows.md) around t
 shared component. A table with readonly calculated columns and empty synchronization
 hooks is not a complete editor when the business requires automatic population.
 
+For an authorized server search in a custom `NgbLookup`, supply `resultsFor`
+with the query that returned the current items. This preserves matches on document
+numbers or catalog codes outside the visible label. Update the query and items
+together after verifying the response still belongs to the current selection.
+The shared metadata field control already supplies this behavior.
+
 Import `NgbDocumentLines` and `DocumentLinesColumn`/`DocumentLinesHandle` from
 `@ngbplatform/ui/editor` (also exported at the package root). This is the standard
 tabular editor surface: title, fixed columns, dotted separators, row numbers,

@@ -124,6 +124,63 @@ or withdrawal; execute the same earlier cutoff afterward and compare identities,
 statuses and totals (`historical-as-of`). Current-only data may be explicitly
 labelled current, but does not fulfil a requested historical report.
 
+## Cross-document processes
+
+### Linked documents and settlement
+
+List each business edge, its direction, cardinality and the operation that writes it.
+Include creating a document manually with a source lookup as well as deriving it
+through an action. Use a registered standard relationship for a supported head
+mirror. For a line reference or another source outside head mirroring, synchronize
+the persisted relationships through the application's transactional write path.
+Replacing or removing a source removes the obsolete edge. Multiple lines pointing
+at one source retain the edge until its final reference is removed. Verify the
+direct links and one complete multistep chain in the browser using saved IDs.
+
+Keep the amount originally issued as a snapshot. When the brief requires a balance
+on a posted document, read settlements from the authoritative ledger at the requested
+cutoff. Show the original amount, applied amounts and remaining balance with
+unambiguous labels. Open the actual settlement from the record. Test a partial
+settlement, full settlement with zero due, and reversal or withdrawal as permitted.
+Reopen the original and reconcile its figures with the ledger and statement.
+
+### Partial adjustments and historical grouping
+
+Allocate adjustments at the original line's currency precision against its frozen
+base and tax. For a proportional allocation, compute the target cumulative tax
+for the newly adjusted base and subtract tax already allocated. Assign the final
+eligible residual from the original line. For example, tax of 1.51 on 20.10 split
+into two equal credits at 7.5% allocates 0.75 and 0.76 under nearest-cent rounding.
+Verify both postings, the final zero balance, and a retry. Check the limit and write
+the allocation in one transaction under the same business-key lock as competitors.
+Use the specified rounding and allocation policy for each currency and tax component.
+The [minor-unit reference calculation](partial-adjustment.mjs) provides an
+independent expected amount for a frozen half-up policy. Compare the application
+postings and ledger to that expectation in acceptance tests.
+
+For a historical report grouped by a mutable classification, persist the applicable
+dimension at posting or use a dated relationship that resolves as of the transaction.
+Post a known amount in group A, change the catalog to B and post a later amount.
+Re-run the earlier period. Its source IDs, original group and total must agree with
+the recorded expectations. Reconcile the later period separately.
+
+### Dashboard scope, roles and competing operations
+
+For every clickable figure, define its population, date interval, status, unit,
+currency and permission. The dashboard and target query must apply the same rules.
+Seed at least one in-scope and one out-of-scope record. Open the tile and check the
+actual execute request, exact included identities or totals, and the exclusion.
+Omit restricted figures from the server response for that role and hide unauthorized
+links. Exercise direct navigation as well. Reconcile all figures visible to the administrator.
+
+For each distinct operation that can contend for the same stock, balance, original
+line or timeline, start independent requests against a shared fixture. Verify the
+permitted results and the persisted aggregate after reopening. For each idempotent
+write, retry the same payload and key, then change the payload under that key. Assert
+the original execution identity, the concrete conflict and exactly one committed
+effect. Name each operation in the plan so a passing race for one write cannot
+satisfy the requirements for another.
+
 ## Completion
 
 Run the [browser outcome gate](browser-acceptance.md), applicable integration tests

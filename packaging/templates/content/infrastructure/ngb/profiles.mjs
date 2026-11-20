@@ -251,15 +251,17 @@ export async function executeProfile(root, options) {
               await inspectEvidence('test.e2e.acceptance-plan', 'ai/acceptance.json', async text => {
                 const plan = acceptancePlan(JSON.parse(text))
                 const inventory = await readAcceptanceInventory(environment, 2)
+                await writeFile(join(output, 'acceptance-inventory.json'), JSON.stringify(inventory, null, 2), { mode: 0o600 })
                 if (inventory.documents.length || inventory.catalogs.length || inventory.reports.length) {
                   assert.equal(plan.schemaVersion, 2, 'Update ai/acceptance.json to schema 2 with business outcomes; see ai/vendor/references/browser-acceptance.md.')
                 }
                 const required = reconcileAcceptance(plan, inventory)
                 actors = await prepareAcceptanceActors(environment, inventory)
                 acceptance = { plan, inventory, runId: environment.runId, origin: environment.origin }
-                await writeFile(join(output, 'acceptance-inventory.json'), JSON.stringify(inventory, null, 2), { mode: 0o600 })
                 return { required, inventorySha256: digest(JSON.stringify(inventory)) }
               })
+              // The plan check records its own failure. Keep that diagnostic and still release the stack.
+              if (!acceptance) continue
               await run('test.e2e', 'npm', ['run', 'test:e2e', '--', '--config',
                 resolve(root, config.tests.e2e.config), '--reporter=json'], web, {
                 PLAYWRIGHT_JSON_OUTPUT_FILE: join(output, 'browser.json'),
