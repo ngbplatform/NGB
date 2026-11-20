@@ -25,13 +25,14 @@ public sealed class EquipmentDefinitions : IDefinitionsContributor
                     [
                         new("catalog_id", ColumnType.Guid, Required: true),
                         new("display", ColumnType.String, Required: true, MaxLength: 200, UiLabel: "Equipment name"),
+                        new("equipment_code", ColumnType.String, MaxLength: 40, UiLabel: "Equipment code"),
                         new("category_id", ColumnType.Guid, UiLabel: "Category",
                             Lookup: new CatalogLookupSourceMetadata(EquipmentCategoryDefinitions.TypeCode))
                     ],
-                    Indexes: [])
+                    Indexes: [new("ix_example_equipment_code", ["equipment_code"])])
             ],
             Presentation: new CatalogPresentationMetadata("cat_example_equipment", "display"),
-            Version: new CatalogMetadataVersion(1, "equipment-inspection"))));
+            Version: new CatalogMetadataVersion(2, "equipment-inspection-code"))));
 
         builder.AddDocument(InspectionCode, document => document.Metadata(new DocumentTypeMetadata(
             TypeCode: InspectionCode,

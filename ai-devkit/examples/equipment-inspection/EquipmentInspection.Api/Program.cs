@@ -1,4 +1,5 @@
 using EquipmentInspection.Api;
+using EquipmentInspection.Definitions;
 using EquipmentInspection.PostgreSql;
 using EquipmentInspection.Runtime;
 using Microsoft.AspNetCore.Authorization;
@@ -34,6 +35,8 @@ var attachmentConfiguration = builder.Configuration.GetSection("Attachments:MinI
 builder.Services.AddNgbAttachmentsNotesApi(builder.Configuration, services =>
     services.AddNgbMinioAttachments(attachmentConfiguration.Bind));
 builder.Services.AddControllersApi();
+builder.Services.AddScoped<CatalogCodeSearch>();
+builder.Services.AddSingleton(new CatalogCodeField(EquipmentDefinitions.EquipmentCode, "equipment_code"));
 builder.Services.AddScoped<IReportVariantAccessContext, HttpReportVariantAccessContext>();
 builder.Services.AddNgbWorkCenterRealtime();
 builder.Services.AddNgbWorkCenterOutboxProcessing(builder.Configuration);

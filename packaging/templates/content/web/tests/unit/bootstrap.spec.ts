@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { startApplication } from '../../src/bootstrap'
+import { searchApplication } from '../../src/search'
 
 const state = vi.hoisted(() => {
   const app = { use: vi.fn(), mount: vi.fn() }
@@ -10,12 +11,16 @@ const state = vi.hoisted(() => {
     access: { load: vi.fn() },
     router: { isReady: vi.fn() },
     createApp: vi.fn(() => app),
+    palette: vi.fn(),
+    groups: [{ label: 'Operations', items: [] }],
   }
 })
 
 vi.mock('vue', async importOriginal => ({ ...await importOriginal<typeof import('vue')>(), createApp: state.createApp }))
 vi.mock('pinia', () => ({ createPinia: vi.fn(), setActivePinia: vi.fn() }))
 vi.mock('@ngbplatform/ui', () => ({
+  httpGet: vi.fn(), useMainMenuStore: () => ({ groups: state.groups }),
+  configureNgbCommandPalette: state.palette,
   configureNgbEditor: vi.fn(), configureNgbNavigation: vi.fn(), configureNgbWorkCenter: vi.fn(),
   createDefaultNgbWorkCenterConfig: vi.fn(), executeDocumentAction: vi.fn(), getDocumentById: vi.fn(),
   getDocumentEditorState: vi.fn(), getDocumentEffects: vi.fn(), getDocumentGraph: vi.fn(), getEntityAuditLog: vi.fn(),
@@ -44,6 +49,9 @@ it('loads access before mounting protected pages and waits for the router', asyn
   await started
   expect(state.app.mount).toHaveBeenCalledWith('#app')
   expect(state.router.isReady).toHaveBeenCalledOnce()
+  const palette = state.palette.mock.calls[0][0]
+  expect(palette.getMenuGroups()).toBe(state.groups)
+  expect(palette.searchRemote).toBe(searchApplication)
 })
 
 it('redirects an unauthenticated user before creating application services', async () => {

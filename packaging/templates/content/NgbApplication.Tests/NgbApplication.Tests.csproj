@@ -9,6 +9,7 @@
     <ItemGroup>
         <Compile Include="../Shared/ApplicationRoles.cs" Link="ApplicationRoles.cs" />
         <Compile Include="../NgbApplication.Api/ApplicationMenu.cs" Link="ApplicationMenu.cs" />
+        <Compile Include="../NgbApplication.Api/CatalogCodeSearch.cs" Link="CatalogCodeSearch.cs" />
         <Compile Include="../NgbApplication.Migrator/AdministratorBootstrap.cs" Link="AdministratorBootstrap.cs" />
         <Compile Include="../infrastructure/validation/AssemblyInspector.cs" Link="AssemblyInspector.cs" />
         <Compile Include="../infrastructure/validation/Program.cs" Link="ValidationProgram.cs" />

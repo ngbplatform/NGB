@@ -41,6 +41,7 @@ internal static class BrowserTestHost
                 services.GetRequiredService<IPermissionSnapshotRepository>().ReplaceRolePermissionsAsync(role!.RoleId,
                     [
                         new NgbPermissionKey(NgbResourceKinds.Catalog, EquipmentDefinitions.EquipmentCode, NgbPermissionActions.View),
+                        new NgbPermissionKey(NgbResourceKinds.Catalog, EquipmentDefinitions.EquipmentCode, NgbPermissionActions.Lookup),
                         NgbSystemPermissions.NotesRead,
                         NgbSystemPermissions.AttachmentsRead
                     ], ct));

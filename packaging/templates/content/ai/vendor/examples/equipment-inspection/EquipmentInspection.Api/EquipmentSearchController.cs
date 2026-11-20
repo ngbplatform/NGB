@@ -7,7 +7,7 @@ namespace EquipmentInspection.Api;
 [Authorize]
 [ApiController]
 [Route("api/equipment-search")]
-public sealed class EquipmentSearchController(INgbSearchService search) : ControllerBase
+public sealed class EquipmentSearchController(CatalogCodeSearch search) : ControllerBase
 {
     [HttpGet]
     public Task<NgbSearchResult> Search(

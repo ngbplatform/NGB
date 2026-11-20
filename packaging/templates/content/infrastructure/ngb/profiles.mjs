@@ -250,7 +250,10 @@ export async function executeProfile(root, options) {
                 message: 'Disposable application and identity services are healthy.', runId: environment.runId })
               await inspectEvidence('test.e2e.acceptance-plan', 'ai/acceptance.json', async text => {
                 const plan = acceptancePlan(JSON.parse(text))
-                const inventory = await readAcceptanceInventory(environment)
+                const inventory = await readAcceptanceInventory(environment, 2)
+                if (inventory.documents.length || inventory.catalogs.length || inventory.reports.length) {
+                  assert.equal(plan.schemaVersion, 2, 'Update ai/acceptance.json to schema 2 with business outcomes; see ai/vendor/references/browser-acceptance.md.')
+                }
                 const required = reconcileAcceptance(plan, inventory)
                 actors = await prepareAcceptanceActors(environment, inventory)
                 acceptance = { plan, inventory, runId: environment.runId, origin: environment.origin }

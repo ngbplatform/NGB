@@ -40,6 +40,7 @@ builder.Services.AddNgbPostgresExceptionMapping();
 builder.Services.AddGlobalErrorHandling();
 builder.Services.AddHealthChecks().AddNgbPostgresHealthCheck(connectionString).AddKeycloak();
 builder.Services.AddControllersApi();
+builder.Services.AddScoped<CatalogCodeSearch>();
 builder.Services.AddNgbWorkCenterRealtime();
 builder.Services.AddNgbWorkCenterOutboxProcessing(builder.Configuration);
 builder.Services.AddNgbAttachmentsNotesApi(builder.Configuration, services =>
@@ -53,14 +54,16 @@ var accountingMenuTypes = new[]
     typeof(AccountingReportsMainMenuContributor),
     typeof(AccountingAdminMainMenuContributor)
 };
-foreach (var descriptor in builder.Services.Where(descriptor =>
-    descriptor.ServiceType == typeof(IMainMenuContributor)
-    && descriptor.ImplementationType is { } type
-    && accountingMenuTypes.Contains(type)).ToArray())
-{
-    builder.Services.Remove(descriptor);
-}
 builder.Services.AddScoped<IMainMenuContributor, ApplicationMenu>();
+for (var i = builder.Services.Count - 1; i >= 0; i--)
+{
+    var descriptor = builder.Services[i];
+    if (descriptor.ServiceType == typeof(IMainMenuContributor)
+        && accountingMenuTypes.Contains(descriptor.ImplementationType))
+    {
+        builder.Services.RemoveAt(i);
+    }
+}
 builder.Services.AddAuthorization(options =>
     options.FallbackPolicy = new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build());
 

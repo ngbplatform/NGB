@@ -25,6 +25,7 @@ import {
 import { configureNgbNavigation } from '@ngbplatform/ui/navigation'
 import '@ngbplatform/ui/styles'
 import { metadataFormBehavior } from './metadata'
+import { searchApplication } from './search'
 
 async function bootstrap(): Promise<void> {
   const pinia = createPinia()
@@ -62,6 +63,7 @@ async function bootstrap(): Promise<void> {
   const [{ default: App }, { router }] = await Promise.all([import('./App.vue'), import('./router')])
   configureNgbCommandPalette({
     router,
+    searchRemote: searchApplication,
     recentStorageKey: 'equipment-inspection:recent-commands',
     getMenuGroups: () => [{ label: 'Equipment inspection', items: [
       { code: 'equipment', label: 'Equipment', route: '/catalogs/example.equipment' },

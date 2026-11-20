@@ -25,3 +25,6 @@ query-level aggregate tests alone do not exercise report definitions/rendering.
 
 Done: known rows/totals reconcile across UI, pages and exports, and the selected
 execution path remains authorized and bounded.
+
+Apply the [business outcome checks](../../../ai/vendor/references/business-outcome-checks.md)
+and the named-outcome browser gate before claiming the generated workflow complete.

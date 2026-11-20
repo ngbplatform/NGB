@@ -19,6 +19,46 @@ namespace EquipmentInspection.IntegrationTests;
 public sealed class IndependentReferenceRegisterTests
 {
     [Fact]
+    public async Task Compensating_a_future_change_restores_the_previous_value_without_erasing_later_values_or_history()
+    {
+        await using var host = new InspectionHost();
+        await host.StartAsync();
+        var key = await CreateEquipmentKeyAsync(host, "Correction schedule bench");
+        await using var scope = host.Services.CreateAsyncScope();
+        var services = scope.ServiceProvider;
+        var register = await ConfigureAsync(services, "example.corrected-rate", ReferenceRegisterPeriodicity.Day);
+        var writes = services.GetRequiredService<IReferenceRegisterIndependentWriteService>();
+        var reads = services.GetRequiredService<IReferenceRegisterReadService>();
+        var today = DateTime.UtcNow.Date;
+        var scheduled = today.AddDays(10);
+        var later = today.AddDays(20);
+
+        await writes.UpsertAsync(register, key, today.AddDays(-1), Values(10m), Guid.CreateVersion7());
+        await writes.UpsertAsync(register, key, scheduled, Values(20m), Guid.CreateVersion7());
+        await writes.UpsertAsync(register, key, later, Values(30m), Guid.CreateVersion7());
+        var original = (await reads.SliceLastAsync(register, key, scheduled))!;
+        Assert.Equal(20m, original.Values["amount"]);
+
+        // This tests the compensation primitive, not a complete document policy.
+        // The application must also authorize withdrawal, check consumers and
+        // serialize the schedule update in its document lifecycle transaction.
+        var previous = (await reads.SliceLastAsync(register, key, scheduled.AddTicks(-1)))!;
+        var correction = Guid.CreateVersion7();
+        Assert.Equal(ReferenceRegisterWriteResult.Executed,
+            await writes.UpsertAsync(register, key, scheduled, Values((decimal)previous.Values["amount"]!), correction));
+        Assert.Equal(ReferenceRegisterWriteResult.AlreadyCompleted,
+            await writes.UpsertAsync(register, key, scheduled, Values(10m), correction));
+        Assert.Null(await reads.SliceLastAsync(register, key, today));
+        Assert.Equal(10m, (await reads.SliceLastAsync(register, key, DateTime.UtcNow))!.Values["amount"]);
+        Assert.Equal(10m, (await reads.SliceLastAsync(register, key, scheduled.AddDays(1)))!.Values["amount"]);
+        Assert.Equal(30m, (await reads.SliceLastAsync(register, key, later.AddDays(1)))!.Values["amount"]);
+        var history = await reads.GetKeyHistoryAsync(register, key, later.AddDays(1), periodUtc: scheduled);
+        Assert.Equal(2, history.Count);
+        Assert.Contains(history, row => row.RecordId == original.RecordId && (decimal)row.Values["amount"]! == 20m);
+        Assert.DoesNotContain(history, row => row.IsDeleted);
+    }
+
+    [Fact]
     public async Task Periodic_versions_respect_effective_time_recorded_time_and_tombstones()
     {
         await using var host = new InspectionHost();

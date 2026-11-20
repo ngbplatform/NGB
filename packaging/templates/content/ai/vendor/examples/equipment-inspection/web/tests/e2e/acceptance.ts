@@ -1,5 +1,13 @@
 import { expect, type Locator, type Page, type TestInfo } from '@playwright/test'
 
+interface OutcomeChecks {
+  text(locator: Locator, expected: string | RegExp): Promise<void>
+  value(locator: Locator, expected: string): Promise<void>
+  disabled(locator: Locator): Promise<void>
+  count(locator: Locator, expected: number): Promise<void>
+  url(expected: string | RegExp): Promise<void>
+}
+
 interface Access {
   authSubject: string | null
   isAuthenticated: boolean
@@ -16,6 +24,7 @@ export async function acceptanceProbe(page: Page, info: TestInfo) {
   expect(runId).toBeTruthy()
   let interactions = 0
   let assertions = 0
+  const outcomes = new Set<string>()
   let access: Promise<Access> | undefined
   page.on('response', response => {
     if (response.url() === `${origin}/api/security/me/access` && response.status() === 200) access = response.json()
@@ -33,7 +42,23 @@ export async function acceptanceProbe(page: Page, info: TestInfo) {
       }, true)
     }
   })
-  return {
+  const probe = {
+    async outcome(name: string, verify: (checks: OutcomeChecks) => Promise<void>) {
+      expect(name.trim()).toBeTruthy()
+      expect(outcomes.has(name)).toBe(false)
+      const before = assertions
+      await verify(probe)
+      expect(assertions).toBeGreaterThan(before)
+      outcomes.add(name)
+    },
+    async count(locator: Locator, expected: number) {
+      await expect(locator).toHaveCount(expected)
+      assertions += 1
+    },
+    async url(expected: string | RegExp) {
+      await expect(page).toHaveURL(expected)
+      assertions += 1
+    },
     async text(locator: Locator, expected: string | RegExp) {
       await expect(locator).toBeVisible()
       await expect(locator).toHaveText(expected)
@@ -65,9 +90,10 @@ export async function acceptanceProbe(page: Page, info: TestInfo) {
       expect(new URL(page.url()).origin).toBe(origin)
       await info.attach('ngb-acceptance', {
         contentType: 'application/json',
-        body: Buffer.from(JSON.stringify({ schemaVersion: 1, caseId, runId, origin,
+        body: Buffer.from(JSON.stringify({ schemaVersion: outcomes.size ? 2 : 1, outcomes: [...outcomes], caseId, runId, origin,
           role, subject: actor!.authSubject, url: page.url(), interactions, assertions })),
       })
     },
   }
+  return probe
 }

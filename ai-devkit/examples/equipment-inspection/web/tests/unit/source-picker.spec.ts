@@ -36,7 +36,8 @@ function deferred() {
 async function fixture() {
   const equipmentId = ref('equipment-one')
   const sources = [{ id: 'source', number: 'I-2026-000001', result: 'Passed' }]
-  state.get.mockImplementation(async (url: string) => url.includes('/source?') ? sources[0] : sources)
+  state.get.mockImplementation(async (url: string) => url.includes('/source?') ? sources[0]
+    : url.includes('/api/catalogs/') ? { display: 'Inspection bench' } : sources)
   const { default: Picker } = await import('../../src/InspectionSourcePicker.vue')
   const screen = render(defineComponent({ setup: () => () => h(Picker, { equipmentId: equipmentId.value }) }))
   await vi.waitFor(() => expect(state.get).toHaveBeenCalled())
@@ -129,4 +130,24 @@ it('ignores a late preview success or failure after clearing and leaving the edi
   await value.screen.unmount()
   pending.resolve(value.sources[0])
   expect(signal.aborted).toBe(true)
+})
+
+
+it('invalidates the final dependent display request on clear and ignores its late success or failure', async () => {
+  const value = await fixture()
+  for (const fail of [false, true]) {
+    const pending = deferred()
+    state.get.mockImplementation(async (url: string) => url.includes('/api/catalogs/') ? pending.promise
+      : url.includes('/source?') ? value.sources[0] : value.sources)
+    await value.select()
+    await vi.waitFor(() => expect(state.get.mock.calls.some(([url]) => url.includes('/api/catalogs/'))).toBe(true))
+    await value.screen.getByRole('button', { name: 'Clear', exact: true }).click()
+    if (fail) pending.reject(new Error('late dependent failure'))
+    else pending.resolve({ display: 'Stale equipment' })
+    await nextTick()
+    await expect.element(value.screen.getByTestId('source-equipment')).toHaveTextContent('Equipment: —')
+    await expect.element(value.screen.getByRole('status')).toHaveTextContent('Select an available inspection')
+    await expect.element(value.screen.getByRole('alert')).not.toBeInTheDocument()
+    state.get.mockClear()
+  }
 })

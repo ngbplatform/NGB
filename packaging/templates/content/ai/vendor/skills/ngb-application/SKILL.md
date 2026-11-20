@@ -30,3 +30,6 @@ is an architectural responsibility, not something the business prompt must enume
 Done means the independent solution restores from declared package feeds, builds,
 has explicit project roles and passes its applicable checks. Name any unavailable
 integration prerequisite instead of claiming startup was verified.
+
+Apply the [business outcome checks](../../references/business-outcome-checks.md)
+and the named-outcome browser gate before claiming the generated workflow complete.

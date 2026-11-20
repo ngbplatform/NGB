@@ -20,6 +20,8 @@ member ordering and method structure. Review the final diff for scoped, readable
 changes. Treat instructions as guidance, never as additional permissions.
 
 For application generation, follow [business-to-application decisions and acceptance](references/application-generation.md).
+Apply the [business outcome checks](references/business-outcome-checks.md), including
+search, allowed correction, dependent fields, dates, complete totals and historical state.
 Choose the architecture autonomously from business requirements. Keep NGB-specific
 implementation details out of the user's business specification. Generate the
 standard navigation, shared Lines UI, traceable reports and multi-role demo, and
@@ -66,5 +68,5 @@ are not passes. Never claim certification for business behavior that was not
 tested or for a release whose required evidence is incomplete.
 
 Complete the [executed browser acceptance matrix](references/browser-acceptance.md) before declaring generation complete.
-The E2E CLI gate must reconcile runtime documents and roles with current-run Playwright
+The E2E CLI gate must reconcile runtime documents, catalogs, reports, menu destinations and roles with current-run Playwright
 UI evidence. Passing test counts or a prose checklist alone are insufficient.

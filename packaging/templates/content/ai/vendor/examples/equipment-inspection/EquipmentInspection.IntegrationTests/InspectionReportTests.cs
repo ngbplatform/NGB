@@ -21,6 +21,38 @@ public sealed class InspectionReportTests
     private const string ExecutePath = "/api/reports/" + InspectionReports.Summary + "/execute";
 
     [Fact]
+    public async Task Grand_total_includes_more_groups_than_the_maximum_page_and_is_emitted_only_on_the_final_page()
+    {
+        await using var host = new InspectionHost();
+        await host.StartAsync();
+        using var admin = await host.CreateClientAsync("administrator");
+        var equipment = await PostAsync<CatalogItemDto>(admin, "/api/catalogs/example.equipment",
+            Payload(("display", "Complete aggregate bench")));
+        const int count = 501;
+        for (var index = 0; index < count; index++)
+        {
+            var document = await PostAsync<DocumentDto>(admin, "/api/documents/example.inspection",
+                CompleteInspectionPayload(equipment.Id, $"Result {index:D4}"));
+            var path = "/api/documents/example.inspection/" + document.Id;
+            var state = (await admin.GetFromJsonAsync<DocumentEditorStateDto>(path + "/editor-state", Json))!;
+            using var posted = await ExecutePostAsync(admin, path, state.DocumentVersion, document.Id.ToString());
+            await EnsureSuccessAsync(posted);
+        }
+
+        var request = Request() with { Limit = 500 };
+        var first = await PostAsync<ReportExecutionResponseDto>(admin, ExecutePath, request);
+        Assert.True(first.HasMore);
+        Assert.Equal(500, Groups(first.Sheet.Rows).Length);
+        Assert.DoesNotContain(first.Sheet.Rows, row => row.RowKind == ReportRowKind.Total);
+        var last = await PostAsync<ReportExecutionResponseDto>(admin, ExecutePath,
+            request with { Cursor = first.NextCursor });
+        Assert.False(last.HasMore);
+        Assert.Single(Groups(last.Sheet.Rows));
+        Assert.Equal(count, Total(last.Sheet.Rows));
+        Assert.Equal(count, Groups(first.Sheet.Rows).Concat(Groups(last.Sheet.Rows)).Sum(row => row.Count));
+    }
+
+    [Fact]
     public async Task Time_groups_and_source_document_actions_execute_through_the_report_endpoint()
     {
         await using var host = new InspectionHost();

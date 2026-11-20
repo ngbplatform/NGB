@@ -1,6 +1,7 @@
 import { createApp } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
 import {
+  configureNgbCommandPalette,
   configureNgbEditor,
   configureNgbNavigation,
   configureNgbWorkCenter,
@@ -13,8 +14,10 @@ import {
   getEntityAuditLog,
   useAccessStore,
   useAuthStore,
+  useMainMenuStore,
 } from '@ngbplatform/ui'
 import '@ngbplatform/ui/styles'
+import { searchApplication } from './search'
 
 async function bootstrap(): Promise<void> {
   const pinia = createPinia()
@@ -40,6 +43,12 @@ async function bootstrap(): Promise<void> {
   })
 
   const [{ default: App }, { router }] = await Promise.all([import('./App.vue'), import('./router')])
+  configureNgbCommandPalette({
+    router,
+    recentStorageKey: 'application:recent-commands',
+    getMenuGroups: () => useMainMenuStore().groups,
+    searchRemote: searchApplication,
+  })
   const app = createApp(App).use(pinia).use(router)
   await router.isReady()
   app.mount('#app')

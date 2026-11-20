@@ -43,10 +43,24 @@ test('server eligibility excludes draft and consumed sources before real lookup 
 
   await page.goto(`${origin}/inspection-sources/${equipment.id}`)
   const lookup = page.getByRole('combobox')
+  const searchResults = (query: string) => page.waitForResponse(response => {
+    const url = new URL(response.url())
+    return url.pathname === '/api/inspection-sources' && url.searchParams.get('query') === query
+  })
+  const searched = searchResults('I-')
   await lookup.fill('I-')
+  const response = await searched
+  expect(response.ok()).toBe(true)
+  const eligibleIds = (await response.json()).map((item: { id: string }) => item.id)
+  expect(eligibleIds.sort()).toEqual([available.id, derived.createdDocument.id].sort())
   await expect(page.getByRole('option', { name: available.number, exact: true })).toBeVisible()
   await expect(page.getByRole('option', { name: draft.number, exact: true })).toHaveCount(0)
   await expect(page.getByRole('option', { name: consumed.number, exact: true })).toHaveCount(0)
+
+  const narrowed = searchResults(available.number)
+  await lookup.fill(available.number)
+  expect((await narrowed).ok()).toBe(true)
+  await expect(page.getByRole('option')).toHaveCount(1)
   await lookup.press('ArrowDown')
   await lookup.press('Enter')
   await proof.text(page.getByRole('status'), 'Confirmed safety check')

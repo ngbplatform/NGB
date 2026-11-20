@@ -1,13 +1,23 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { NgbSiteShell, useAccessStore, useAuthStore, useMainMenuStore } from '@ngbplatform/ui'
+import {
+  NgbCommandPaletteDialog,
+  NgbSiteShell,
+  useAccessStore,
+  useAuthStore,
+  useCommandPaletteHotkeys,
+  useCommandPaletteStore,
+  useMainMenuStore,
+} from '@ngbplatform/ui'
 
 const router = useRouter()
 const route = useRoute()
 const auth = useAuthStore()
 const access = useAccessStore()
 const menu = useMainMenuStore()
+const palette = useCommandPaletteStore()
+useCommandPaletteHotkeys()
 const nodes = computed(() => menu.groups.map((group) => {
   const items = group.items.map((item) => ({
     id: item.route,
@@ -44,8 +54,10 @@ onMounted(async () => {
     :nodes="nodes"
     :selected-id="route.path"
     @navigate="navigate($event)"
+    @open-palette="palette.open()"
     @sign-out="auth.logout()"
   >
     <router-view />
   </NgbSiteShell>
+  <NgbCommandPaletteDialog />
 </template>

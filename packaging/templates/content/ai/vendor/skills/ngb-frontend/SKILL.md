@@ -31,3 +31,6 @@ surface actionable [business errors](../../references/errors.md), not context-on
 
 Done: independent typecheck/build passes, public import boundaries hold, component
 states are tested, and real browser/API authorization agrees.
+
+Apply the [business outcome checks](../../references/business-outcome-checks.md)
+and the named-outcome browser gate before claiming the generated workflow complete.

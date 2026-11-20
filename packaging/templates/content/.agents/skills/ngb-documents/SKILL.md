@@ -55,3 +55,6 @@ and [visible flow relationships](../../../ai/vendor/references/documents.md#visi
 
 Done means the requested lifecycle and effect outcomes are proven. A validator
 unit test alone is not evidence of persistence, authorization or successful Post.
+
+Apply the [business outcome checks](../../../ai/vendor/references/business-outcome-checks.md)
+and the named-outcome browser gate before claiming the generated workflow complete.

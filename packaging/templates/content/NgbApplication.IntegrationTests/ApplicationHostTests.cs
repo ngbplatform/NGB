@@ -1,7 +1,9 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using NGB.Application.Abstractions.Services;
 using NGB.PostgreSql.Bootstrap;
 using Testcontainers.PostgreSql;
 using Xunit;
@@ -55,10 +57,17 @@ public sealed class ApplicationHostTests
         });
         using var anonymous = await client.GetAsync("/api/security/roles");
         Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
+        const string searchPath = "/api/application-search?query=unmatched-example-record";
+        using var anonymousSearch = await client.GetAsync(searchPath);
+        Assert.Equal(HttpStatusCode.Unauthorized, anonymousSearch.StatusCode);
 
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await identity.TokenAsync("administrator"));
         using var administrator = await client.GetAsync("/api/security/roles");
         Assert.Equal(HttpStatusCode.OK, administrator.StatusCode);
+
+        var search = await client.GetFromJsonAsync<NgbSearchResult>(searchPath);
+        Assert.Empty(search!.Items);
+        Assert.Empty(search.UnavailableSources);
 
         foreach (var path in new[]
         {

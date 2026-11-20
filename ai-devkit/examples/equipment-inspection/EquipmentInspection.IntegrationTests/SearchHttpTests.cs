@@ -130,7 +130,7 @@ public sealed class SearchHttpTests
         await host.LinkUserAsync("imitator", true, "inspection.search-observer", "Administrator");
         using var admin = await host.CreateClientAsync("administrator");
         var equipment = await PostAsync<CatalogItemDto>(admin, "/api/catalogs/example.equipment",
-            Payload(("display", "Inspection search access")));
+            Payload(("display", "Inspection search access"), ("equipment_code", "EQ-219")));
         using var reader = await host.CreateClientAsync("reader");
         Assert.Empty((await SearchAsync(reader, "Inspection")).Items);
         var access = (await reader.GetFromJsonAsync<CurrentAccessDto>("/api/security/me/access"))!;
@@ -141,6 +141,7 @@ public sealed class SearchHttpTests
             new ReplaceUserRolesRequestDto([role.RoleId]));
         await EnsureSuccessAsync(assign);
         Assert.Empty((await SearchAsync(reader, "Inspection")).Items);
+        Assert.Empty((await SearchAsync(reader, "EQ-219")).Items);
         using var lookup = await admin.PutAsJsonAsync($"/api/security/roles/{role.RoleId}/permissions",
             new ReplaceRolePermissionsRequestDto([
                 new PermissionAssignmentDto("catalog", "example.equipment", "view"),
@@ -148,6 +149,9 @@ public sealed class SearchHttpTests
             ]));
         await EnsureSuccessAsync(lookup);
         Assert.Equal(equipment.Id, Assert.Single((await SearchAsync(reader, "Inspection")).Items).Id);
+        var byCode = Assert.Single((await SearchAsync(reader, "EQ-219")).Items);
+        Assert.Equal(equipment.Id, byCode.Id);
+        Assert.Equal("Inspection search access", byCode.Title);
         using var revoke = await admin.PutAsJsonAsync($"/api/security/roles/{role.RoleId}/permissions",
             new ReplaceRolePermissionsRequestDto([]));
         await EnsureSuccessAsync(revoke);

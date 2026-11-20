@@ -6,6 +6,7 @@ const props = defineProps<{ equipmentId: string }>()
 const items = ref<LookupItem[]>([])
 const selected = ref<LookupItem | null>(null)
 const result = ref('')
+const equipmentName = ref('')
 const message = ref('')
 let search: AbortController | null = null
 let preview: AbortController | null = null
@@ -33,6 +34,7 @@ async function choose(value: LookupItem | null) {
   preview = null
   selected.value = value
   result.value = ''
+  equipmentName.value = ''
   message.value = ''
   if (!value) return
   const request = new AbortController()
@@ -40,7 +42,13 @@ async function choose(value: LookupItem | null) {
   try {
     const parameters = new URLSearchParams({ equipmentId: props.equipmentId })
     const source = await httpGet<Source>(`/api/inspection-sources/${value.id}?${parameters}`, null, { signal: request.signal })
-    if (preview === request) result.value = source.result
+    if (preview !== request) return
+    const equipment = await httpGet<{ display: string }>(`/api/catalogs/example.equipment/${props.equipmentId}`, null,
+      { signal: request.signal })
+    // Every dependent lookup belongs to the same source selection, including the last await.
+    if (preview !== request) return
+    equipmentName.value = equipment.display
+    result.value = source.result
   } catch (error) {
     if (preview === request) {
       selected.value = null
@@ -75,6 +83,7 @@ onBeforeUnmount(() => {
       @update:model-value="choose"
     />
     <p v-if="message" role="alert">{{ message }}</p>
+    <p data-testid="source-equipment">Equipment: {{ equipmentName || '—' }}</p>
     <p role="status">{{ result || 'Select an available inspection to preview its result.' }}</p>
   </section>
 </template>

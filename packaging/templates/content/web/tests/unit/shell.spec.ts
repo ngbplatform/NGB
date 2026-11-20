@@ -11,6 +11,7 @@ vi.hoisted(() => vi.stubGlobal('__NGB_RUNTIME_CONFIG__', {
 
 const state = vi.hoisted(() => ({
   push: vi.fn(), logout: vi.fn(), accessLoad: vi.fn(), menuLoad: vi.fn(),
+  openPalette: vi.fn(), paletteHotkeys: vi.fn(),
   groups: [
     { label: 'Dashboard', items: [{ route: '/', label: 'Dashboard', icon: 'home' }] },
     { label: 'Setup & Controls', items: [
@@ -31,9 +32,12 @@ vi.mock('@ngbplatform/ui', async importOriginal => {
     useAuthStore: () => ({ userName: 'Administrator', logout: state.logout }),
     useAccessStore: () => ({ load: state.accessLoad }),
     useMainMenuStore: () => ({ groups: state.groups, load: state.menuLoad }),
+    useCommandPaletteHotkeys: state.paletteHotkeys,
+    useCommandPaletteStore: () => ({ open: state.openPalette }),
+    NgbCommandPaletteDialog: defineComponent(() => () => h('div', 'Command palette')),
     NgbSiteShell: defineComponent({
       props: ['nodes'],
-      emits: ['navigate', 'select', 'sign-out'],
+      emits: ['navigate', 'select', 'sign-out', 'open-palette'],
       setup(props, { emit, slots }) {
         return () => h('div', [
           h('pre', JSON.stringify(props.nodes)),
@@ -45,6 +49,7 @@ vi.mock('@ngbplatform/ui', async importOriginal => {
             onSelect: (id: string, target: string) => emit('select', id, target),
           }),
           h('button', { onClick: () => emit('sign-out') }, 'Sign out'),
+          h('button', { onClick: () => emit('open-palette') }, 'Search'),
           slots.default?.(),
         ])
       },
@@ -69,6 +74,10 @@ it('renders standalone navigation and navigates once per real sidebar click', as
   await screen.getByRole('button', { name: 'Roles', exact: true }).click()
   await screen.getByRole('button', { name: 'Background Jobs', exact: true }).click()
   await screen.getByRole('button', { name: 'Sign out' }).click()
+  await screen.getByRole('button', { name: 'Search' }).click()
+  expect(state.openPalette).toHaveBeenCalledOnce()
+  expect(state.paletteHotkeys).toHaveBeenCalledOnce()
+  expect(screen.container.textContent).toContain('Command palette')
   expect(state.push.mock.calls).toEqual([['/'], ['/roles']])
   expect(opened).toHaveBeenCalledExactlyOnceWith('http://localhost:5184/hangfire', '_blank', 'noopener')
   expect(state.logout).toHaveBeenCalledOnce()

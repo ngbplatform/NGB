@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { startApplication } from '../../src/bootstrap'
+import { searchApplication } from '../../src/search'
 
 const state = vi.hoisted(() => {
   const app = { use: vi.fn(), mount: vi.fn() }
@@ -20,6 +21,7 @@ const state = vi.hoisted(() => {
 vi.mock('vue', async importOriginal => ({ ...await importOriginal<typeof import('vue')>(), createApp: state.createApp }))
 vi.mock('pinia', () => ({ createPinia: vi.fn(), setActivePinia: vi.fn() }))
 vi.mock('@ngbplatform/ui', () => ({
+  httpGet: vi.fn(), useMainMenuStore: () => ({ groups: [] }),
   configureNgbEditor: vi.fn(), configureNgbWorkCenter: vi.fn(),
   configureNgbCommandPalette: state.palette, configureNgbLookup: vi.fn(), configureNgbMetadata: state.metadata,
   configureNgbReporting: vi.fn(), createDefaultNgbReportingConfig: vi.fn(),
@@ -64,6 +66,7 @@ it('loads access before mounting protected pages and waits for the router', asyn
   expect(state.catalogMetadata).toHaveBeenCalledWith('example.equipment')
   expect(state.normalizeMetadata).toHaveBeenCalledWith(metadata)
   expect(state.palette.mock.calls[0][0].getMenuGroups()[0].items).toHaveLength(7)
+  expect(state.palette.mock.calls[0][0].searchRemote).toBe(searchApplication)
 })
 
 it.each([false, true])('preserves server catalog write capabilities: %s', async allowed => {

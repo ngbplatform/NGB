@@ -10,7 +10,7 @@ import { prepareTemplate } from '../../ai-devkit/prepare.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const modules = 'packaging/templates/content/infrastructure/ngb'
-const measured = ['contracts', 'kit-contracts', 'kit-plan', 'upgrade-plan', 'project-data', 'resolved-data', 'evidence', 'archive', 'performance', 'resource-data']
+const measured = ['contracts', 'kit-contracts', 'kit-plan', 'upgrade-plan', 'project-data', 'resolved-data', 'evidence', 'archive', 'performance', 'resource-data', 'acceptance-outcomes']
   .map(name => `${modules}/${name}.mjs`)
 const authoringModules = ['ai-devkit/guidance.mjs', 'ai-devkit/capabilities.mjs',
   'quality/ai-devkit/certification-data.mjs', 'quality/ai-devkit/evaluation-data.mjs',
@@ -27,7 +27,7 @@ const authoringModules = ['ai-devkit/guidance.mjs', 'ai-devkit/capabilities.mjs'
   'quality/ai-devkit/evaluation-oracles/permission-correction.mjs',
   'quality/ai-devkit/evaluation-oracles/customized-kit-upgrade.mjs']
 const processModules = ['application', 'cli', 'file-data', 'kit-files', 'kit', 'process', 'profiles', 'validation',
-  'environment', 'acquisition', 'delegation', 'transaction', 'upgrade-assets', 'coverage', 'load', 'performance-runner', 'resources']
+  'acceptance', 'environment', 'acquisition', 'delegation', 'transaction', 'upgrade-assets', 'coverage', 'load', 'performance-runner', 'resources']
   .map(name => `${modules}/${name}.mjs`)
 const discovered = (await readdir(join(root, modules))).filter(name => name.endsWith('.mjs')).map(name => `${modules}/${name}`)
 assert.deepEqual(discovered.sort(), [...measured, ...processModules].sort(),

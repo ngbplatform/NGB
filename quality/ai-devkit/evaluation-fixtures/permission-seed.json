@@ -3,8 +3,8 @@
   "task": "permission-correction",
   "base": "sealed candidate ai/vendor/examples/equipment-inspection; overlay before capturing the trusted inventory",
   "files": {
-    "EquipmentInspection.Api/Program.cs": "f4315f1dc6dcd6512d8e26830dbdc3a7c8cba99049160f95d396127c3bf211b2",
-    "web/src/bootstrap.ts": "1b0daca4a5f157cd259da5816c2d4f7f400b7eeedc37e590d46220dc5457de03"
+    "EquipmentInspection.Api/Program.cs": "5e014637d487364ee4951924ac5f3989d18177198cadee7871f36aa51ef25f62",
+    "web/src/bootstrap.ts": "20233c0bffed23f22d1378e8803519cf4267e8c7a6e3251ed61fa52275889776"
   },
   "originalVerifiedCandidateSha256": "9e0a20481f359ab2dfe168fedb73d1e2a5a7be174220dfc8dfd5feee406b86ef"
 }

@@ -33,3 +33,6 @@ example linked from the register reference before declaring this path unsupporte
 
 Done: independently expected balances/state and reversal history agree, repeated
 operations do not duplicate effects, and batch reads remain bounded.
+
+Apply the [business outcome checks](../../../ai/vendor/references/business-outcome-checks.md)
+and the named-outcome browser gate before claiming the generated workflow complete.

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { digest, objectKeys, portablePath } from './kit-contracts.mjs'
 import { browserTestCounts } from './evidence.mjs'
+import { reconcileSurfaces, scenarioOutcomes, validateOutcomes, verifyOutcomeProof } from './acceptance-outcomes.mjs'
 
 const scenarios = ['access', 'draft-edit', 'lifecycle', 'validation', 'lines',
   'source-change-clear', 'lookup-eligibility', 'pricing', 'async-race']
@@ -14,8 +15,11 @@ function unique(values, description) {
 }
 
 export function acceptancePlan(value) {
-  objectKeys(value, ['schemaVersion', 'documents', 'roles', 'cases'])
-  assert.equal(value.schemaVersion, 1, 'Unsupported acceptance plan schema.')
+  const current = value.schemaVersion === 2
+  objectKeys(value, current ? ['schemaVersion', 'documents', 'roles', 'cases', 'surfaces', 'requirements']
+    : ['schemaVersion', 'documents', 'roles', 'cases'])
+  assert.ok(current || value.schemaVersion === 1, 'Unsupported acceptance plan schema.')
+  if (current) unique(value.surfaces, 'surface')
   assert.ok(Array.isArray(value.documents) && Array.isArray(value.roles) && Array.isArray(value.cases),
     'Declare acceptance documents, roles and cases.')
   unique(value.documents.map(item => item.type), 'document')
@@ -29,14 +33,17 @@ export function acceptancePlan(value) {
     }
   }
   for (const entry of value.cases) {
-    objectKeys(entry, ['id', 'document', 'role', 'scenario', 'file', 'title', 'project'])
-    assert.ok(value.documents.some(document => document.type === entry.document), `Unknown document: ${entry.document}`)
+    objectKeys(entry, current ? ['id', 'target', 'role', 'scenario', 'file', 'title', 'project', 'outcomes']
+      : ['id', 'document', 'role', 'scenario', 'file', 'title', 'project'])
+    if (current) assert.ok(value.surfaces.includes(entry.target), `Unknown surface: ${entry.target}`)
+    else assert.ok(value.documents.some(document => document.type === entry.document), `Unknown document: ${entry.document}`)
     assert.ok(value.roles.includes(entry.role), `Unknown role: ${entry.role}`)
-    assert.ok(scenarios.includes(entry.scenario), `Unknown scenario: ${entry.scenario}`)
+    assert.ok((current ? Object.keys(scenarioOutcomes) : scenarios).includes(entry.scenario), `Unknown scenario: ${entry.scenario}`)
     portablePath(entry.file)
     assert.ok(typeof entry.title === 'string' && entry.title.trim().length > 0, 'Missing test title.')
     assert.equal(typeof entry.project, 'string', 'Missing browser project.')
   }
+  if (current) validateOutcomes(value)
   return value
 }
 
@@ -47,22 +54,27 @@ export function reconcileAcceptance(plan, inventory) {
     'Acceptance plan must include every runtime document, without stale entries.')
   assert.deepEqual(unique(plan.roles, 'role'), unique(inventory.roles, 'runtime role'),
     'Acceptance plan must include every active runtime role, including ngb-admin.')
+  if (plan.schemaVersion === 2) reconcileSurfaces(plan, inventory)
+  const matches = (entry, type) => plan.schemaVersion === 2 ? entry.target === `document:${type}` : entry.document === type
   const required = []
   for (const metadata of inventory.documents) {
     const document = plan.documents.find(item => item.type === metadata.documentType)
     const kinds = ['draft-edit', 'validation']
-    if (metadata.capabilities?.canPost !== false) kinds.push('lifecycle')
+    if (metadata.capabilities?.canPost !== false) {
+      const withdrawalDisabled = plan.schemaVersion === 2 && metadata.capabilities?.canUnpost === false
+      kinds.push(withdrawalDisabled ? 'withdrawal-blocked' : 'lifecycle')
+    }
     if (metadata.parts?.length) kinds.push('lines')
     if (document.sourceDriven) kinds.push('source-change-clear', 'lookup-eligibility')
     if (document.priced) kinds.push('pricing')
     if (document.asynchronous) kinds.push('async-race')
     for (const kind of kinds) {
-      assert.ok(plan.cases.some(entry => entry.document === document.type && entry.scenario === kind),
+      assert.ok(plan.cases.some(entry => matches(entry, document.type) && entry.scenario === kind),
         `Missing acceptance scenario: ${document.type}/${kind}`)
       required.push(`${document.type}/${kind}`)
     }
     for (const role of plan.roles) {
-      assert.ok(plan.cases.some(entry => entry.document === document.type && entry.role === role && entry.scenario === 'access'),
+      assert.ok(plan.cases.some(entry => matches(entry, document.type) && entry.role === role && entry.scenario === 'access'),
         `Missing role acceptance: ${document.type}/${role}`)
       required.push(`${document.type}/${role}/access`)
     }
@@ -83,12 +95,13 @@ async function inventoryToken(environment) {
   return token
 }
 
-export async function readAcceptanceInventory(environment) {
+export async function readAcceptanceInventory(environment, schemaVersion = 1) {
   const token = await inventoryToken(environment)
-  const read = async path => {
+  const read = async (path, optional = false) => {
     const response = await fetch(`${environment.apiOrigin}${path}`, {
       headers: { Authorization: `Bearer ${token}` }, redirect: 'error', signal: AbortSignal.timeout(15000),
     })
+    if (optional && response.status === 404) return []
     assert.equal(response.status, 200, `Cannot read acceptance inventory: ${path}`)
     return response.json()
   }
@@ -101,12 +114,19 @@ export async function readAcceptanceInventory(environment) {
   // AddNgbRuntime always registers the SDK journal definition, even in the
   // security-only starter. Its specialized UI belongs to the Accounting module.
   // Application documents are never filtered by menu visibility.
-  const accounting = menu.groups.flatMap(group => group.items ?? []).some(item =>
+  const menuItems = menu.groups.flatMap(group => group.items ?? [])
+  const accounting = menuItems.some(item =>
     item.code === 'general_journal_entry' || item.code?.startsWith('accounting.')
     || item.route?.startsWith('/accounting/'))
   const platformOnly = accounting ? [] : documents.filter(item => item.documentType === 'general_journal_entry')
   const activeRoles = roles.filter(role => role.isActive)
-  return { documents: documents.filter(item => !platformOnly.includes(item)),
+  const surfaces = schemaVersion === 2 ? {
+    catalogs: await read('/api/catalogs/metadata'),
+    reports: await read('/api/report-definitions', !menuItems.some(item =>
+      item.kind === 'report' || item.route?.startsWith('/reports/'))),
+    menu: menuItems.map(item => ({ code: item.code, route: item.route })),
+  } : {}
+  return { ...surfaces, documents: documents.filter(item => !platformOnly.includes(item)),
     platformOnly: platformOnly.map(item => ({ documentType: item.documentType,
       reason: 'SDK journal definition is registered, but the application has not composed Accounting navigation.' })),
     roles: unique(['ngb-admin', ...activeRoles.map(role => role.code)], 'runtime role'),
@@ -156,7 +176,8 @@ export function browserAcceptance(plan, inventory, report, { runId, origin }) {
             assert.equal(spec.file.replaceAll('\\', '/'), entry.file, 'Acceptance test file differs.')
             assert.equal(spec.title, entry.title, 'Acceptance test title differs.')
             assert.equal(test.projectName, entry.project, 'Acceptance browser project differs.')
-            assert.equal(proof.schemaVersion, 1, 'Unsupported browser proof.')
+            assert.equal(proof.schemaVersion, plan.schemaVersion, 'Unsupported browser proof.')
+            if (plan.schemaVersion === 2) verifyOutcomeProof(entry, proof)
             assert.equal(proof.runId, runId, 'Acceptance evidence belongs to another run.')
             assert.equal(proof.origin, origin, 'Acceptance must use the disposable application origin.')
             assert.equal(new URL(proof.url).origin, origin, 'Acceptance ended outside the application.')

@@ -34,25 +34,33 @@ public sealed class WatchdogHttpTests
         await using var watchdog = builder.Build();
         watchdog.UseNgbWatchdog().MapNgbWatchdog();
         await watchdog.StartAsync();
-        using var client = new HttpClient { BaseAddress = Origin(watchdog) };
-
-        foreach (var expected in new[] { true, false, true })
+        try
         {
-            status = expected ? StatusCodes.Status200OK : StatusCodes.Status503ServiceUnavailable;
-            using var response = await client.GetAsync("/health");
-            Assert.Equal(expected ? HttpStatusCode.OK : HttpStatusCode.ServiceUnavailable, response.StatusCode);
-            var body = await response.Content.ReadFromJsonAsync<JsonElement>();
-            Assert.Equal(expected ? "Healthy" : "Unhealthy", body.GetProperty("status").GetString());
-            var entry = body.GetProperty("entries").GetProperty("Web Client (Vue.js)");
-            Assert.Equal(expected ? "Healthy" : "Unhealthy", entry.GetProperty("status").GetString());
-            Assert.DoesNotContain("connectionstring", body.ToString(), StringComparison.OrdinalIgnoreCase);
-        }
+            using var client = new HttpClient { BaseAddress = Origin(watchdog) };
 
-        var options = watchdog.Services.GetRequiredService<IOptions<WatchdogOptions>>().Value;
-        Assert.True(options.RequireAuthorization);
-        Assert.True(options.MapAccountEndpoints);
-        Assert.Equal("dashboard.css", Assert.Single(options.CustomStylesheets));
-        Assert.True(File.Exists(Path.Combine(AppContext.BaseDirectory, "dashboard.css")));
+            foreach (var expected in new[] { true, false, true })
+            {
+                status = expected ? StatusCodes.Status200OK : StatusCodes.Status503ServiceUnavailable;
+                using var response = await client.GetAsync("/health");
+                Assert.Equal(expected ? HttpStatusCode.OK : HttpStatusCode.ServiceUnavailable, response.StatusCode);
+                var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+                Assert.Equal(expected ? "Healthy" : "Unhealthy", body.GetProperty("status").GetString());
+                var entry = body.GetProperty("entries").GetProperty("Web Client (Vue.js)");
+                Assert.Equal(expected ? "Healthy" : "Unhealthy", entry.GetProperty("status").GetString());
+                Assert.DoesNotContain("connectionstring", body.ToString(), StringComparison.OrdinalIgnoreCase);
+            }
+
+            var options = watchdog.Services.GetRequiredService<IOptions<WatchdogOptions>>().Value;
+            Assert.True(options.RequireAuthorization);
+            Assert.True(options.MapAccountEndpoints);
+            Assert.Equal("dashboard.css", Assert.Single(options.CustomStylesheets));
+            Assert.True(File.Exists(Path.Combine(AppContext.BaseDirectory, "dashboard.css")));
+        }
+        finally
+        {
+            await watchdog.StopAsync();
+            await probe.StopAsync();
+        }
     }
 
     [Fact]
@@ -96,38 +104,45 @@ public sealed class WatchdogHttpTests
             await context.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new ClaimsPrincipal(identity));
         });
         await watchdog.StartAsync();
-        var options = watchdog.Services.GetRequiredService<IOptions<WatchdogOptions>>().Value;
-        Assert.Equal("/readiness", options.HealthPath);
-        Assert.Equal("/operations", options.UiPath);
-        Assert.Equal("/operations-data", options.ApiPath);
-        Assert.Equal("Equipment service status", options.PageTitle);
-
-        using var anonymous = Client(watchdog);
-        using var health = await anonymous.GetAsync("/readiness");
-        Assert.Equal(HttpStatusCode.OK, health.StatusCode);
-        using var anonymousUi = await anonymous.GetAsync("/operations");
-        Assert.Equal(HttpStatusCode.Unauthorized, anonymousUi.StatusCode);
-        foreach (var role in new[] { "reader", "ngb-admin" })
+        try
         {
-            using var client = Client(watchdog);
-            using var signIn = await client.PostAsync("/__test/sign-in/" + role, null);
-            signIn.EnsureSuccessStatusCode();
-            using var ui = await client.GetAsync("/operations");
-            using var api = await client.GetAsync("/operations-data");
-            if (role == "reader")
+            var options = watchdog.Services.GetRequiredService<IOptions<WatchdogOptions>>().Value;
+            Assert.Equal("/readiness", options.HealthPath);
+            Assert.Equal("/operations", options.UiPath);
+            Assert.Equal("/operations-data", options.ApiPath);
+            Assert.Equal("Equipment service status", options.PageTitle);
+
+            using var anonymous = Client(watchdog);
+            using var health = await anonymous.GetAsync("/readiness");
+            Assert.Equal(HttpStatusCode.OK, health.StatusCode);
+            using var anonymousUi = await anonymous.GetAsync("/operations");
+            Assert.Equal(HttpStatusCode.Unauthorized, anonymousUi.StatusCode);
+            foreach (var role in new[] { "reader", "ngb-admin" })
             {
-                Assert.Equal(HttpStatusCode.Forbidden, ui.StatusCode);
-                Assert.Equal(HttpStatusCode.Forbidden, api.StatusCode);
+                using var client = Client(watchdog);
+                using var signIn = await client.PostAsync("/__test/sign-in/" + role, null);
+                signIn.EnsureSuccessStatusCode();
+                using var ui = await client.GetAsync("/operations");
+                using var api = await client.GetAsync("/operations-data");
+                if (role == "reader")
+                {
+                    Assert.Equal(HttpStatusCode.Forbidden, ui.StatusCode);
+                    Assert.Equal(HttpStatusCode.Forbidden, api.StatusCode);
+                }
+                else
+                {
+                    Assert.Equal(HttpStatusCode.OK, ui.StatusCode);
+                    Assert.Equal(HttpStatusCode.OK, api.StatusCode);
+                    var html = await ui.Content.ReadAsStringAsync();
+                    Assert.Contains("Equipment service status", html);
+                    Assert.Contains("ngb-watchdog-dashboard-favicon", html);
+                    Assert.Contains("</head>", html);
+                }
             }
-            else
-            {
-                Assert.Equal(HttpStatusCode.OK, ui.StatusCode);
-                Assert.Equal(HttpStatusCode.OK, api.StatusCode);
-                var html = await ui.Content.ReadAsStringAsync();
-                Assert.Contains("Equipment service status", html);
-                Assert.Contains("ngb-watchdog-dashboard-favicon", html);
-                Assert.Contains("</head>", html);
-            }
+        }
+        finally
+        {
+            await watchdog.StopAsync();
         }
     }
 

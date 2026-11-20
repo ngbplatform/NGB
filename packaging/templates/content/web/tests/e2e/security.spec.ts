@@ -18,6 +18,24 @@ test('trusted administrator can open the protected role editor without a platfor
   await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeVisible()
 })
 
+test('the starter opens global search and queries the authenticated application API', async ({ page }) => {
+  await signIn(page, 'administrator')
+  await page.keyboard.press('ControlOrMeta+k')
+  const dialog = page.getByRole('dialog')
+  const query = 'unmatched-example-record'
+  const searched = page.waitForResponse(response => {
+    const url = new URL(response.url())
+    return url.pathname === '/api/application-search' && url.searchParams.get('query') === query
+  })
+  await dialog.getByRole('combobox').fill(query)
+  const response = await searched
+  expect(response.ok()).toBe(true)
+  expect((await response.json()).items).toEqual([])
+  await expect(dialog.getByText(`No results for “${query}”`, { exact: true })).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(dialog).toBeHidden()
+})
+
 test('a signed-in user without permission cannot read roles through UI navigation', async ({ page }) => {
   const rejected = page.waitForResponse(response => response.url().includes('/api/security/roles') && response.status() === 403)
   await signIn(page, 'reader')

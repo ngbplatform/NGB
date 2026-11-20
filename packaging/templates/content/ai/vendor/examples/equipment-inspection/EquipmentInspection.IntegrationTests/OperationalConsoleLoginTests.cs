@@ -40,9 +40,15 @@ public sealed class OperationalConsoleLoginTests
         await using var application = builder.Build();
         application.UseNgbWatchdog().MapNgbWatchdog();
         await application.StartAsync();
-
-        await AssertLoginAsync(identity, origin, username, expected,
-            "/health-ui", "Equipment service health", "/health-ui-api");
+        try
+        {
+            await AssertLoginAsync(identity, origin, username, expected,
+                "/health-ui", "Equipment service health", "/health-ui-api");
+        }
+        finally
+        {
+            await application.StopAsync();
+        }
     }
 
     [Theory]

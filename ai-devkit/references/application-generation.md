@@ -139,6 +139,11 @@ grants, inactive users and disabled features. See [security](security.md).
 
 ## Acceptance evidence
 
+Follow [business outcome checks](business-outcome-checks.md) and bind each required
+business rule to named, executed outcomes in acceptance schema 2. An expected
+refusal does not prove an allowed correction; a populated seed does not prove
+interactive dependencies or complete historical figures.
+
 Build an inventory from the registered documents, reports, menu entries and roles;
 do not test only a handpicked subset. For each item record its expected business
 outcome and the actual test result:
@@ -185,5 +190,5 @@ generation omissions. Exercise each conflicting operation pair, including
 effective-dated value changes, rather than extrapolating from a single race test.
 
 Complete the [executed browser acceptance matrix](browser-acceptance.md) before declaring generation complete.
-The E2E CLI gate must reconcile runtime documents and roles with current-run Playwright
+The E2E CLI gate must reconcile runtime documents, catalogs, reports, menu destinations and roles with current-run Playwright
 UI evidence. Passing test counts or a prose checklist alone are insufficient.
