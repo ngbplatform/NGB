@@ -2,11 +2,11 @@
   "schemaVersion": 1,
   "package": "NGB.Platform.Mcp",
   "version": "3.4.0",
-  "packageSha256": "dfa1b909981fe721e4652a8c77876acef52918b1164636854107a426a40fb8b4",
+  "packageSha256": "35a1df4d4d54d8166b79942a94b13aab20c4594d282dbb4421a0143880ecb946",
   "assembly": {
     "name": "NGB.Mcp",
     "version": "3.0.0.0",
-    "sha256": "c5014f79cce897e7af3af03259586aed05027fa25d7f538a317fb2602fcbc0da"
+    "sha256": "06960f7314f266c2029321cc822951be1e815b1ca9f07a6df66e731ebd81dd7b"
   },
   "contractSha256": "3174253ba8a03554b88c4e19a57b27f368d9497f43b5cd6e3a6834793b09e4fa",
   "types": [

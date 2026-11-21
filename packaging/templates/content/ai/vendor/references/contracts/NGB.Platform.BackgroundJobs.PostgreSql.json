@@ -2,11 +2,11 @@
   "schemaVersion": 1,
   "package": "NGB.Platform.BackgroundJobs.PostgreSql",
   "version": "3.4.0",
-  "packageSha256": "ddea82d3589f82a1f75bdb174b54c33305d42ec957c5b191bd5367c15954e53b",
+  "packageSha256": "3175839f9234fcfcd15ab1bbdd099e3d71d1aa2fee6c9f8ae384f3fcb87ba772",
   "assembly": {
     "name": "NGB.BackgroundJobs.PostgreSql",
     "version": "3.0.0.0",
-    "sha256": "8a536eb8f09bd638511f8472d89b183de2e32975b04a35c7b5c712ab1f3b7edf"
+    "sha256": "b4ef39835e895ae8b163a728f63a4a95c0514981b7ac52d3c0c8bfe4e299d874"
   },
   "contractSha256": "e535b16ae6c4bee4c5453d80d3d50fe3b97efb12763ec04e846bd6c0131ed270",
   "types": [
