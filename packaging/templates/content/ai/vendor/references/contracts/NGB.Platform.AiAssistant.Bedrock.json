@@ -2,11 +2,11 @@
   "schemaVersion": 1,
   "package": "NGB.Platform.AiAssistant.Bedrock",
   "version": "3.4.0",
-  "packageSha256": "86bfad6fb563eb9e5d0b082aaf484c9c699e781a94644ff265fe92a2d74850c2",
+  "packageSha256": "3f074ee94c1229f853979b4fb10becfe6db59e0b444b57e82b086f953b5b6c80",
   "assembly": {
     "name": "NGB.AiAssistant.Bedrock",
     "version": "3.0.0.0",
-    "sha256": "4fceeff0529f7e6836a6088ae1d83c3a7a6c7ea4a246d8216d4853e2e19113e1"
+    "sha256": "d0fc10f2a7a7b79dbafb79e7d9a878d0576639875351337fa49d6f874ef3a710"
   },
   "contractSha256": "56d944d9068cbe84ff8c9a40cb06a96d42561ef297f124627d3ca1bbae14a92c",
   "types": [

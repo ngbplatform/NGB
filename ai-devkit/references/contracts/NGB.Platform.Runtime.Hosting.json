@@ -2,11 +2,11 @@
   "schemaVersion": 1,
   "package": "NGB.Platform.Runtime.Hosting",
   "version": "3.4.0",
-  "packageSha256": "de4252c86f76e554ba59bf24e4285c4f840acfa26af2a896cedd75739fffca8d",
+  "packageSha256": "4c8d59392531c7c210bff7b9fa2965cb04fa3c5abfe712547fa2e2b48306a7a4",
   "assembly": {
     "name": "NGB.Runtime.Hosting",
     "version": "3.0.0.0",
-    "sha256": "746097b4def6fd4f88708876ce9fc79652a4af189ccee1ec78d6666616a0af00"
+    "sha256": "57cdae6d61429695a47cfad0bf54f3835fd359d8bb5bd23c8c58593705bead21"
   },
   "contractSha256": "31155b49d013a3e8663f4cde1ddefb66894f89d551b0e80556a492c77a9aa050",
   "types": [
