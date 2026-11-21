@@ -1,6 +1,7 @@
 <template>
   <label class="inline-flex items-center gap-2 select-none" :class="disabled ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'">
     <input
+      :id="controlId"
       class="sr-only"
       type="checkbox"
       :checked="modelValue"
@@ -23,6 +24,7 @@
 <script setup lang="ts">
 defineProps<{
   modelValue: boolean;
+  controlId?: string;
   label?: string;
   disabled?: boolean;
 }>();

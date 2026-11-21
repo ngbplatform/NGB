@@ -5,6 +5,7 @@
     <Listbox :modelValue="modelValue" @update:modelValue="(value) => emit('update:modelValue', value)" :disabled="disabled">
       <div class="relative">
         <ListboxButton
+          :id="controlId"
           ref="btnRef"
           :class="[buttonClass, disabled ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer']"
           :aria-label="ariaLabel || label || undefined"
@@ -71,6 +72,7 @@ type FloatingTarget = HTMLElement | ComponentPublicInstance | null
 const props = withDefaults(defineProps<{
   modelValue: SelectValue
   options: SelectOption[]
+  controlId?: string
   label?: string
   hint?: string
   ariaLabel?: string

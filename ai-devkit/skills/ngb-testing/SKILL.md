@@ -50,3 +50,6 @@ and the named-outcome browser gate before claiming the generated workflow comple
 Classify relationships, dashboard metrics and roles, historical dimensions,
 settlement and correction scenarios in the application plan. Give each competing
 write and each replayable operation a dedicated executable case.
+
+Bind the server-side business observations to passing integration tests in the current run.
+Follow [server acceptance]({{references}}/server-acceptance.md).

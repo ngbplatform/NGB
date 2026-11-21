@@ -1,15 +1,18 @@
 <template>
   <div class="w-full">
-    <label v-if="label" class="block text-xs font-semibold text-ngb-muted mb-1">{{ label }}</label>
-
     <Combobox
+      as="div"
       :modelValue="modelValue"
       @update:modelValue="onSelect"
       :disabled="comboboxDisabled"
       by="id"
     >
+      <ComboboxLabel v-if="label || ariaLabel" :class="label ? 'block text-xs font-semibold text-ngb-muted mb-1' : 'sr-only'">
+        {{ label || ariaLabel }}
+      </ComboboxLabel>
       <div class="relative" :title="tooltipText || undefined">
         <ComboboxInput
+          :id="controlId"
           ref="inputRef"
           :class="[inputClass, comboboxDisabled ? 'opacity-60 cursor-not-allowed' : '']"
           :displayValue="displayValue"
@@ -52,6 +55,8 @@
           </button>
 
           <ComboboxButton
+            :id="optionsButtonId"
+            :aria-labelledby="optionsButtonId"
             :class="[dropdownButtonClass, comboboxDisabled ? 'pointer-events-none' : '']"
             aria-label="Show options"
             @mousedown.capture="updatePosition"
@@ -109,8 +114,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch, type ComponentPublicInstance } from 'vue'
-import { Combobox, ComboboxInput, ComboboxButton, ComboboxOptions, ComboboxOption } from '@headlessui/vue'
+import { computed, onBeforeUnmount, ref, useId, watch, type ComponentPublicInstance } from 'vue'
+import { Combobox, ComboboxLabel, ComboboxInput, ComboboxButton, ComboboxOptions, ComboboxOption } from '@headlessui/vue'
 import NgbIcon from './NgbIcon.vue'
 import { useFloatingDropdownPosition } from './useFloatingDropdownPosition'
 import { useAsyncComboboxQuery } from './useAsyncComboboxQuery'
@@ -124,6 +129,8 @@ const props = withDefaults(defineProps<{
   items: LookupItem[]
   // When supplied, the owner has searched additional record fields for this exact query.
   resultsFor?: string
+  ariaLabel?: string
+  controlId?: string
   label?: string
   hint?: string
   placeholder?: string
@@ -154,6 +161,7 @@ const emit = defineEmits<{
 }>()
 
 const comboboxDisabled = computed(() => !!props.disabled || !!props.readonly)
+const optionsButtonId = useId()
 
 const actionCount = computed(() => 1 + (props.showOpen ? 1 : 0) + (props.showClear ? 1 : 0))
 

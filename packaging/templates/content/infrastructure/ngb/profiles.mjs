@@ -9,6 +9,7 @@ import { report } from './kit.mjs'
 import { executionEnvironment, runTool } from './process.mjs'
 import { applicationConfiguration, validateApplication } from './validation.mjs'
 import { layerViolations, readTestXml } from './project-data.mjs'
+import { integrationObservations, verifyBusinessObservations } from './business-checks.mjs'
 import { browserTestCounts, frontendCoverage, frontendTestCounts, uniqueCoverageReport } from './evidence.mjs'
 import { applicationFiles, managedPackageFiles } from './application.mjs'
 import { assemblyMetadata, resolvedProject } from './resolved-data.mjs'
@@ -86,6 +87,7 @@ export async function executeProfile(root, options) {
   const backendSources = new Set()
   const backendAssemblies = new Set()
   const backendReports = []
+  const businessObservations = []
   const abort = new AbortController()
   const deadline = setTimeout(() => abort.abort(), 3600000)
   const cancel = () => abort.abort()
@@ -302,7 +304,11 @@ export async function executeProfile(root, options) {
                 '--logger', `trx;LogFileName=${id}.trx`, '--results-directory', join(output, id),
                 '--collect:XPlat Code Coverage', '--settings', settings])
               if (passed) {
-                await inspectEvidence(`${id}.discovery`, `${relativeOutput}/${id}/${id}.trx`, testCounts)
+                await inspectEvidence(`${id}.discovery`, `${relativeOutput}/${id}/${id}.trx`, text => {
+                  const counts = testCounts(text)
+                  if (suite === 'integration') businessObservations.push(...integrationObservations(text))
+                  return counts
+                })
                 try {
                   const paths = (await assetPaths(root, `${relativeOutput}/${id}`)).filter(path => path.endsWith('/coverage.cobertura.xml'))
                   const attachments = []
@@ -316,6 +322,13 @@ export async function executeProfile(root, options) {
                   checks.push({ id: `${id}.coverage-report`, required: true, state: 'failed', message: error.message })
                 }
               }
+            }
+            if (suite === 'integration') {
+              await inspectEvidence('test.integration.business-checks', 'ai/acceptance.json', text => {
+                const plan = acceptancePlan(JSON.parse(text))
+                const bindings = plan.schemaVersion === 1 ? { surfaces: [], businessChecks: [] } : plan
+                return verifyBusinessObservations(bindings, businessObservations, config.projects.some(project => project.role === 'worker'))
+              })
             }
             if (suite === 'unit') {
               await run('test.frontend', 'npm', ['run', 'test', '--', '--run', '--coverage', '--reporter=json',
@@ -347,6 +360,7 @@ export async function executeProfile(root, options) {
           for (const [index] of config.tests[suite].entries()) {
             required.push(`test.${suite}.${index}`, `test.${suite}.${index}.discovery`, `test.${suite}.${index}.coverage-report`)
           }
+          if (suite === 'integration') required.push('test.integration.business-checks')
           if (suite === 'unit') required.push('test.frontend', 'test.frontend.discovery', 'test.frontend.coverage')
         }
       }

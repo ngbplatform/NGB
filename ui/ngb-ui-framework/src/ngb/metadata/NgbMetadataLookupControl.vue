@@ -9,6 +9,8 @@ import type { LookupHint, LookupItem, MetadataFormBehavior } from './types'
 const props = defineProps<{
   hint: LookupHint
   modelValue: unknown
+  ariaLabel?: string
+  controlId?: string
   readonly?: boolean
   disabled?: boolean
   behavior?: MetadataFormBehavior
@@ -98,6 +100,8 @@ async function openLookupValue() {
 
 <template>
   <NgbLookup
+    :aria-label="ariaLabel"
+    :control-id="controlId"
     :model-value="selectedItem"
     :items="lookupItems"
     :results-for="resultsFor"

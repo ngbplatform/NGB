@@ -4,6 +4,7 @@ import { Popover, PopoverButton, PopoverPanel } from '@headlessui/vue'
 
 const props = withDefaults(defineProps<{
   displayValue: string
+  controlId?: string
   placeholder: string
   disabled?: boolean
   readonly?: boolean
@@ -32,6 +33,7 @@ const panelClasses = computed(() => [
 <template>
   <Popover v-slot="{ close }" :class="popoverClass">
     <PopoverButton
+      :id="controlId"
       as="button"
       type="button"
       :class="triggerClass"

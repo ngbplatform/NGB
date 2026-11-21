@@ -10,15 +10,67 @@ using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Documents;
 using NGB.Contracts.Reporting;
 using NGB.Contracts.Services;
+using NGB.Persistence.Documents;
 using NGB.Persistence.Reporting;
 using Xunit;
+using Xunit.Abstractions;
 using static EquipmentInspection.IntegrationTests.InspectionRequests;
 
 namespace EquipmentInspection.IntegrationTests;
 
-public sealed class InspectionReportTests
+public sealed class InspectionReportTests(ITestOutputHelper output)
 {
     private const string ExecutePath = "/api/reports/" + InspectionReports.Summary + "/execute";
+
+    [Fact]
+    public async Task Posting_a_later_inspection_preserves_the_count_at_the_earlier_cutoff()
+    {
+        await using var host = new InspectionHost();
+        await host.StartAsync();
+        using var admin = await host.CreateClientAsync("administrator");
+        var equipment = await PostAsync<CatalogItemDto>(admin, "/api/catalogs/example.equipment",
+            Payload(("display", "Historical count bench")));
+        var draft = await PostAsync<DocumentDto>(admin, "/api/documents/example.inspection",
+            CompleteInspectionPayload(equipment.Id));
+        await using var scope = host.Services.CreateAsyncScope();
+        var document = await scope.ServiceProvider.GetRequiredService<IDocumentRepository>().GetAsync(draft.Id);
+        Assert.NotNull(document);
+        var day = DateOnly.FromDateTime(document.DateUtc);
+        var cutoff = day.AddDays(-1).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        var laterCutoff = day.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        var historical = new ReportExecutionRequestDto(
+            Parameters: new Dictionary<string, string> { ["from_utc"] = cutoff, ["to_utc"] = cutoff },
+            Filters: Filter("equipment_id", new[] { equipment.Id }));
+        var before = Total((await PostAsync<ReportExecutionResponseDto>(admin, ExecutePath, historical)).Sheet.Rows);
+        Assert.Equal(0m, before);
+
+        var path = "/api/documents/example.inspection/" + draft.Id;
+        var state = await admin.GetFromJsonAsync<DocumentEditorStateDto>(path + "/editor-state", Json);
+        using var post = await ExecutePostAsync(admin, path, state!.DocumentVersion, draft.Id.ToString());
+        var posted = await ReadActionAsync(post);
+        var after = Total((await PostAsync<ReportExecutionResponseDto>(admin, ExecutePath, historical)).Sheet.Rows);
+        var later = historical with { Parameters = new Dictionary<string, string> { ["from_utc"] = cutoff, ["to_utc"] = laterCutoff } };
+        var laterActual = Total((await PostAsync<ReportExecutionResponseDto>(admin, ExecutePath, later)).Sheet.Rows);
+        Assert.Equal(0m, after);
+        Assert.Equal(1m, laterActual);
+
+        output.WriteLine("NGB-CHECK " + JsonSerializer.Serialize(new
+        {
+            kind = "historical-cutoff",
+            target = "report:" + InspectionReports.Summary,
+            key = "inspection_count",
+            cutoff,
+            repeatedCutoff = historical.Parameters!["to_utc"],
+            laterEvent = posted.Document.Id,
+            laterEffectiveAt = document.DateUtc,
+            laterStatus = (int)post.StatusCode,
+            expected = 0m,
+            before,
+            after,
+            laterExpected = 1m,
+            laterActual
+        }));
+    }
 
     [Fact]
     public async Task Grand_total_includes_more_groups_than_the_maximum_page_and_is_emitted_only_on_the_final_page()

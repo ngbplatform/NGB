@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { digest, objectKeys, portablePath } from './kit-contracts.mjs'
+import { reconcileHistoricalChecks, requireBusinessCheck, validateBusinessChecks } from './business-checks.mjs'
 import { browserTestCounts } from './evidence.mjs'
 import { businessReferences, reconcileSurfaces, reconcileWorkflows, scenarioOutcomes, validateOutcomes, verifyOutcomeProof } from './acceptance-outcomes.mjs'
 
@@ -16,8 +17,8 @@ function unique(values, description) {
 
 export function acceptancePlan(value) {
   const current = value.schemaVersion === 2
-  objectKeys(value, current ? ['schemaVersion', 'documents', 'roles', 'cases', 'surfaces', 'requirements']
-    : ['schemaVersion', 'documents', 'roles', 'cases'], current ? ['workflows'] : [])
+  objectKeys(value, current ? ['schemaVersion', 'documents', 'roles', 'cases', 'surfaces', 'requirements', 'businessChecks']
+    : ['schemaVersion', 'documents', 'roles', 'cases'], current ? ['workflows', 'nonBatchJobs'] : [])
   assert.ok(current || value.schemaVersion === 1, 'Unsupported acceptance plan schema.')
   if (current) unique(value.surfaces, 'surface')
   assert.ok(Array.isArray(value.documents) && Array.isArray(value.roles) && Array.isArray(value.cases),
@@ -27,7 +28,7 @@ export function acceptancePlan(value) {
   unique(value.cases.map(item => item.id), 'case')
   unique(value.cases.map(item => JSON.stringify([item.file, item.title, item.project])), 'browser test binding')
   for (const document of value.documents) {
-    objectKeys(document, ['type', 'sourceDriven', 'priced', 'asynchronous'], current ? ['informationalReferences'] : [])
+    objectKeys(document, ['type', 'sourceDriven', 'priced', 'asynchronous'], current ? ['informationalReferences', 'withdrawalDependencies'] : [])
     for (const key of ['sourceDriven', 'priced', 'asynchronous']) {
       assert.equal(typeof document[key], 'boolean', `Classify ${document.type}/${key}.`)
     }
@@ -43,7 +44,10 @@ export function acceptancePlan(value) {
     assert.ok(typeof entry.title === 'string' && entry.title.trim().length > 0, 'Missing test title.')
     assert.equal(typeof entry.project, 'string', 'Missing browser project.')
   }
-  if (current) validateOutcomes(value)
+  if (current) {
+    validateOutcomes(value)
+    validateBusinessChecks(value)
+  }
   return value
 }
 
@@ -57,6 +61,7 @@ export function reconcileAcceptance(plan, inventory) {
   if (plan.schemaVersion === 2) {
     reconcileSurfaces(plan, inventory)
     reconcileWorkflows(plan, inventory)
+    reconcileHistoricalChecks(plan, inventory.reports ?? [])
   }
   const matches = (entry, type) => plan.schemaVersion === 2 ? entry.target === `document:${type}` : entry.document === type
   const required = []
@@ -78,6 +83,12 @@ export function reconcileAcceptance(plan, inventory) {
         assert.ok(covered, `Missing document-flow proof for ${document.type}/${field}.`)
         required.push(`${document.type}/reference:${field}`)
       }
+      if (metadata.capabilities?.canPost !== false && metadata.capabilities?.canUnpost !== false && document.type !== 'general_journal_entry') {
+        for (const key of unique(document.withdrawalDependencies, `withdrawalDependencies for ${document.type}`)) {
+          requireBusinessCheck(plan, 'withdrawal-cycle', `document:${document.type}`, key)
+        }
+      }
+      for (const field of references) requireBusinessCheck(plan, 'source-membership', `document:${document.type}`, field)
     }
     if (document.sourceDriven) kinds.push('source-change-clear', 'lookup-eligibility')
     if (document.priced) kinds.push('pricing')
@@ -91,6 +102,16 @@ export function reconcileAcceptance(plan, inventory) {
       assert.ok(plan.cases.some(entry => matches(entry, document.type) && entry.role === role && entry.scenario === 'access'),
         `Missing role acceptance: ${document.type}/${role}`)
       required.push(`${document.type}/${role}/access`)
+    }
+  }
+  if (plan.schemaVersion === 2) {
+    const forms = [...inventory.documents.map(item => [`document:${item.documentType}`, item.form]),
+      ...(inventory.catalogs ?? []).map(item => [`catalog:${item.catalogType}`, item.form])]
+    for (const [target, form] of forms) {
+      if (!form?.sections?.some(section => section.rows.some(row => row.fields?.length))) continue
+      assert.ok(plan.cases.some(entry => entry.target === target && entry.scenario === 'form-labels'),
+        `Missing form-labels browser test for ${target}.`)
+      required.push(`${target}/form-labels`)
     }
   }
   return required

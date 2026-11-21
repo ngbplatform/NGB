@@ -52,7 +52,7 @@ defineExpose({
 </script>
 
 <template>
-  <div ref="rootRef">
+  <div ref="rootRef" data-ngb-entity-form>
     <NgbFormLayout v-if="presentation === 'sections'">
       <NgbFormSection v-for="(section, sectionIndex) in sections" :key="sectionIndex" :title="section.title">
         <NgbEntityFormFieldsBlock

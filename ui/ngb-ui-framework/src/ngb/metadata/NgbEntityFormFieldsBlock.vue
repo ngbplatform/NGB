@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, useId } from 'vue'
 import NgbFormRow from '../components/forms/NgbFormRow.vue'
 import { defaultIsFieldHidden, defaultIsFieldReadonly } from './entityForm'
 import { resolveNgbMetadataFormBehavior } from './config'
@@ -21,6 +21,7 @@ const props = defineProps<{
   behavior?: MetadataFormBehavior
 }>()
 
+const formId = useId()
 const behavior = computed(() => resolveNgbMetadataFormBehavior(props.behavior))
 const isDocumentEntity = computed(() => props.status !== undefined)
 
@@ -66,11 +67,13 @@ function firstFieldError(key: string): string | undefined {
       :data-validation-key="displayField.key"
     >
       <NgbFormRow
+        :control-id="`${formId}-display`"
         :label="displayField.label"
         :hint="displayField.helpText || (displayField.isRequired ? 'Required' : undefined)"
         :error="firstFieldError(displayField.key)"
       >
         <NgbMetadataFieldRenderer
+          :control-id="`${formId}-display`"
           :field="displayField"
           :model="model"
           :entity-type-code="entityTypeCode"
@@ -89,11 +92,13 @@ function firstFieldError(key: string): string | undefined {
           :data-validation-key="field.key"
         >
           <NgbFormRow
+            :control-id="`${formId}-${rowIndex}-${fieldIndex}`"
             :label="field.label"
             :hint="field.helpText || (field.isRequired ? 'Required' : undefined)"
             :error="firstFieldError(field.key)"
           >
             <NgbMetadataFieldRenderer
+              :control-id="`${formId}-${rowIndex}-${fieldIndex}`"
               :field="field"
               :model="model"
               :entity-type-code="entityTypeCode"

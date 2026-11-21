@@ -6,6 +6,7 @@ import { objectKeys } from './kit-contracts.mjs'
 export const scenarioOutcomes = {
   access: ['access-result'],
   'draft-edit': ['saved', 'reopened'],
+  'form-labels': ['named-fields'],
   validation: ['refusal', 'corrected'],
   lifecycle: ['posted', 'unposted', 'reposted', 'effects-restored'],
   reversal: ['posted', 'reversal-target', 'original-preserved', 'net-effects'],
@@ -198,6 +199,7 @@ export function verifyOutcomeProof(entry, proof) {
 }
 
 const requiredChecks = {
+  'named-fields': 'accessible-fields',
   'linked-records': 'flow',
   'linked-chain': 'chain',
   'linked-target': 'record',

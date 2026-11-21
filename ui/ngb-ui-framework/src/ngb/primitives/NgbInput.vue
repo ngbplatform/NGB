@@ -4,6 +4,7 @@
       {{ label }}
     </label>
     <input
+      :id="controlId"
       :type="type"
       :value="modelValue"
       :placeholder="placeholder"
@@ -24,6 +25,7 @@ type InputVariant = 'default' | 'grid'
 
 const props = withDefaults(defineProps<{
   modelValue?: string | number
+  controlId?: string
   label?: string
   hint?: string
   placeholder?: string

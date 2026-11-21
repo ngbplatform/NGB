@@ -1,15 +1,19 @@
 extern alias Worker;
 
 using System.Net;
+using System.Text.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.DependencyInjection;
+using NGB.BackgroundJobs.Catalog;
 using NGB.PostgreSql.Bootstrap;
 using Testcontainers.PostgreSql;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace NgbApplication.IntegrationTests;
 
-public sealed class WorkerHostTests
+public sealed class WorkerHostTests(ITestOutputHelper output)
 {
     [Fact]
     public async Task Actual_worker_host_reports_storage_health_and_protects_its_dashboard()
@@ -35,6 +39,10 @@ public sealed class WorkerHostTests
         });
         using var health = await client.GetAsync("/health");
         Assert.Equal(HttpStatusCode.OK, health.StatusCode);
+
+        var catalog = application.Services.GetRequiredService<IBackgroundJobCatalog>();
+        var jobs = catalog.All.Except(PlatformJobCatalog.All, StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
+        output.WriteLine("NGB-CHECK " + JsonSerializer.Serialize(new { kind = "worker-inventory", jobs }));
 
         using var dashboard = await client.GetAsync("/hangfire");
         Assert.Equal(HttpStatusCode.Redirect, dashboard.StatusCode);

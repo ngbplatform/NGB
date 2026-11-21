@@ -74,3 +74,6 @@ Before implementing the first workflow, enumerate business document relationship
 adjustments, historical report dimensions, dashboard permissions and drill-downs, concurrent writes and
 idempotent operations from the requirements. Bind each applicable workflow to its own expected records,
 amounts, scope or state transitions in the [business outcome checks](references/business-outcome-checks.md).
+
+Bind source membership, historical measures, withdrawal dependencies and recurring work
+to [server acceptance](references/server-acceptance.md) before generating tests.

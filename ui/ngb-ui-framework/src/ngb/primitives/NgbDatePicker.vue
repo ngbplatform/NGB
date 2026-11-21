@@ -6,6 +6,7 @@ import { parseDateOnlyValue, toDateOnlyValue } from '../utils/dateValues'
 
 const props = defineProps<{
   modelValue: string | null | undefined
+  controlId?: string
   placeholder?: string
   disabled?: boolean
   readonly?: boolean
@@ -98,6 +99,7 @@ const displayValue = computed(() => toDisplay(props.modelValue ?? null))
 
 <template>
   <NgbPickerPopover
+    :control-id="controlId"
     :display-value="displayValue"
     :placeholder="placeholder ?? 'mm/dd/yyyy'"
     :disabled="disabled"

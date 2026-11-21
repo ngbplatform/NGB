@@ -23,8 +23,8 @@ function fixture() {
       : [...scenarioOutcomes[scenario]],
   }))
   const plan = {
-    schemaVersion: 2, documents: [{ type: 'example.order', sourceDriven: false, priced: false, asynchronous: false }],
-    roles: inventory.roles, surfaces, cases,
+    schemaVersion: 2, documents: [{ type: 'example.order', withdrawalDependencies: [], sourceDriven: false, priced: false, asynchronous: false }],
+    roles: inventory.roles, surfaces, cases, businessChecks: [],
     workflows: { flows: [], chains: [], settlements: [], adjustments: [], historicalGroups: [],
       concurrentWrites: [], replays: [], dashboards: [], metrics: [] },
     requirements: [{ id: 'business-1', description: 'Find and correct an order, retaining its audit trail.',
@@ -263,4 +263,38 @@ test('full inventory reads actual catalogs and reports and rejects unavailable e
   await assert.rejects(readAcceptanceInventory(environment, 2), /Cannot read acceptance inventory/)
   reportStatus = 403
   await assert.rejects(readAcceptanceInventory(environment, 2), /Cannot read acceptance inventory/)
+})
+
+test('a saved Flow edge and an editable source still require proof of server membership', () => {
+  const { plan, inventory } = fixture()
+  inventory.documents[0].form = { sections: [{ rows: [{ fields: [{ key: 'parent_id', mirroredRelationship: {} }] }] }] }
+  const target = plan.surfaces[0]
+  const add = (scenario, outcomes) => {
+    const entry = { ...plan.cases[0], id: scenario, title: scenario, target, scenario, outcomes }
+    plan.cases.push(entry)
+    plan.requirements[0].cases.push(entry.id)
+    plan.requirements[0].scenarios.push(scenario)
+  }
+  add('document-flow', [...scenarioOutcomes['document-flow'], 'reference:parent_id'])
+  plan.workflows.flows.push('business-1')
+  assert.equal(plan.documents[0].sourceDriven, false)
+  assert.throws(() => reconcileAcceptance(plan, inventory), /source-membership.*parent_id/)
+  plan.businessChecks.push({ kind: 'source-membership', target, key: 'parent_id', test: 'Example.Tests.Source' })
+  assert.throws(() => reconcileAcceptance(plan, inventory), /Missing form-labels/)
+  add('form-labels', ['named-fields'])
+  reconcileAcceptance(plan, inventory)
+  plan.documents[0].withdrawalDependencies = ['capacity']
+  assert.throws(() => reconcileAcceptance(plan, inventory), /withdrawal-cycle.*capacity/)
+  plan.businessChecks.push({ kind: 'withdrawal-cycle', target, key: 'capacity', test: 'Example.Tests.Capacity' })
+  reconcileAcceptance(plan, inventory)
+  const entry = plan.cases.at(-1)
+  assert.throws(() => verifyOutcomeProof(entry, { outcomes: entry.outcomes, evidence: { 'named-fields': ['text'] } }), /accessible-fields/)
+  verifyOutcomeProof(entry, { outcomes: entry.outcomes, evidence: { 'named-fields': ['accessible-fields'] } })
+})
+
+test('metadata can omit part columns and navigation when checking server dependencies', () => {
+  const { plan, inventory } = fixture()
+  assert.deepEqual(businessReferences({ parts: [{ partCode: 'items' }] }), [])
+  delete inventory.menu
+  reconcileWorkflows(plan, inventory)
 })

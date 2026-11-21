@@ -28,3 +28,6 @@ execution path remains authorized and bounded.
 
 Apply the [business outcome checks]({{references}}/business-outcome-checks.md)
 and the named-outcome browser gate before claiming the generated workflow complete.
+
+Verify every historical measure before and after the later event that can affect its eligibility.
+Follow [server acceptance]({{references}}/server-acceptance.md).

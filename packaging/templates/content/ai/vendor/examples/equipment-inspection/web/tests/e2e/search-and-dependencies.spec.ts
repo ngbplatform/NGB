@@ -226,6 +226,11 @@ test('global search finds an existing number and catalog name and opens the exac
     await checks.url(`${data.origin}/catalogs/example.equipment/${data.equipment.id}`)
     await checks.value(page.locator('[data-validation-key="equipment_code"] input'), data.code)
   })
+  const editor = page.locator('[data-ngb-entity-form]')
+  await proof.outcome('named-fields', checks => checks.accessibleFields(editor, [
+    { label: 'Equipment name', control: editor.getByRole('textbox', { name: 'Equipment name', exact: true }) },
+    { label: 'Equipment code', control: editor.getByRole('textbox', { name: 'Equipment code', exact: true }) },
+  ]))
   await proof.finish('record-search', 'ngb-admin')
 })
 

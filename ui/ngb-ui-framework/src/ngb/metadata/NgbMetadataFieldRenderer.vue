@@ -11,6 +11,7 @@ import type { EntityFormModel, FieldMetadata, MetadataFormBehavior } from './typ
 import NgbMetadataLookupControl from './NgbMetadataLookupControl.vue'
 
 const props = defineProps<{
+  controlId?: string
   field: FieldMetadata
   model: EntityFormModel
   modelValue: unknown
@@ -73,6 +74,7 @@ const textareaValue = computed(() => props.modelValue == null ? '' : String(prop
   <div class="w-full">
     <NgbSelect
       v-if="rendererState.mode === 'select' && rendererState.fieldOptions"
+      :control-id="controlId"
       :model-value="selectValue ?? null"
       :options="selectOptions"
       :disabled="disabled || readonly"
@@ -81,6 +83,8 @@ const textareaValue = computed(() => props.modelValue == null ? '' : String(prop
 
     <NgbMetadataLookupControl
       v-else-if="rendererState.mode === 'lookup' && rendererState.hint"
+      :control-id="controlId"
+      :aria-label="field.label"
       :hint="rendererState.hint"
       :model-value="modelValue"
       :disabled="disabled"
@@ -91,6 +95,7 @@ const textareaValue = computed(() => props.modelValue == null ? '' : String(prop
 
     <NgbCheckbox
       v-else-if="rendererState.mode === 'checkbox'"
+      :control-id="controlId"
       :model-value="!!modelValue"
       :disabled="disabled || readonly"
       @update:modelValue="update"
@@ -98,6 +103,7 @@ const textareaValue = computed(() => props.modelValue == null ? '' : String(prop
 
     <textarea
       v-else-if="rendererState.mode === 'textarea'"
+      :id="controlId"
       class="min-h-[96px] w-full rounded-[var(--ngb-radius)] border border-ngb-border bg-ngb-card px-3 py-2 text-sm text-ngb-text placeholder:text-ngb-muted/70 ngb-focus"
       :value="textareaValue"
       :readonly="readonly"
@@ -107,6 +113,7 @@ const textareaValue = computed(() => props.modelValue == null ? '' : String(prop
 
     <NgbInput
       v-else-if="rendererState.mode === 'reference-display'"
+      :control-id="controlId"
       type="text"
       :model-value="(modelValue as { display: string }).display"
       :title="(modelValue as { display: string }).display"
@@ -116,6 +123,7 @@ const textareaValue = computed(() => props.modelValue == null ? '' : String(prop
 
     <NgbDatePicker
       v-else-if="rendererState.mode === 'date'"
+      :control-id="controlId"
       :model-value="(modelValue as string | null | undefined) ?? null"
       :disabled="disabled || readonly"
       @update:modelValue="update"
@@ -123,6 +131,7 @@ const textareaValue = computed(() => props.modelValue == null ? '' : String(prop
 
     <NgbInput
       v-else
+      :control-id="controlId"
       :type="rendererState.inputType"
       :model-value="inputValue"
       :disabled="disabled"

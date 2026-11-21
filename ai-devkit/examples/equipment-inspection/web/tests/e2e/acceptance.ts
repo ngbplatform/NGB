@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { expect, type APIResponse, type Locator, type Page, type Response, type TestInfo } from '@playwright/test'
+import { expect, type APIResponse, type ElementHandle, type Locator, type Page, type Response, type TestInfo } from '@playwright/test'
 
 type FlowLink = {
   from: string
@@ -13,6 +13,7 @@ interface OutcomeChecks {
   disabled(locator: Locator): Promise<void>
   count(locator: Locator, expected: number): Promise<void>
   url(expected: string | RegExp): Promise<void>
+  accessibleFields(editor: Locator, fields: { label: string, control: Locator }[]): Promise<void>
   figure(locator: Locator, expected: string): Promise<void>
   record(path: string, id: string): Promise<void>
   reportScope(response: Response, code: string, parameters: object, filters: object | null): Promise<void>
@@ -104,6 +105,42 @@ export async function acceptanceProbe(page: Page, info: TestInfo) {
       await expect(locator).toBeVisible()
       await expect(locator).toBeDisabled()
       assertions += 1
+    },
+    async accessibleFields(editor: Locator, fields: { label: string, control: Locator }[]) {
+      await expect(editor).toBeVisible()
+      const wholeForm = await editor.evaluate(root =>
+        root.matches('[data-ngb-entity-form]') || Boolean(root.querySelector('[data-ngb-entity-form]')))
+      expect(wholeForm, 'Inspect the complete metadata editor').toBe(true)
+      expect(fields.length).toBeGreaterThan(0)
+      const checked: ElementHandle<HTMLElement | SVGElement>[] = []
+      try {
+        for (const { label, control } of fields) {
+          expect(label.trim()).toBeTruthy()
+          await expect(control).toBeVisible()
+          await expect(control).toHaveAccessibleName(label)
+          const handle = await control.elementHandle()
+          if (!handle) throw new Error(`Field "${label}" was removed from the editor.`)
+          checked.push(handle)
+          expect(await editor.evaluate((root, element) => root.contains(element), handle)).toBe(true)
+        }
+        const missing = await editor.evaluate((root, controls) => {
+          const selector = [
+            'input:not([type="hidden"])', 'textarea', 'select', '[contenteditable="true"]',
+            '[role="combobox"]', '[role="textbox"]', '[role="checkbox"]', '[role="switch"]', '[role="radio"]',
+            '[role="spinbutton"]', '[role="slider"]', '[role="listbox"]', 'button[aria-haspopup]',
+            'button[aria-expanded]', '[data-validation-key] button',
+          ].join(', ')
+          return [...root.querySelectorAll<HTMLElement>(selector)].filter(element =>
+            element.getClientRects().length && getComputedStyle(element).visibility !== 'hidden'
+            && !element.closest('[aria-hidden="true"]') && !controls.includes(element))
+            .map(element => element.id || element.tagName)
+        }, checked)
+        expect(missing).toEqual([])
+      } finally {
+        await Promise.all(checked.map(handle => handle.dispose()))
+      }
+      assertions += 1
+      activeChecks?.add('accessible-fields')
     },
     async figure(locator: Locator, expected: string) {
       expect(typeof expected).toBe('string')

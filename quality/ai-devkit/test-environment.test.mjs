@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict'
-import { chmod, mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, symlink, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, symlink, truncate, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { delimiter, join } from 'node:path'
 import test from 'node:test'
+import { applicationFiles } from '../../packaging/templates/content/infrastructure/ngb/application.mjs'
 import { attachTestEnvironment, dockerPluginDirectories, stageTestSources, startTestEnvironment, testCompose } from '../../packaging/templates/content/infrastructure/ngb/environment.mjs'
 
 const config = JSON.parse(await readFile(new URL('../../packaging/templates/content/ngb.config.json', import.meta.url)))
@@ -43,8 +44,17 @@ test('staging keeps container-readable sources and executable scripts while excl
     await mkdir(join(source, name))
     await writeFile(join(source, name, 'ignored'), 'Test output or cached data')
   }
+  await mkdir(join(source, 'backups'))
+  const dump = join(source, 'backups', 'database.dump')
+  await writeFile(dump, '')
+  await truncate(dump, 129 * 1024 * 1024)
+  await mkdir(join(source, 'modules/backups'), { recursive: true })
+  await writeFile(join(source, 'modules/backups/reader.ts'), 'export {}')
+
+  assert.deepEqual(Object.keys(await applicationFiles(source)).sort(), ['appsettings.json', 'migrate.sh', 'modules/backups/reader.ts'])
   await stageTestSources(source, destination)
-  assert.deepEqual((await readdir(destination)).sort(), ['appsettings.json', 'migrate.sh'])
+  assert.equal(await readFile(join(destination, 'modules/backups/reader.ts'), 'utf8'), 'export {}')
+  assert.deepEqual((await readdir(destination)).sort(), ['appsettings.json', 'migrate.sh', 'modules'])
   assert.equal(await readFile(join(destination, 'migrate.sh'), 'utf8'), 'migrate.sh')
   if (process.platform !== 'win32') {
     assert.equal((await stat(join(destination, 'appsettings.json'))).mode & 0o777, 0o644)

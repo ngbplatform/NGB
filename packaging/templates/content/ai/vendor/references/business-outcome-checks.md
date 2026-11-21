@@ -191,3 +191,6 @@ can infer the correctness of arbitrary business assertions: the generator must
 derive test data and expected values from the prompt, review the assertions, and
 fix the application until they pass. Do not run FULL Platform Certification merely
 to validate generated application behavior.
+
+Use [server acceptance](server-acceptance.md) to exercise source membership, completed
+cycles, measure-specific cutoffs and recurring work beyond the effective batch limit.

@@ -10,7 +10,7 @@ import { prepareTemplate } from '../../ai-devkit/prepare.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const modules = 'packaging/templates/content/infrastructure/ngb'
-const measured = ['contracts', 'kit-contracts', 'kit-plan', 'upgrade-plan', 'project-data', 'resolved-data', 'evidence', 'archive', 'performance', 'resource-data', 'acceptance-outcomes']
+const measured = ['contracts', 'kit-contracts', 'kit-plan', 'upgrade-plan', 'project-data', 'resolved-data', 'evidence', 'archive', 'performance', 'resource-data', 'acceptance-outcomes', 'business-checks']
   .map(name => `${modules}/${name}.mjs`)
 const authoringModules = ['ai-devkit/guidance.mjs', 'ai-devkit/capabilities.mjs',
   'quality/ai-devkit/certification-data.mjs', 'quality/ai-devkit/evaluation-data.mjs',

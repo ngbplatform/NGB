@@ -54,6 +54,11 @@ vi.mock('@headlessui/vue', async () => {
         ])
       },
     }),
+    ComboboxLabel: defineComponent({
+      setup(_, { slots }) {
+        return () => h('label', slots.default?.())
+      },
+    }),
     ComboboxInput: defineComponent({
       inheritAttrs: false,
       props: {

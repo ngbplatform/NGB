@@ -21,3 +21,6 @@ Verify real storage, execution through the worker, repeated delivery, failure
 visibility, cancellation and restart. Check the desired-versus-actual schedule
 report. Keep the dashboard protected and external notification destinations
 application-owned. Run the application's build and integration test profiles.
+
+Reconcile all registered application jobs and process more eligible keys than the actual batch limit.
+Follow [server acceptance]({{references}}/server-acceptance.md).

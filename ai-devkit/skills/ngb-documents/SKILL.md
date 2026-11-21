@@ -62,3 +62,6 @@ unit test alone is not evidence of persistence, authorization or successful Post
 
 Apply the [business outcome checks]({{references}}/business-outcome-checks.md)
 and the named-outcome browser gate before claiming the generated workflow complete.
+
+Validate the business scope of every persisted source and exercise dependencies after a later completed cycle.
+Follow [server acceptance]({{references}}/server-acceptance.md).

@@ -37,10 +37,11 @@ Example plan fragment (repeat for every runtime surface and required scenario):
 {
   "schemaVersion": 2,
   "documents": [
-    { "type": "example.order", "sourceDriven": true, "priced": true, "asynchronous": true }
+    { "type": "example.order", "sourceDriven": true, "priced": true, "asynchronous": true, "withdrawalDependencies": [] }
   ],
   "roles": ["ngb-admin", "example.operator", "example.reader"],
   "surfaces": ["document:example.order"],
+  "businessChecks": [],
   "workflows": {
     "flows": [], "chains": [], "settlements": [], "adjustments": [], "historicalGroups": [],
     "concurrentWrites": [], "replays": [], "dashboards": [], "metrics": []
@@ -78,6 +79,7 @@ prose while their tests are absent.
 
 Mandatory scenarios:
 
+Complete the [server acceptance bindings](server-acceptance.md) for integration evidence.
 Populate each `workflows` array with requirement IDs from the original brief. An empty
 array means that the application has no such business workflow. Review classification
 against the brief before coding. Populate this section when upgrading an existing
@@ -103,6 +105,13 @@ its own identity. An invalid plan fails before Playwright starts and retains its
   derived rows, add/remove where allowed, reference Open, alignment and keyboard use.
 - `source-change-clear` and `lookup-eligibility` for source-driven documents: replace,
   clear, retry, empty/ineligible/unauthorized choices and selection after reopening.
+- `form-labels` for each metadata document or catalog editor with fields. Open the
+  actual editor, expand the sections, and verify the visible field names for the
+  whole editor using `accessibleFields(editor, [{ label, control }])` in the
+  `named-fields` outcome. Scope the locator to the complete `[data-ngb-entity-form]`
+  or its containing editor. Include auxiliary picker buttons and readonly inputs.
+  Exercise conditional and line fields when present. A passing test requires
+  accessible controls from both the application and the shared SDK.
 - `pricing` for priced documents: effective date, defaults, permitted override,
   editable reason, rounding and preservation of persisted snapshots.
 - `async-race` for asynchronous dependencies: delayed old success and failure after

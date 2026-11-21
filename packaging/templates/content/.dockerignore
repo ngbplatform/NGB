@@ -8,3 +8,4 @@
 .ngb/cache
 .ngb/upgrades
 .ngb/operation.lock
+/backups/
