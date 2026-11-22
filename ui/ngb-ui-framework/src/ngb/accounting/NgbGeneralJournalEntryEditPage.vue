@@ -57,6 +57,7 @@ import type {
   GeneralJournalEntryEditorLineModel,
   GeneralJournalEntryLineDto,
 } from './generalJournalEntryTypes'
+import { useGeneralJournalEntryPermissions } from './useGeneralJournalEntryPermissions'
 
 const props = withDefaults(defineProps<{
   listPath?: string | null
@@ -68,6 +69,7 @@ const route = useRoute()
 const router = useRouter()
 const toasts = useToasts()
 const auth = useAuthStore()
+const allowed = useGeneralJournalEntryPermissions()
 
 const loading = ref(false)
 const contentRef = ref<InstanceType<typeof NgbObjectContent> | null>(null)
@@ -131,15 +133,17 @@ const source = computed(() => normalizeGeneralJournalEntrySource(details.value?.
 const isManualSource = computed(() => source.value !== 2)
 const isMarkedForDeletion = computed(() => !!details.value?.document?.isMarkedForDeletion || documentStatus.value === 3)
 
-const canEditDraft = computed(() => !saving.value && (isNew.value || (isManualSource.value && documentStatus.value === 1 && approvalState.value === 1)))
-const canSave = computed(() => canEditDraft.value)
-const canSubmit = computed(() => !isNew.value && isManualSource.value && documentStatus.value === 1 && approvalState.value === 1 && !isMarkedForDeletion.value && !saving.value)
-const canApprove = computed(() => !isNew.value && documentStatus.value === 1 && approvalState.value === 2 && !saving.value)
+const canEditDraft = computed(() => !saving.value && allowed('edit_draft') && (
+  isNew.value ? allowed('create') : isManualSource.value && documentStatus.value === 1 && approvalState.value === 1
+))
+const canSave = computed(() => isNew.value ? allowed('create') && !saving.value : canEditDraft.value)
+const canSubmit = computed(() => allowed('edit_draft') && !isNew.value && isManualSource.value && documentStatus.value === 1 && approvalState.value === 1 && !isMarkedForDeletion.value && !saving.value)
+const canApprove = computed(() => allowed('post') && !isNew.value && documentStatus.value === 1 && approvalState.value === 2 && !saving.value)
 const canReject = computed(() => canApprove.value)
-const canPost = computed(() => !isNew.value && documentStatus.value === 1 && approvalState.value === 3 && !saving.value)
-const canReverse = computed(() => !isNew.value && documentStatus.value === 2 && !saving.value)
-const canMarkForDeletion = computed(() => !isNew.value && isManualSource.value && documentStatus.value === 1 && !isMarkedForDeletion.value && !saving.value)
-const canUnmarkForDeletion = computed(() => !isNew.value && isManualSource.value && isMarkedForDeletion.value && !saving.value)
+const canPost = computed(() => allowed('post') && !isNew.value && documentStatus.value === 1 && approvalState.value === 3 && !saving.value)
+const canReverse = computed(() => allowed('unpost') && !isNew.value && documentStatus.value === 2 && !saving.value)
+const canMarkForDeletion = computed(() => allowed('mark_for_deletion') && !isNew.value && isManualSource.value && documentStatus.value === 1 && !isMarkedForDeletion.value && !saving.value)
+const canUnmarkForDeletion = computed(() => allowed('unmark_for_deletion') && !isNew.value && isManualSource.value && isMarkedForDeletion.value && !saving.value)
 
 const showSubmit = computed(() => canSubmit.value)
 const showApprove = computed(() => !isNew.value && documentStatus.value === 1 && approvalState.value === 2)
@@ -346,6 +350,7 @@ function buildLinesRequest() {
 }
 
 async function saveDraft(): Promise<boolean> {
+  if (!canSave.value) return false
   saving.value = true
   errorMessages.value = []
   try {
@@ -360,6 +365,11 @@ async function saveDraft(): Promise<boolean> {
       })
       id = created.document.id
       await router.replace(buildGeneralJournalEntriesPath(id, { basePath: resolvedListPath.value }))
+      if (!allowed('edit_draft')) {
+        await applyDetails(created)
+        toasts.push({ title: 'Saved', message: 'Draft was saved.', tone: 'success' })
+        return true
+      }
     }
 
     await updateGeneralJournalEntryHeader(id!, headerRequest)
@@ -690,7 +700,7 @@ function extractErrorMessages(error: unknown): string[] {
           <NgbFormLayout>
             <NgbFormSection title="Header" description="General journal entry business fields and workflow state.">
               <NgbFormRow label="Document Date" hint="Date is fixed when the draft is created.">
-                <NgbDatePicker v-model="draftDate" :disabled="!isNew || saving" />
+                <NgbDatePicker v-model="draftDate" :disabled="!isNew || !canSave" />
               </NgbFormRow>
 
               <NgbFormRow label="Initiated By">

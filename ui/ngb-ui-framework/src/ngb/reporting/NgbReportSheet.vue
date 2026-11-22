@@ -594,6 +594,7 @@ onBeforeUnmount(() => {
               v-for="(cell, cellIndex) in entry.row.cells"
               :key="`${rowRenderKey(entry.row, entry.index)}:${cellIndex}`"
               :class="bodyCellClass(entry.row, cellIndex)"
+              :data-column="columns[cellIndex]?.code"
               :colspan="cell.colSpan ?? 1"
               :rowspan="cell.rowSpan ?? 1"
             >

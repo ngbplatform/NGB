@@ -366,6 +366,9 @@ function setSelect(index: number, value: string) {
 
 async function renderPage(initialUrl: string, props: { listPath?: string | null } = {}) {
   const pinia = createPinia()
+  useAccessStore(pinia).current = {
+    isAuthenticated: true, isActive: true, isBootstrapAdmin: true, accessVersion: 1, permissions: [],
+  }
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
@@ -482,6 +485,20 @@ test('a parameterized journal route treats new as a draft and never requests a r
   await expect.element(view.getByText('New General Journal Entry', { exact: true })).toBeVisible()
   expect(gjeEditMocks.getEntry).not.toHaveBeenCalled()
   await expect.element(view.getByPlaceholder('Explain the journal entry')).toBeEnabled()
+})
+
+test('a create-only actor can save the initial draft without submitting protected edits', async () => {
+  const { pinia } = await renderPage('/accounting/general-journal-entries/new')
+  const access = useAccessStore(pinia)
+  access.current!.isBootstrapAdmin = false
+  access.permissionKeys = new Set(['document.general_journal_entry.create'])
+  await flushUi()
+
+  clickButtonByTitle('Save')
+  await flushUi()
+  expect(gjeEditMocks.createDraft).toHaveBeenCalledOnce()
+  expect(gjeEditMocks.updateHeader).not.toHaveBeenCalled()
+  expect(gjeEditMocks.replaceLines).not.toHaveBeenCalled()
 })
 
 test('creates a new draft, saves header and lines, and replaces the route with the new entry id', async () => {

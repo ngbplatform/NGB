@@ -1,8 +1,10 @@
+import { createPinia } from 'pinia'
 import { page } from 'vitest/browser'
 import { beforeEach, expect, test, vi } from 'vitest'
 import { render } from 'vitest-browser-vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
 
+import { useAccessStore } from '../../../../src/ngb/security/useAccessStore'
 import {
   StubDocumentPeriodFilter,
   StubRecycleBinFilter,
@@ -59,6 +61,10 @@ async function flushUi() {
 }
 
 async function renderPage(initialUrl: string, props: Record<string, unknown> = {}) {
+  const pinia = createPinia()
+  useAccessStore(pinia).current = {
+    isAuthenticated: true, isActive: true, isBootstrapAdmin: true, accessVersion: 1, permissions: [],
+  }
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
@@ -96,7 +102,7 @@ async function renderPage(initialUrl: string, props: Record<string, unknown> = {
       ...props,
     },
     global: {
-      plugins: [router],
+      plugins: [pinia, router],
     },
   })
 

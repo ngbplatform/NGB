@@ -23,6 +23,7 @@ import {
 import { getGeneralJournalEntryPage } from './generalJournalEntryApi'
 import { buildGeneralJournalEntriesPath } from './navigation'
 import type { GeneralJournalEntryPageDto } from './generalJournalEntryTypes'
+import { useGeneralJournalEntryPermissions } from './useGeneralJournalEntryPermissions'
 
 const props = withDefaults(defineProps<{
   title?: string
@@ -36,6 +37,7 @@ const props = withDefaults(defineProps<{
 
 const route = useRoute()
 const router = useRouter()
+const allowed = useGeneralJournalEntryPermissions()
 
 const loading = ref(false)
 const error = ref<string | null>(null)
@@ -137,6 +139,7 @@ const rows = computed<RegisterDataRow[]>(() => {
 })
 
 function openCreate() {
+  if (!allowed('create')) return
   void router.push(buildGeneralJournalEntriesPath(null, { basePath: route.path }))
 }
 
@@ -154,6 +157,7 @@ function openEdit(id: string) {
       :total="page?.total ?? null"
       :loading="loading"
       :show-filter="false"
+      :disable-create="!allowed('create')"
       :disable-prev="offset === 0"
       :disable-next="(page?.items?.length ?? 0) < limit"
       @back="navigateBack(router, route, resolvedBackTarget)"
