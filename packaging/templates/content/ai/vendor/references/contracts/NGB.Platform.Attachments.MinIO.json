@@ -2,11 +2,11 @@
   "schemaVersion": 1,
   "package": "NGB.Platform.Attachments.MinIO",
   "version": "3.4.0",
-  "packageSha256": "a281531a8c994c9875993b41558722cdc6daecef86130f41ae70ef0591440775",
+  "packageSha256": "611392fc62c8dd130c8ddeec4dbf7127bea43f27d553c8b89e1c4b9f4c1f6000",
   "assembly": {
     "name": "NGB.Attachments.MinIO",
     "version": "3.0.0.0",
-    "sha256": "fa1b3cd0a9518792d020df0854ad4884c69cf419f57879f02792c5320f2c309b"
+    "sha256": "b5ae0f179087736995c60406ccf11fb0a9f0d60b2200eecd81e4436e4d2cede2"
   },
   "contractSha256": "41a9cdf5ef9880d09c6fccd1848af5f2d16b9df3f442e16d342100bdf62ae624",
   "types": [

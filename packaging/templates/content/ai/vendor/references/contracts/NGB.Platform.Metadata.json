@@ -2,11 +2,11 @@
   "schemaVersion": 1,
   "package": "NGB.Platform.Metadata",
   "version": "3.4.0",
-  "packageSha256": "6bb77b16bcf24f08c08947f210dde033fa63f0253ae904d343ee58954be50eee",
+  "packageSha256": "77a2eddbb098a3aedee5a2898b03cf29b1e9493b5d3afcefc9100971cbafac07",
   "assembly": {
     "name": "NGB.Metadata",
     "version": "3.0.0.0",
-    "sha256": "f10fc9942365913429c9155c1db5d89508d5d3774ee6df87dbff27681290bb47"
+    "sha256": "613b1434e5a5feada38677c9818573cc3ad346e11584f39decabfb12dcad94c9"
   },
   "contractSha256": "185337e7970e470ff330ac4fc8d17e6ca96ddc965201aa5e7c5e5f44e5dc2d56",
   "types": [
