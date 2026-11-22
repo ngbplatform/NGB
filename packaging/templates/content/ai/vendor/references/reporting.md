@@ -313,9 +313,20 @@ both a time-grouped request and a detail request through HTTP.
 
 Every report has a meaningful detail path. For composable entity references use
 `<prefix>_display` plus `<prefix>_id`, with the ID field declaring the appropriate
-`CatalogLookupSourceDto` or single-type `DocumentLookupSourceDto`. Include the
-supporting ID value in the selected row; a display string named `customer` or
-`document` alone is not a navigation target. The built-in `document_display` and
+`CatalogLookupSourceDto` or single-type `DocumentLookupSourceDto`. The server
+needs the supporting ID in its projection to construct the cell action. Expose
+the display field in the layout and keep the supporting ID's `IsSelectable` and
+`IsGroupable` false. A typed ID can still serve as a lookup filter. The public
+composable provider projects the required support columns for the display action.
+A posted record may have an empty optional title. Resolve its readable label
+from its assigned business number and date in that case. Test a record with no
+optional title through both the detail sheet and the exported worksheet.
+Apply this to every entity column, including detail columns added in the composer.
+Exercise the default layout, a custom detail layout and enabled exports. Inspect
+the executed sheet and worksheet cells, assert the expected business display,
+then click the displayed reference and verify the destination identity. When
+changing existing metadata, migrate saved layouts that explicitly select a
+support ID. Preserve unrelated user filters, sorts and groupings. The built-in `document_display` and
 `account_display` paths use their specific `ReportInteractiveSupport` fields;
 inspect their installed contract rather than guessing support-column names.
 

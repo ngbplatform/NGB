@@ -12,6 +12,7 @@ import { layerViolations, readTestXml } from './project-data.mjs'
 import { integrationObservations, verifyBusinessObservations } from './business-checks.mjs'
 import { browserTestCounts, frontendCoverage, frontendTestCounts, uniqueCoverageReport } from './evidence.mjs'
 import { applicationFiles, managedPackageFiles } from './application.mjs'
+import { verifyPresentationInventory, verifyRequirementTrace } from './requirement-trace.mjs'
 import { assemblyMetadata, resolvedProject } from './resolved-data.mjs'
 import { classifyCoverageExclusion, evaluateCoverage, mergeCoverage, parseCobertura } from './coverage.mjs'
 import { startTestEnvironment } from './environment.mjs'
@@ -88,6 +89,7 @@ export async function executeProfile(root, options) {
   const backendAssemblies = new Set()
   const backendReports = []
   const businessObservations = []
+  const passedIntegrationTests = new Set()
   const abort = new AbortController()
   const deadline = setTimeout(() => abort.abort(), 3600000)
   const cancel = () => abort.abort()
@@ -252,10 +254,15 @@ export async function executeProfile(root, options) {
                 message: 'Disposable application and identity services are healthy.', runId: environment.runId })
               await inspectEvidence('test.e2e.acceptance-plan', 'ai/acceptance.json', async text => {
                 const plan = acceptancePlan(JSON.parse(text))
+                await verifyRequirementTrace(root, plan)
                 const inventory = await readAcceptanceInventory(environment, 2)
                 await writeFile(join(output, 'acceptance-inventory.json'), JSON.stringify(inventory, null, 2), { mode: 0o600 })
                 if (inventory.documents.length || inventory.catalogs.length || inventory.reports.length) {
                   assert.equal(plan.schemaVersion, 2, 'Update ai/acceptance.json to schema 2 with business outcomes; see ai/vendor/references/browser-acceptance.md.')
+                }
+                if (plan.schemaVersion === 2) {
+                  const icons = JSON.parse(await readAsset(root, 'ai/vendor/references/menu-icons.json'))
+                  verifyPresentationInventory(plan, inventory, icons)
                 }
                 const required = reconcileAcceptance(plan, inventory)
                 actors = await prepareAcceptanceActors(environment, inventory)
@@ -306,7 +313,7 @@ export async function executeProfile(root, options) {
               if (passed) {
                 await inspectEvidence(`${id}.discovery`, `${relativeOutput}/${id}/${id}.trx`, text => {
                   const counts = testCounts(text)
-                  if (suite === 'integration') businessObservations.push(...integrationObservations(text))
+                  if (suite === 'integration') businessObservations.push(...integrationObservations(text, passedIntegrationTests))
                   return counts
                 })
                 try {
@@ -324,8 +331,9 @@ export async function executeProfile(root, options) {
               }
             }
             if (suite === 'integration') {
-              await inspectEvidence('test.integration.business-checks', 'ai/acceptance.json', text => {
+              await inspectEvidence('test.integration.business-checks', 'ai/acceptance.json', async text => {
                 const plan = acceptancePlan(JSON.parse(text))
+                await verifyRequirementTrace(root, plan, passedIntegrationTests)
                 const bindings = plan.schemaVersion === 1 ? { surfaces: [], businessChecks: [] } : plan
                 return verifyBusinessObservations(bindings, businessObservations, config.projects.some(project => project.role === 'worker'))
               })

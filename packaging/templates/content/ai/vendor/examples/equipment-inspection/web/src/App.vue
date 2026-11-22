@@ -16,6 +16,8 @@ function canView(resourceKind: string, resourceCode: string): boolean {
 }
 
 const nodes = computed(() => [
+  { id: '/dashboard', label: 'Dashboard', route: '/dashboard', icon: 'home',
+    allowed: canView('page', 'example.dashboard') },
   { id: '/catalogs/example.equipment', label: 'Equipment', route: '/catalogs/example.equipment',
     allowed: canView('catalog', 'example.equipment') },
   { id: '/documents/example.inspection', label: 'Inspections', route: '/documents/example.inspection',

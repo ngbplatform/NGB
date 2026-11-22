@@ -43,6 +43,7 @@ internal static class BrowserTestHost
                     [
                         new NgbPermissionKey(NgbResourceKinds.Catalog, EquipmentDefinitions.EquipmentCode, NgbPermissionActions.View),
                         new NgbPermissionKey(NgbResourceKinds.Catalog, EquipmentDefinitions.EquipmentCode, NgbPermissionActions.Lookup),
+                        new NgbPermissionKey(NgbResourceKinds.Document, "general_journal_entry", NgbPermissionActions.View),
                         NgbSystemPermissions.NotesRead,
                         NgbSystemPermissions.AttachmentsRead
                     ], ct));

@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { blockEnd, blockStart, digest, objectKeys, validatePayload } from '../packaging/templates/content/infrastructure/ngb/kit-contracts.mjs'
 import { applyAssets, assetPaths, readAsset } from '../packaging/templates/content/infrastructure/ngb/kit-files.mjs'
 import { materializePlan, planKit } from '../packaging/templates/content/infrastructure/ngb/kit-plan.mjs'
+import { NGB_ICON_NAMES } from '../ui/ngb-ui-framework/src/ngb/primitives/iconNames.ts'
 import { verifyGuidance } from './guidance.mjs'
 import { verifyCapabilities } from './capabilities.mjs'
 
@@ -19,6 +20,7 @@ export async function preparePayload(root = repository) {
   assert.equal(metadata.schemaVersion, 1, 'Unsupported canonical Kit schema.')
   const files = []
   const add = (path, content, role = 'file') => files.push({ path, role, content, sha256: digest(content) })
+  add('ai/vendor/references/menu-icons.json', JSON.stringify(NGB_ICON_NAMES, null, 2) + '\n')
   add('ai/vendor/instructions.md', await readFile(resolve(source, 'instructions.md'), 'utf8'))
   add('ai/vendor/known-limitations.json', await readFile(resolve(source, 'known-limitations.json'), 'utf8'))
   add('ai/vendor/capability-registry.json', await readFile(resolve(source, 'capability-registry.json'), 'utf8'))

@@ -1,4 +1,5 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, type Page } from '@playwright/test'
+import { test } from './browser'
 
 async function signIn(page: Page, username: string): Promise<void> {
   const origin = process.env.NGB_TEST_ORIGIN

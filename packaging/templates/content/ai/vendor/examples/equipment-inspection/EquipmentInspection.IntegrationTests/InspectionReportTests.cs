@@ -24,6 +24,34 @@ public sealed class InspectionReportTests(ITestOutputHelper output)
     private const string ExecutePath = "/api/reports/" + InspectionReports.Summary + "/execute";
 
     [Fact]
+    public async Task Dashboard_uses_the_authorized_report_and_its_UTC_cutoff()
+    {
+        await using var host = new InspectionHost();
+        await host.StartAsync();
+        using var admin = await host.CreateClientAsync("administrator");
+        using var reader = await host.CreateClientAsync("reader");
+        const string path = "/api/inspection-dashboard";
+        using var denied = await reader.GetAsync(path);
+        Assert.Equal(HttpStatusCode.Forbidden, denied.StatusCode);
+
+        await SeedAsync(admin);
+        var snapshot = (await admin.GetFromJsonAsync<EquipmentInspection.Api.InspectionDashboardController.Snapshot>(path, Json))!;
+        Assert.Equal(5, snapshot.Total);
+        Assert.Equal(1, snapshot.FollowUp);
+        Assert.Equal(1, snapshot.Rejected);
+        Assert.Equal(3, snapshot.Passed);
+        var report = await PostAsync<ReportExecutionResponseDto>(admin, ExecutePath,
+            new ReportExecutionRequestDto(Parameters: snapshot.Parameters));
+        Assert.Equal(snapshot.Total, Total(report.Sheet.Rows));
+        var previous = snapshot.AsOf.AddDays(-1).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        var empty = (await admin.GetFromJsonAsync<EquipmentInspection.Api.InspectionDashboardController.Snapshot>(
+            path + "?asOf=" + previous, Json))!;
+        Assert.Equal(previous, empty.Parameters["to_utc"]);
+        Assert.Equal(0, empty.Total);
+        Assert.Equal(0, empty.FollowUp);
+    }
+
+    [Fact]
     public async Task Posting_a_later_inspection_preserves_the_count_at_the_earlier_cutoff()
     {
         await using var host = new InspectionHost();
@@ -130,7 +158,15 @@ public sealed class InspectionReportTests(ITestOutputHelper output)
             var page = await response.Content.ReadFromJsonAsync<ReportExecutionResponseDto>(Json);
             Assert.Equal(500, Groups(page!.Sheet.Rows).Length);
             Assert.InRange(queries, 1, 24);
-            samples.Add(new { status = (int)response.StatusCode, milliseconds = timer.Elapsed.TotalMilliseconds, queries });
+            var workingSetBytes = Environment.WorkingSet;
+            Assert.True(workingSetBytes > 0);
+            samples.Add(new
+            {
+                status = (int)response.StatusCode,
+                milliseconds = timer.Elapsed.TotalMilliseconds,
+                queries,
+                workingSetBytes
+            });
         }
 
         output.WriteLine("NGB-CHECK " + JsonSerializer.Serialize(new
@@ -162,23 +198,43 @@ public sealed class InspectionReportTests(ITestOutputHelper output)
         var details = await PostAsync<ReportExecutionResponseDto>(admin, ExecutePath, Request() with
         {
             Layout = new ReportLayoutDto(
-                DetailFields: ["inspection_id", "inspection_display", "inspection_date"],
+                DetailFields: ["inspection_display", "inspection_date"],
                 ShowDetails: true,
                 ShowSubtotals: false,
                 ShowGrandTotals: false)
         });
+        Assert.DoesNotContain(details.Sheet.Rows.SelectMany(row => row.Cells),
+            cell => Guid.TryParse(cell.Display, out _));
+        Assert.DoesNotContain(details.Sheet.Columns, column => column.Code == "inspection_id");
+        var rawId = Request() with
+        {
+            Layout = new ReportLayoutDto(DetailFields: ["inspection_id"], ShowDetails: true)
+        };
+        using var rejected = await admin.PostAsJsonAsync(ExecutePath, rawId);
+        Assert.InRange((int)rejected.StatusCode, 400, 499);
         var actions = details.Sheet.Rows.SelectMany(row => row.Cells)
             .Where(cell => cell.Action?.DocumentId is not null)
             .Select(cell => cell.Action!)
             .ToArray();
         Assert.Equal(5, actions.Length);
         Assert.Equal(5, actions.Select(action => action.DocumentId).Distinct().Count());
-        foreach (var action in actions)
+        using var export = await admin.PostAsJsonAsync("/api/reports/" + InspectionReports.Summary + "/export/xlsx",
+            new ReportExportRequestDto(Layout: new ReportLayoutDto(DetailFields: ["inspection_display", "inspection_date"],
+                ShowDetails: true, ShowSubtotals: false, ShowGrandTotals: false), Parameters: Request().Parameters));
+        await EnsureSuccessAsync(export);
+        var exported = (await ReadWorksheetAsync(export)).SelectMany(row => row).ToArray();
+        Assert.DoesNotContain(exported, text => Guid.TryParse(text, out _));
+        foreach (var cell in details.Sheet.Rows.SelectMany(row => row.Cells).Where(cell => cell.Action?.DocumentId is not null))
         {
+            var action = cell.Action!;
             Assert.Equal(EquipmentDefinitions.InspectionCode, action.DocumentType);
             var source = await admin.GetFromJsonAsync<DocumentDto>(
                 $"/api/documents/{action.DocumentType}/{action.DocumentId}", Json);
             Assert.Equal(action.DocumentId, source!.Id);
+            var display = cell.Display ?? cell.Value?.GetString();
+            Assert.False(string.IsNullOrWhiteSpace(display));
+            Assert.StartsWith("Inspection " + source.Number + " · ", display);
+            Assert.Contains(display, exported);
         }
     }
 
@@ -392,21 +448,26 @@ public sealed class InspectionReportTests(ITestOutputHelper output)
         await EnsureSuccessAsync(response);
         Assert.Equal("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             response.Content.Headers.ContentType!.MediaType);
-        using var bytes = new MemoryStream(await response.Content.ReadAsByteArrayAsync());
-        using var archive = new ZipArchive(bytes);
-        using var sheet = archive.GetEntry("xl/worksheets/sheet1.xml")!.Open();
-        var xml = XDocument.Load(sheet);
-        XNamespace ns = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
-        var rows = xml.Descendants(ns + "row").Select(row => row.Elements(ns + "c")
-            .Select(cell => cell.Attribute("t")?.Value == "inlineStr"
-                ? string.Concat(cell.Descendants(ns + "t").Select(text => text.Value))
-                : cell.Element(ns + "v")?.Value ?? string.Empty)
-            .ToArray()).ToArray();
+        var rows = await ReadWorksheetAsync(response);
         Assert.Contains(rows, row => row.SequenceEqual(["Follow-up", "1"]));
         Assert.Contains(rows, row => row.SequenceEqual(["Passed", "2"]));
         Assert.Contains(rows, row => row.Length == 2
             && row[0].Contains("Total", StringComparison.OrdinalIgnoreCase) && row[1] == "3");
         Assert.DoesNotContain(rows, row => row.Contains("Rejected"));
+    }
+
+    private static async Task<string[][]> ReadWorksheetAsync(HttpResponseMessage response)
+    {
+        using var bytes = new MemoryStream(await response.Content.ReadAsByteArrayAsync());
+        using var archive = new ZipArchive(bytes);
+        using var sheet = archive.GetEntry("xl/worksheets/sheet1.xml")!.Open();
+        var xml = XDocument.Load(sheet);
+        XNamespace ns = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+        return xml.Descendants(ns + "row").Select(row => row.Elements(ns + "c")
+            .Select(cell => cell.Attribute("t")?.Value == "inlineStr"
+                ? string.Concat(cell.Descendants(ns + "t").Select(text => text.Value))
+                : cell.Element(ns + "v")?.Value ?? string.Empty)
+            .ToArray()).ToArray();
     }
 
     private static ReportExecutionRequestDto Request()

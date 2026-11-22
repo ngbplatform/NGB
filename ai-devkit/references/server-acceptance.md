@@ -133,3 +133,57 @@ Capture `batchLimit`, the complete seeded `eligible` ID array, the number of
 actual `runs`, and all persisted delivery keys in `delivered`. Run it once more
 and capture `afterReplay`. Follow pagination to the end and retain duplicate IDs
 in both observed arrays. Assert resolution behavior wherever the brief defines it.
+
+## Trace the original brief
+
+Before implementation, retain the supplied brief (or its text transcription)
+in the project. Store an independent `ai/requirement-trace.json` alongside the
+schema 2 acceptance plan. List each requirement ID once, give its project-relative
+source and an exact excerpt, and bind all relevant server checks by kind, target
+and key. Other server behaviors can bind exact passing TRX test names in
+`integrationTests`. One requirement can need several checks. A purely visual requirement
+has a browser case and a `browserOnlyReason`. For a server-only requirement use
+`serverOnly: true` in the acceptance plan and bind the server checks here.
+
+```json
+{
+  "requirements": [{
+    "id": "approved-before-release",
+    "source": "requirements.md",
+    "quote": "A release requires an effective approval.",
+    "checks": [{"kind":"effective-prerequisite","target":"document:example.release","key":"approval"}]
+  }],
+  "documentRules": [{
+    "type": "example.release",
+    "effective-prerequisite": ["approval"],
+    "interval-overlap": {"reason":"Release records a point-in-time event."},
+    "snapshot-stability": {"reason":"This operation consumes no captured classification or rate."}
+  }]
+}
+```
+
+Review each application document for dated conditions, closed intervals and
+captured facts. For each applicable kind list all business keys and exercise each
+one. For effective prerequisites include available funds, issued documents and
+consumed limits when required by the brief. Record `persistedControlId` from a
+read-back of the successful positive control.
+
+* `interval-overlap` proves that a completed interval still occupies that part
+  of the timeline. Record `resourceId`, `closedRecordId`, `priorStart`, `priorEnd`,
+  `attemptStart`, `attemptEnd`, `controlStart`, `controlEnd` and `persistedControlId`.
+  Set `boundary` to `inclusive` or `exclusive-end` according to the business rule. Supply
+  the same authorized control, refusal code and unchanged snapshots as for a
+  dated prerequisite. Use the business calendar and its endpoint conventions.
+* `snapshot-stability` changes the original source between capture and actual
+  later consumption. Record `sourceId`, `consumerId`, `capturedAt`, `changedAt`,
+  `consumedAt`, `original`, `changed`, `expected` and `observed`. A fresh case
+  after the change must exhibit the new result (`freshExpected`, `freshObserved`).
+* For a resource limit add `workingSet: true` to the capacity binding in the
+  trace and `maxWorkingSetBytes` to the test budget. Sample the actual serving
+  process and record `workingSetBytes` alongside each measured request.
+* For a recovery requirement bind `restore-rehearsal` to its navigation surface.
+  Back up, restore into a separate disposable database or stack, start the
+  application there, reopen a known record and compare business state. Record
+  `sourceInstance`, `restoredInstance`, `backupBytes`, `backupSha256`, `recordId`,
+  `readStatus`, `beforeBackup` and `afterRestore`. Include attachments, identity
+  configuration or other stores when the recovery requirement includes them.

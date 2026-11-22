@@ -163,3 +163,9 @@ never copy a rule from an unrelated business. An authorized lookup is guidance,
 not a reservation or authorization to post later.
 
 Use the [executed browser matrix](browser-acceptance.md) for the generated app.
+
+Own the rejection for every dependent request, including work already superseded
+by another selection or a route change. Abort on cleanup and compare the active
+request identity before changing values, errors or loading state. Exercise a
+delayed rejection after clearing or changing the selection, then select another
+valid record and verify recovery in the same browser context.

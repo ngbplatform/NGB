@@ -54,9 +54,21 @@ absence from the business prompt is not a request to omit them or their infrastr
 
 Make Dashboard the first standalone root link, before the business-area groups.
 Register it as a singleton group whose label matches its item, with an earlier
-group ordinal; preserve the starter shell's singleton-to-root mapping. Do not put
+group ordinal. Set both group and item icons to `home` from the public
+[menu icon catalog](menu-icons.json) and preserve the starter shell's singleton-to-root mapping. Do not put
 Dashboard inside the first business group. A partial capability example without a
 dashboard is not a complete application's navigation template.
+
+Use a compact date and refresh toolbar in the page header. Keep the balance
+cutoff and independently selectable activity interval when the brief requires
+both. Show the effective dates from the server. Put actionable exceptions first,
+with the business measure, a text status, and a link to the identically scoped
+worklist or report. Group secondary figures in a smaller KPI grid. Use real
+counts and thresholds from the domain. Preserve an explicit zero, a loading
+state, a failed request and the difference between a hidden and an allowed metric.
+Model the responsive layout on the [inspection dashboard](../examples/equipment-inspection/web/src/pages/InspectionDashboardPage.vue).
+Review both viewport screenshots for hierarchy, useful first-screen content,
+wrapping and navigation with the keyboard.
 
 Preserve the user's complete product name in the shell, browser title and login
 branding. Keep the product display name separate from code namespaces and route

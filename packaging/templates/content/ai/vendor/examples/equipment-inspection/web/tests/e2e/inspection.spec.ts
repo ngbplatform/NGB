@@ -1,4 +1,5 @@
-import { expect, test as base, type Page } from '@playwright/test'
+import { expect, type Page } from '@playwright/test'
+import { test as base } from './browser'
 import type { ReportExecutionRequestDto } from '@ngbplatform/ui/contracts'
 import { acceptanceProbe } from './acceptance'
 
@@ -257,7 +258,8 @@ test('administrator closes and explicitly reopens a month through the shared per
   await expect(page.getByRole('button', { name: 'Close Month', exact: true })).toBeEnabled()
 })
 
-test('administrator creates equipment, saves an incomplete Draft, completes and posts an inspection without effects', async ({ page }) => {
+test('administrator creates equipment, saves an incomplete Draft, completes and posts an inspection without effects', async ({ page }, info) => {
+  const probe = await acceptanceProbe(page, info)
   await signIn(page, 'administrator')
   const origin = process.env.NGB_EXAMPLE_ORIGIN
   const equipmentName = `Inspection bench ${test.info().repeatEachIndex}`
@@ -359,7 +361,7 @@ test('administrator creates equipment, saves an incomplete Draft, completes and 
     request: {
       ...reportRequest,
       layout: {
-        detailFields: ['inspection_id', 'inspection_display', 'inspection_date'],
+        detailFields: ['inspection_display', 'inspection_date'],
         showDetails: true,
         showSubtotals: false,
         showGrandTotals: false,
@@ -367,7 +369,11 @@ test('administrator creates equipment, saves an incomplete Draft, completes and 
     } satisfies ReportExecutionRequestDto,
   })).toString('base64url')
   await page.goto(`${origin}/reports/example.inspection-summary?ctx=${detailsContext}`)
-  await page.getByTestId('report-sheet-table').getByRole('button', { name: 'Initial safety check', exact: true }).click()
+  await expect(page.getByTestId('report-sheet-table')).not.toContainText(draft.id)
+  const reference = page.getByTestId('report-sheet-table').getByRole('button', { name: 'Initial safety check', exact: true })
+  await probe.outcome('report-reference:inspection_display', checks => checks.reportReference(
+    'inspection_display', reference, 'Initial safety check', '/documents/example.inspection/' + draft.id, draft.id))
+  await probe.finish('inspection-report-reference', 'ngb-admin')
   await expect.poll(() => new URL(page.url()).pathname).toBe(`/documents/example.inspection/${draft.id}`)
 
   await page.getByRole('button', { name: 'More actions', exact: true }).click()

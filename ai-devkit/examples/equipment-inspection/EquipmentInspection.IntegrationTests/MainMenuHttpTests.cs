@@ -27,9 +27,15 @@ public sealed class MainMenuHttpTests
 
         using var admin = await host.CreateClientAsync(username);
         var menu = (await admin.GetFromJsonAsync<MainMenuDto>("/api/main-menu"))!;
+        var dashboard = menu.Groups[0];
+        Assert.Equal("Dashboard", dashboard.Label);
+        Assert.Equal("home", dashboard.Icon);
+        var home = Assert.Single(dashboard.Items);
+        Assert.Equal("home", home.Icon);
+        Assert.Equal("/dashboard", home.Route);
         var group = Assert.Single(menu.Groups, group => group.Label == "Equipment inspections");
         Assert.Equal(5, group.Ordinal);
-        Assert.Equal("clipboard-check", group.Icon);
+        Assert.Equal("clipboard-list", group.Icon);
         Assert.Equal(3, group.Items.Count);
         Assert.Equal("file-text", group.Items[1].Icon);
         Assert.Equal("bar-chart", group.Items[2].Icon);

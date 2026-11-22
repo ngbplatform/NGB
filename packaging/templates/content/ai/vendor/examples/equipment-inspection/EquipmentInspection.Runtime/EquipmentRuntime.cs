@@ -10,6 +10,7 @@ using NGB.Definitions.Documents.Posting;
 using NGB.Definitions.Documents.Validation;
 using NGB.Definitions.WorkCenter;
 using NGB.Runtime.Documents.Validation;
+using NGB.Runtime.Security;
 
 namespace EquipmentInspection.Runtime;
 
@@ -19,6 +20,7 @@ public static class EquipmentRuntime
     {
         services.AddSingleton<IDefinitionsContributor, EquipmentDefinitions>();
         services.AddSingleton<IMainMenuContributor, EquipmentMainMenuContributor>();
+        services.AddSingleton<INgbPermissionDefinitionSource, EquipmentMainMenuContributor>();
         services.AddSingleton<IDefinitionsContributor, EquipmentCatalogRuntimeDefinitions>();
         services.AddScoped<EquipmentNameValidator>();
         services.AddScoped<ICatalogUpsertValidator>(services =>

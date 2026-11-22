@@ -14,7 +14,9 @@ public sealed class InspectionReportDataset : IPostgresReportDatasetSource
             fields:
             [
                 new PostgresReportFieldBinding("inspection_id", "d.id", "uuid"),
-                new PostgresReportFieldBinding("inspection_display", "i.display", "string"),
+                new PostgresReportFieldBinding("inspection_display",
+                    "COALESCE(NULLIF(btrim(i.display), ''), 'Inspection ' || d.number || ' · ' || to_char(d.date_utc AT TIME ZONE 'UTC', 'MM/DD/YYYY'))",
+                    "string"),
                 new PostgresReportFieldBinding("inspection_date", "d.date_utc::date", "date",
                     dayBucketSqlExpression: "d.date_utc::date",
                     monthBucketSqlExpression: "date_trunc('month', d.date_utc)::date"),

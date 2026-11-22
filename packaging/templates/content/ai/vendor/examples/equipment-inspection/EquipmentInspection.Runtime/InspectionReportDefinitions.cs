@@ -58,7 +58,7 @@ public sealed class InspectionReportDefinitions : IReportDefinitionSource, IRepo
         Fields:
         [
             new ReportFieldDto("inspection_id", "Inspection ID", "uuid", ReportFieldKind.Dimension,
-                IsSelectable: true, Lookup: new DocumentLookupSourceDto([EquipmentDefinitions.InspectionCode])),
+                Lookup: new DocumentLookupSourceDto([EquipmentDefinitions.InspectionCode])),
             new ReportFieldDto("inspection_display", "Inspection", "string", ReportFieldKind.Dimension,
                 IsSelectable: true, IsSortable: true),
             new ReportFieldDto("inspection_date", "Inspection date", "date", ReportFieldKind.Time,

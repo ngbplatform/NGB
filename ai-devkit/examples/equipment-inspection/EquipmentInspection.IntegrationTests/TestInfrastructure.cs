@@ -67,6 +67,32 @@ internal sealed class TestInfrastructure : IAsyncDisposable
         return new TestDatabase(_postgres.GetConnectionString(), settings.ConnectionString, name);
     }
 
+    public async Task<byte[]> RestoreBackupAsync(string sourceConnection, string destinationConnection)
+    {
+        var source = new NpgsqlConnectionStringBuilder(sourceConnection);
+        var destination = new NpgsqlConnectionStringBuilder(destinationConnection);
+        if (source.Database == destination.Database)
+            throw new ArgumentException("Use a separate disposable database for the restore.");
+
+        var path = "/tmp/" + Guid.NewGuid().ToString("N") + ".dump";
+        try
+        {
+            var dump = await _postgres.ExecAsync(["pg_dump", "-U", source.Username!, "-Fc", "-f", path, source.Database!]);
+            if (dump.ExitCode != 0)
+                throw new InvalidOperationException(dump.Stderr);
+
+            var restore = await _postgres.ExecAsync(["pg_restore", "--exit-on-error", "-U", destination.Username!,
+                "-d", destination.Database!, path]);
+            if (restore.ExitCode != 0)
+                throw new InvalidOperationException(restore.Stderr);
+            return await _postgres.ReadFileAsync(path);
+        }
+        finally
+        {
+            await _postgres.ExecAsync(["rm", "-f", path]);
+        }
+    }
+
     public async Task CreateRealmAsync(object realm)
     {
         using var request = new HttpRequestMessage(HttpMethod.Post, "admin/realms")

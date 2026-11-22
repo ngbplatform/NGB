@@ -8,6 +8,9 @@ const kinds = {
   'historical-cutoff': 'report',
   'effective-prerequisite': 'document',
   'history-conflict': 'document',
+  'interval-overlap': 'document',
+  'snapshot-stability': 'document',
+  'restore-rehearsal': 'navigation',
   capacity: null,
   'worker-backlog': 'job',
 }
@@ -37,11 +40,11 @@ export function validateBusinessChecks(plan) {
     if (entry.kind !== 'worker-backlog') assert.ok(plan.surfaces.includes(entry.target), 'Unknown server acceptance surface.')
     assert.ok(nonempty(entry.key) && nonempty(entry.test), 'Bind each server check to a business key and integration test.')
     if (entry.kind === 'capacity') {
-      objectKeys(entry.budget, ['populations', 'samples', 'p95Milliseconds', 'maxQueries'])
+      objectKeys(entry.budget, ['populations', 'samples', 'p95Milliseconds', 'maxQueries'], ['maxWorkingSetBytes'])
       assert.ok(entry.budget.populations && Object.keys(entry.budget.populations).length > 0
         && Object.entries(entry.budget.populations).every(([key, size]) => nonempty(key) && Number.isSafeInteger(size) && size > 0),
       'Declare minimum persisted populations for the business workload.')
-      for (const key of ['samples', 'p95Milliseconds', 'maxQueries']) {
+      for (const key of Object.keys(entry.budget).filter(key => key !== 'populations')) {
         assert.ok(Number.isSafeInteger(entry.budget[key]) && entry.budget[key] > 0, 'Declare positive workload budgets.')
       }
     } else assert.ok(entry.budget === undefined, 'Workload budgets apply only to capacity checks.')
@@ -72,11 +75,12 @@ export function reconcileHistoricalChecks(plan, reports) {
 
 // xUnit writes the integration test's own output inside its UnitTestResult. Global
 // run output, unrelated passing tests and stale files cannot satisfy a binding.
-export function integrationObservations(xml) {
+export function integrationObservations(xml, passedTests) {
   const root = readTestXml(xml)
   const observations = []
   for (const result of root.children.find(node => node.name === 'Results')?.children ?? []) {
     if (result.name !== 'UnitTestResult' || result.attributes.outcome !== 'Passed') continue
+    if (result.attributes.testName) passedTests?.add(result.attributes.testName)
     const output = result.children.find(node => node.name === 'Output')
     const stdout = output?.children.find(node => node.name === 'StdOut')?.text ?? ''
     for (const line of stdout.split(/\r?\n/)) {
@@ -110,15 +114,30 @@ function verifyObservation(entry, proof) {
       assert.ok([400, 409, 422].includes(proof.otherStatus) && nonempty(proof.reason) && proof.reason === proof.expectedReason, 'Expected a business refusal for the unrelated source.')
       unchanged(proof.beforeRefusal, proof.afterRefusal)
     }
-  } else if (entry.kind === 'effective-prerequisite' || entry.kind === 'history-conflict') {
+  } else if (['effective-prerequisite', 'history-conflict', 'interval-overlap'].includes(entry.kind)) {
     assert.ok(successful(proof.controlStatus), 'The authorized positive control must succeed.')
     assert.ok([400, 409, 422].includes(proof.refusalStatus) && nonempty(proof.expectedReason)
       && proof.reason === proof.expectedReason, 'Expected the specific business refusal.')
     unchanged(proof.beforeRefusal, proof.afterRefusal)
     if (entry.kind === 'effective-prerequisite') {
-      assert.ok(Date.parse(proof.attemptAt) < Date.parse(proof.prerequisiteAt)
+      assert.ok(nonempty(proof.persistedControlId) && Date.parse(proof.attemptAt) < Date.parse(proof.prerequisiteAt)
         && Date.parse(proof.prerequisiteAt) <= Date.parse(proof.controlAt),
       'Exercise both sides of the prerequisite effective date.')
+    } else if (entry.kind === 'interval-overlap') {
+      assert.ok(['inclusive', 'exclusive-end'].includes(proof.boundary), 'Declare how the business treats interval endpoints.')
+      const precedes = proof.boundary === 'inclusive' ? (a, b) => a <= b : (a, b) => a < b
+      const start = Date.parse(proof.priorStart)
+      const end = Date.parse(proof.priorEnd)
+      const from = Date.parse(proof.attemptStart)
+      const to = Date.parse(proof.attemptEnd)
+      assert.ok(nonempty(proof.resourceId) && nonempty(proof.closedRecordId)
+        && precedes(start, end) && precedes(from, to) && precedes(from, end) && precedes(start, to),
+      'Attempt to overlap a completed interval for the same business key.')
+      const controlFrom = Date.parse(proof.controlStart)
+      const controlTo = Date.parse(proof.controlEnd)
+      assert.ok(precedes(controlFrom, controlTo) && !(precedes(controlFrom, end) && precedes(start, controlTo))
+        && nonempty(proof.persistedControlId) && proof.persistedControlId !== proof.closedRecordId,
+      'Read back the successful nonoverlapping control.')
     } else {
       assert.ok(Number.isSafeInteger(proof.pageLimit) && proof.pageLimit > 0
         && Array.isArray(proof.newerIds) && proof.newerIds.length >= proof.pageLimit
@@ -126,6 +145,25 @@ function verifyObservation(entry, proof) {
         && nonempty(proof.conflictId) && !proof.newerIds.includes(proof.conflictId),
       'Place the conflicting key beyond the first full page of distinct newer records.')
     }
+  } else if (entry.kind === 'snapshot-stability') {
+    assert.ok(nonempty(proof.sourceId) && nonempty(proof.consumerId)
+      && Date.parse(proof.capturedAt) <= Date.parse(proof.changedAt)
+      && Date.parse(proof.changedAt) < Date.parse(proof.consumedAt),
+    'Change the source after capture and before completing the consuming operation.')
+    for (const key of ['original', 'changed', 'expected', 'observed', 'freshExpected', 'freshObserved']) {
+      assert.ok(proof[key] != null, `Missing snapshot observation: ${key}`)
+    }
+    assert.notDeepEqual(proof.original, proof.changed, 'Change the classification, rate or calendar.')
+    assert.deepEqual(proof.observed, proof.expected, 'The consumer must use the captured business fact.')
+    assert.notDeepEqual(proof.expected, proof.freshExpected, 'Use a fresh transaction affected by the change.')
+    assert.deepEqual(proof.freshObserved, proof.freshExpected, 'The new source value must take effect on new work.')
+  } else if (entry.kind === 'restore-rehearsal') {
+    assert.ok(nonempty(proof.sourceInstance) && nonempty(proof.restoredInstance)
+      && proof.sourceInstance !== proof.restoredInstance && Number.isSafeInteger(proof.backupBytes) && proof.backupBytes > 0,
+    'Restore a nonempty backup into a separate, disposable instance.')
+    assert.match(proof.backupSha256 ?? '', /^[a-f0-9]{64}$/)
+    assert.ok(successful(proof.readStatus) && nonempty(proof.recordId), 'Reopen a known business record after restoring.')
+    unchanged(proof.beforeBackup, proof.afterRestore)
   } else if (entry.kind === 'capacity') {
     const budget = entry.budget
     for (const [key, minimum] of Object.entries(budget.populations)) {
@@ -137,6 +175,10 @@ function verifyObservation(entry, proof) {
       assert.ok(successful(sample.status) && Number.isFinite(sample.milliseconds) && sample.milliseconds > 0
         && Number.isSafeInteger(sample.queries) && sample.queries >= 0 && sample.queries <= budget.maxQueries,
       'Business request failed or exceeded its query budget.')
+      if (budget.maxWorkingSetBytes !== undefined) {
+        assert.ok(Number.isSafeInteger(sample.workingSetBytes) && sample.workingSetBytes > 0
+          && sample.workingSetBytes <= budget.maxWorkingSetBytes, 'Missing or excessive server working set during the workload.')
+      }
     }
     assert.ok(proof.samples.some(sample => sample.queries > 0), 'Include an instrumented database read in the measured workload.')
     const times = proof.samples.map(sample => sample.milliseconds).sort((a, b) => a - b)

@@ -162,6 +162,11 @@ export function reconcileAcceptance(plan, inventory) {
     for (const role of plan.roles) {
       assert.ok(plan.cases.some(entry => matches(entry, document.type) && entry.role === role && entry.scenario === 'access'),
         `Missing role acceptance: ${document.type}/${role}`)
+      if (plan.schemaVersion === 2 && document.type === 'general_journal_entry') {
+        assert.ok(plan.cases.some(entry => matches(entry, document.type) && entry.role === role
+          && entry.scenario === 'access' && entry.outcomes.includes('journal-create-access')),
+        `Verify journal Create access for ${role}.`)
+      }
       required.push(`${document.type}/${role}/access`)
     }
   }
@@ -220,6 +225,7 @@ export async function readAcceptanceInventory(environment, schemaVersion = 1) {
     catalogs: await read('/api/catalogs/metadata'),
     reports: await read('/api/report-definitions', !menuItems.some(item =>
       item.kind === 'report' || item.route?.startsWith('/reports/'))),
+    menuGroups: menu.groups,
     menu: menuItems.map(item => ({ code: item.code, route: item.route })),
   } : {}
   return { ...surfaces, documents: documents.filter(item => !platformOnly.includes(item)),
@@ -261,7 +267,16 @@ export function browserAcceptance(plan, inventory, report, { runId, origin }) {
           const binding = JSON.stringify([spec.file, spec.title, test.projectName])
           assert.ok(!bindings.has(binding), 'Ambiguous browser test identity; use distinct titles within each file/project.')
           bindings.add(binding)
-          for (const attachment of test.results[0].attachments ?? []) {
+          const attachments = test.results[0].attachments ?? []
+          if (plan.schemaVersion === 2) {
+            const diagnostics = attachments.filter(item => item.name === 'ngb-page-errors')
+            assert.equal(diagnostics.length, 1, 'Use the shared browser fixture to capture unhandled page errors.')
+            const diagnostic = diagnostics[0]
+            assert.ok(diagnostic.contentType === 'application/json' && typeof diagnostic.body === 'string'
+              && diagnostic.body.length <= 65536, 'Invalid browser error evidence.')
+            assert.deepEqual(JSON.parse(Buffer.from(diagnostic.body, 'base64').toString()), [], 'Unhandled browser page error.')
+          }
+          for (const attachment of attachments) {
             if (attachment.name !== 'ngb-acceptance') continue
             assert.equal(attachment.contentType, 'application/json', 'Invalid acceptance attachment type.')
             assert.ok(typeof attachment.body === 'string' && attachment.body.length <= 65536,
@@ -273,7 +288,20 @@ export function browserAcceptance(plan, inventory, report, { runId, origin }) {
             assert.equal(spec.title, entry.title, 'Acceptance test title differs.')
             assert.equal(test.projectName, entry.project, 'Acceptance browser project differs.')
             assert.equal(proof.schemaVersion, plan.schemaVersion, 'Unsupported browser proof.')
-            if (plan.schemaVersion === 2) verifyOutcomeProof(entry, proof)
+            if (plan.schemaVersion === 2) {
+              verifyOutcomeProof(entry, proof)
+              for (const size of ['desktop', 'mobile']) {
+                if (!entry.outcomes.includes('dashboard-layout:' + size)) continue
+                const images = attachments.filter(item => item.name === 'ngb-dashboard-' + size)
+                assert.equal(images.length, 1, 'Attach the dashboard screenshot from this test.')
+                assert.equal(images[0].contentType, 'image/png')
+                const png = Buffer.from(images[0].body ?? '', 'base64')
+                assert.ok(png.length > 32 && png.subarray(0, 8).toString('hex') === '89504e470d0a1a0a'
+                  && png.toString('ascii', 12, 16) === 'IHDR', 'Invalid dashboard screenshot.')
+                const width = png.readUInt32BE(16)
+                assert.ok(width > 0 && (size === 'desktop' ? width >= 1024 : width <= 480), 'Incorrect screenshot viewport.')
+              }
+            }
             assert.equal(proof.runId, runId, 'Acceptance evidence belongs to another run.')
             assert.equal(proof.origin, origin, 'Acceptance must use the disposable application origin.')
             assert.equal(new URL(proof.url).origin, origin, 'Acceptance ended outside the application.')

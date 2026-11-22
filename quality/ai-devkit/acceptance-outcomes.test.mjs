@@ -138,6 +138,14 @@ test('schema 2 binds the named outcomes to each successful current-run browser c
           outcomes: entry.outcomes, evidence: { figures: ['figure'], 'source-target': ['record'],
             'opened-target': ['record'] } })).toString('base64') }] }] }],
   })) }], stats: { expected: plan.cases.length, unexpected: 0, flaky: 0, skipped: 0 } }
+  for (const spec of report.suites[0].specs) {
+    spec.tests[0].results[0].attachments.push({ name: 'ngb-page-errors', contentType: 'application/json',
+      body: Buffer.from('[]').toString('base64') })
+  }
+  const diagnostics = report.suites[0].specs[0].tests[0].results[0].attachments.at(-1)
+  diagnostics.body = Buffer.from('["Unhandled request rejection"]').toString('base64')
+  assert.throws(() => browserAcceptance(plan, inventory, report, context), /Unhandled browser page error/)
+  diagnostics.body = Buffer.from('[]').toString('base64')
   assert.equal(browserAcceptance(plan, inventory, report, context).cases.length, plan.cases.length)
   const attachment = report.suites[0].specs[3].tests[0].results[0].attachments[0]
   const proof = JSON.parse(Buffer.from(attachment.body, 'base64'))
@@ -186,6 +194,10 @@ test('journal reversal remains mandatory for legacy and corrected metadata', () 
     plan.requirements[0].scenarios = plan.requirements[0].scenarios.map(name => name === 'lifecycle' ? 'reversal' : name)
     assert.throws(() => reconcileAcceptance(plan, inventory), /journal-draft/)
     plan.cases.find(entry => entry.scenario === 'draft-edit').outcomes.push('journal-draft')
+    assert.throws(() => reconcileAcceptance(plan, inventory), /Verify journal Create access/)
+    for (const entry of plan.cases.filter(item => item.scenario === 'access' && item.target === plan.surfaces[0])) {
+      entry.outcomes.push('journal-create-access')
+    }
     reconcileAcceptance(plan, inventory)
   }
 })

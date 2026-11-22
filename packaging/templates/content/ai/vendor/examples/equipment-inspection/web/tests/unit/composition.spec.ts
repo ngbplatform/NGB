@@ -18,6 +18,7 @@ const state = vi.hoisted(() => ({
 
 vi.mock('@ngbplatform/ui/lazy', () => ({
   loadNgbAccountingPeriodClosingPage: vi.fn(),
+  loadNgbGeneralJournalEntryEditPage: vi.fn(), loadNgbGeneralJournalEntryListPage: vi.fn(),
   loadNgbDocumentEffectsPage: vi.fn(), loadNgbDocumentFlowPage: vi.fn(), loadNgbDocumentPrintPage: vi.fn(),
   loadNgbMetadataCatalogEditPage: vi.fn(), loadNgbMetadataDocumentEditPage: vi.fn(),
   loadNgbNotificationPreferencesPage: vi.fn(), loadNgbReportPage: vi.fn(), loadNgbWorkCenterPage: vi.fn(),
@@ -109,7 +110,7 @@ afterEach(() => {
 it('shows only authorized navigation and forwards shell actions', async () => {
   const { default: App } = await import('../../src/App.vue')
   const screen = render(App)
-  expect(state.shellProps.nodes).toHaveLength(7)
+  expect(state.shellProps.nodes).toHaveLength(8)
   await screen.getByRole('button', { name: 'Navigate' }).click()
   await screen.getByRole('button', { name: 'Select' }).click()
   await screen.getByRole('button', { name: 'Sign out' }).click()
@@ -122,7 +123,7 @@ it('shows only authorized navigation and forwards shell actions', async () => {
 it.each([
   [false, null, false, 0],
   [true, null, false, 0],
-  [true, { isBootstrapAdmin: false }, true, 7],
+  [true, { isBootstrapAdmin: false }, true, 8],
 ])('keeps inactive or denied navigation hidden (%s, %s, %s)', async (active, current, allowed, count) => {
   state.access.isActive = active
   state.access.current = current
@@ -132,6 +133,7 @@ it.each([
   expect(state.shellProps.nodes).toHaveLength(count)
   if (active) {
     expect(state.access.hasPermission.mock.calls).toEqual([
+      [{ resourceKind: 'page', resourceCode: 'example.dashboard', actionCode: 'view' }],
       [{ resourceKind: 'catalog', resourceCode: 'example.equipment', actionCode: 'view' }],
       [{ resourceKind: 'document', resourceCode: 'example.inspection', actionCode: 'view' }],
       [{ resourceKind: 'document', resourceCode: 'example.equipment-usage', actionCode: 'view' }],
@@ -193,9 +195,10 @@ it('composes head-only documents without inventing tabular data', async () => {
 it('guards list and direct editor routes with the public authentication guard', async () => {
   await import('../../src/router')
   expect(state.createRouter.mock.lastCall![0].routes.map((route: { path: string }) => route.path)).toEqual([
-    '/inspection-sources/:equipmentId', '/', '/catalogs/:catalogType', '/catalogs/:catalogType/:id', '/documents/:documentType', '/documents/:documentType/:id',
+    '/dashboard', '/inspection-sources/:equipmentId', '/', '/catalogs/:catalogType', '/catalogs/:catalogType/:id', '/documents/:documentType', '/documents/:documentType/:id',
     '/documents/:documentType/:id/effects', '/documents/:documentType/:id/flow', '/documents/:documentType/:id/print',
-    '/reports/:reportCode', '/admin/accounting/period-closing', '/work-center', '/settings/notifications', '/:pathMatch(.*)*',
+    '/reports/:reportCode', '/accounting/general-journal-entries', '/accounting/general-journal-entries/new',
+    '/accounting/general-journal-entries/:id', '/admin/accounting/period-closing', '/work-center', '/settings/notifications', '/:pathMatch(.*)*',
   ])
   expect(state.guard.mock.calls[0][0]().userName).toBe('Example operator')
   expect(state.beforeEach).toHaveBeenCalledOnce()

@@ -22,6 +22,7 @@ import NotFoundPage from './pages/NotFoundPage.vue'
 export const router = createRouter({
   history: createWebHistory(),
   routes: [
+    { path: '/dashboard', component: () => import('./pages/InspectionDashboardPage.vue') },
     { path: '/inspection-sources/:equipmentId', component: InspectionSourcePicker, props: true },
     { path: '/', redirect: '/catalogs/example.equipment' },
     { path: '/catalogs/:catalogType', component: CatalogPage },

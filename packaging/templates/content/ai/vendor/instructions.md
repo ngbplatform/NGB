@@ -68,6 +68,12 @@ are not passes. Never claim certification for business behavior that was not
 tested or for a release whose required evidence is incomplete.
 
 Complete the [executed browser acceptance matrix](references/browser-acceptance.md) before declaring generation complete.
+Before implementing a business brief, retain its text in the application and create
+`ai/requirement-trace.json` as described in [server acceptance](references/server-acceptance.md).
+Classify effective prerequisites, closed intervals and facts captured for later use
+for each application document. Review this inventory against the source when a rule changes.
+Use the same acceptance matrix and browser fixture across agent clients.
+
 The E2E CLI gate must reconcile runtime documents, catalogs, reports, menu destinations and roles with current-run Playwright
 UI evidence. Passing test counts or a prose checklist alone are insufficient.
 Before implementing the first workflow, enumerate business document relationships, settlements, partial

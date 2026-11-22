@@ -1,6 +1,9 @@
 import { randomUUID } from 'node:crypto'
-import { expect, test, type Page } from '@playwright/test'
+import { expect, type Page } from '@playwright/test'
+import { test } from './browser'
 import { acceptanceProbe } from './acceptance'
+
+test.use({ timezoneId: 'America/New_York' })
 
 async function signIn(page: Page, username = 'administrator') {
   const origin = process.env.NGB_EXAMPLE_ORIGIN!
@@ -314,7 +317,7 @@ test('replacing a populated source clears its preview immediately and loads the 
   await proof.finish('dependency-replacement', 'ngb-admin')
 })
 
-for (const stage of ['source', 'dependent'] as const) {
+for (const stage of ['source', 'dependent', 'failure'] as const) {
   test(`clearing during the ${stage} response keeps all dependent fields empty`, async ({ page }, info) => {
     const proof = await acceptanceProbe(page, info)
     const data = await seed(page)
@@ -332,9 +335,12 @@ for (const stage of ['source', 'dependent'] as const) {
       const response = await route.fetch()
       arrived()
       await held
-      // Preserve the actual service response; do not fabricate the preview.
       try {
-        await route.fulfill({ response })
+        if (stage === 'failure') {
+          await route.fulfill({ status: 503, json: { title: 'Dependent service unavailable' } })
+        } else {
+          await route.fulfill({ response })
+        }
       } catch {
         // The cleared request may already be aborted.
       } finally {
@@ -363,3 +369,93 @@ for (const stage of ['source', 'dependent'] as const) {
     await proof.finish(`dependency-${stage}`, 'ngb-admin')
   })
 }
+
+test('journal readers can list entries and cannot create through the list, direct editor or server', async ({ page }, info) => {
+  const proof = await acceptanceProbe(page, info)
+  const { origin, headers } = await signIn(page, 'imitator')
+  const path = '/accounting/general-journal-entries'
+  const read = page.waitForResponse(response => new URL(response.url()).pathname === '/api' + path)
+  await page.goto(origin + path)
+  expect((await read).status()).toBe(200)
+  const reloaded = page.waitForResponse(response => new URL(response.url()).pathname === '/api' + path)
+  await page.getByRole('button', { name: 'Refresh', exact: true }).click()
+  expect((await reloaded).status()).toBe(200)
+  const create = page.getByTestId('journal-entry-list-page').getByRole('button', { name: 'Create' })
+  await expect(create).toBeDisabled()
+  const denied = await page.request.post(origin + '/api' + path, {
+    headers, data: { dateUtc: '2026-06-08T12:00:00Z' },
+  })
+  await proof.outcome('journal-create-access', checks => checks.journalCreateAccess(false, create, denied))
+  await proof.finish('journal-reader', 'example.content-reader')
+})
+
+test('dashboard shows actionable results on desktop and mobile and opens the matching report', async ({ page }, info) => {
+  const proof = await acceptanceProbe(page, info)
+  const { origin, inspect } = await seed(page)
+  await inspect('Follow-up')
+  await inspect('Rejected')
+  const loaded = page.waitForResponse(response => new URL(response.url()).pathname === '/api/inspection-dashboard')
+  const home = page.getByRole('button', { name: 'Dashboard', exact: true })
+  await proof.outcome('dashboard-home', checks => checks.dashboardHome(home, '/dashboard'))
+  const response = await loaded
+  expect(response.ok(), await response.text()).toBe(true)
+  const snapshot = await response.json()
+  const attention = page.getByRole('region', { name: 'Requires attention' })
+  const metrics = page.getByRole('region', { name: 'Monthly activity' })
+  const toolbar = page.locator('.ngb-dashboard-toolbar-control')
+  for (const [size, width] of [['desktop', 1280], ['mobile', 390]] as const) {
+    await page.setViewportSize({ width, height: 844 })
+    await proof.outcome('dashboard-layout:' + size, checks => checks.dashboardLayout(size, toolbar, attention, metrics))
+  }
+  expect(snapshot.followUp).toBeGreaterThan(0)
+  expect(snapshot.rejected).toBeGreaterThan(0)
+  const cards = [
+    { section: attention, name: /flagged for follow-up/i, result: 'Follow-up', count: snapshot.followUp },
+    { section: attention, name: /rejected inspections/i, result: 'Rejected', count: snapshot.rejected },
+    { section: metrics, name: /marked as passed/i, result: 'Passed', count: snapshot.passed },
+    { section: metrics, name: /completed inspections/i, result: null, count: snapshot.total },
+  ]
+  await proof.outcome('metric-scope', async checks => {
+    for (const [index, item] of cards.entries()) {
+      if (index) await page.goBack()
+      const card = item.section.getByRole('button', { name: item.name })
+      await expect(card.locator('strong')).toHaveText(String(item.count))
+      const filters = item.result ? { result: { value: item.result, includeDescendants: false } } : null
+      await checks.metricReport(card, 'example.inspection-summary', snapshot.parameters, filters)
+    }
+  })
+  await expect(page).toHaveURL(new RegExp(origin + '/reports/'))
+  await proof.finish('inspection-dashboard', 'ngb-admin')
+})
+
+test('dashboard defaults use the server reporting day across client time zones', async ({ page, browser }, info) => {
+  const proof = await acceptanceProbe(page, info)
+  const { origin } = await signIn(page)
+  const other = await browser.newContext({ timezoneId: 'Pacific/Kiritimati' })
+  try {
+    const east = await other.newPage()
+    await signIn(east)
+    const instant = new Date().toISOString().slice(0, 10) + 'T16:00:00Z'
+    for (const client of [page, east]) await client.clock.setFixedTime(new Date(instant))
+    const loaded = page.waitForResponse(response => new URL(response.url()).pathname === '/api/inspection-dashboard')
+    await Promise.all([page.goto(origin + '/dashboard'), east.goto(origin + '/dashboard')])
+    await page.getByRole('button', { name: 'Refresh', exact: true }).click()
+    const response = await loaded
+    expect(response.ok()).toBe(true)
+    const expected = new Date(response.headers().date).toISOString().slice(0, 10)
+    await proof.outcome('business-calendar', checks => checks.businessCalendar([page.locator('main time'), east.locator('main time')], expected))
+    await proof.finish('inspection-dashboard-calendar', 'ngb-admin')
+  } finally {
+    await other.close()
+  }
+})
+
+test('a direct dashboard URL does not disclose figures to a restricted reader', async ({ page }) => {
+  const { origin } = await signIn(page, 'reader')
+  await expect(page.getByRole('button', { name: 'Dashboard', exact: true })).toHaveCount(0)
+  const loaded = page.waitForResponse(response => new URL(response.url()).pathname === '/api/inspection-dashboard')
+  await page.goto(origin + '/dashboard')
+  expect((await loaded).status()).toBe(403)
+  await expect(page.getByText('You do not have permission to view inspection results.')).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Monthly activity' })).toHaveCount(0)
+})

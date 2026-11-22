@@ -7,7 +7,7 @@
     "EquipmentInspection.Definitions/EquipmentDefinitions.cs": "256a012f8233c73842c5b0f9ceff926c069d2027eb703accb49ae9b2ce14b7d9",
     "EquipmentInspection.Runtime/EquipmentCategoryRuntimeDefinitions.cs": "15295f3d30169fbbf334ed6b5e80b989d01412187af72e34d7b59626ae94a592",
     "EquipmentInspection.Runtime/EquipmentCategoryValidator.cs": "667198d5bc7214b5682a5b7b9aa8b881f12179ebab46fbe8b50ffc9621f553de",
-    "EquipmentInspection.Runtime/EquipmentRuntime.cs": "f5696b19a897193817184a3dafc125f94bf18729450cea8084dfa8f13f2e0fdf",
+    "EquipmentInspection.Runtime/EquipmentRuntime.cs": "933a0b434f7e62b09ae2bf15010875b11ee4ceac2d16201162d2d33c12815ad2",
     "EquipmentInspection.PostgreSql/EquipmentPersistence.cs": "b68da09b7f3e3bbae03925f8e48de197e648fb88eace09ce878fee3d37e3890b",
     "EquipmentInspection.PostgreSql/db/migrations/V2026_10_30_0300__equipment_category.sql": "036c7168dab520b2def45becd06f6f1f095d58a14a5488fb7f40ebee908ef845",
     "EquipmentInspection.PostgreSql/db/migrations/V2026_10_30_0400__equipment_category_link.sql": "ca2cdee0902ac483819202136b4dd93b00475b0ce9337e30fb689379ec9b18c9",

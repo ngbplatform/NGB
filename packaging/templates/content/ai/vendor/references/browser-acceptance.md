@@ -250,3 +250,29 @@ significant, such as a supplier's opaque tracking code.
 The raw Playwright report, inventory, source hash and gate results are retained in
 `.ngb/reports/<run>/`. A passing browser gate is not FULL Certification. It does not
 replace integration tests, per-file coverage, load tests or business review.
+
+## Reference columns, dashboard layout and request failures
+
+Import `test` from the project's shared `tests/e2e/browser.ts` fixture in every
+spec. It records uncaught exceptions and rejected promises from the browser
+context in `ngb-page-errors`. Intentional HTTP errors can exercise recovery.
+The application must still handle the promise and show the required state. Wait
+for delayed success and failure responses before ending race tests.
+
+* Bind `report-reference:<display-field>` to `reportReference(field, control, display, target, id)`.
+  Select a real detail cell, open the expected document/catalog path, or pass a
+  report destination with `code`, `parameters` and `filters` that identifies the record.
+* Bind `dashboard-home` to `dashboardHome(control, path)` on the actual sidebar item.
+  Use `dashboard-layout:desktop` and `dashboard-layout:mobile` with
+  `dashboardLayout(size, toolbar, attention, metrics)`. It captures PNGs at
+  desktop and phone widths, checks element placement and checks for overflow.
+  Also exercise the existing metric-scope and authorization outcomes.
+* Bind `business-calendar` to `businessCalendar([first, second], expectedDate)`.
+  Use two authenticated browser contexts at the same instant on different local
+  calendar dates. Compare the visible reporting day to the independently known
+  business calendar. Check explicitly selected historical dates separately.
+* For every journal access case use `journal-create-access` with `journalCreateAccess`.
+  Verify Create and Save for a creator. For a reader with actual journal view
+  permission, first load the list successfully, then verify the denied direct
+  POST, list control and direct new-entry route. A fully unauthorized actor
+  should be tested separately where the role model calls for one.

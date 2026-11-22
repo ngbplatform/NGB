@@ -12,8 +12,17 @@ const ids = ['a', 'b', 'c']
 
 function check(kind, changes = {}, options = {}) {
   const samples = {
-    'effective-prerequisite': { target, key: 'funding', attemptAt: '2026-04-01', prerequisiteAt: '2026-04-02',
+    'effective-prerequisite': { target, key: 'funding', persistedControlId: 'funded-control', attemptAt: '2026-04-01', prerequisiteAt: '2026-04-02',
       controlAt: '2026-04-02', controlStatus: 200, refusalStatus: 409, ...refusal },
+    'interval-overlap': { target, key: 'reservation', boundary: 'exclusive-end', priorStart: '2026-04-01', priorEnd: '2026-04-05',
+      attemptStart: '2026-04-02', attemptEnd: '2026-04-03', controlStart: '2026-04-05', controlEnd: '2026-04-06', resourceId: 'asset',
+      closedRecordId: 'first', persistedControlId: 'next', controlStatus: 201, refusalStatus: 409, ...refusal },
+    'snapshot-stability': { target, key: 'classification', capturedAt: '2026-04-01', changedAt: '2026-04-02',
+      consumedAt: '2026-04-03', sourceId: 'original', consumerId: 'later', original: 'A', changed: 'B',
+      expected: 5, observed: 5, freshExpected: 7, freshObserved: 7 },
+    'restore-rehearsal': { target: 'navigation:example.operations', key: 'posted', sourceInstance: 'source',
+      restoredInstance: 'restored', backupBytes: 100, backupSha256: 'a'.repeat(64), readStatus: 200,
+      recordId: 'record', beforeBackup: { state: 'posted' }, afterRestore: { state: 'posted' } },
     'history-conflict': { target, key: 'schedule', pageLimit: 2, newerIds: ['b', 'c'], conflictId: 'a',
       controlStatus: 201, refusalStatus: 409, ...refusal },
     capacity: { target: report, key: 'position', populations: { items: 1100 },
@@ -30,7 +39,7 @@ function check(kind, changes = {}, options = {}) {
   const proof = { kind, ...samples[kind], ...changes }
   const entry = { kind, target: proof.target, key: proof.key, test: 'Example.Tests.ReadBack', ...options }
   if (kind === 'capacity') entry.budget = { populations: { items: 1000 }, samples: 2, p95Milliseconds: 100, maxQueries: 4 }
-  const plan = { businessChecks: [entry], surfaces: [target, report], cases: [] }
+  const plan = { businessChecks: [entry], surfaces: [target, report, 'navigation:example.operations'], cases: [] }
   const observations = [{ test: entry.test, proof }]
   if (kind === 'worker-backlog') observations.push({ test: 'Worker.Test', proof: { kind: 'worker-inventory', jobs: ['example.dispatch'] } })
   return { plan, observations }
@@ -82,6 +91,12 @@ test('each check rejects the observed defect and incomplete or unrelated evidenc
   const invalid = {
     'effective-prerequisite': [{ attemptAt: '2026-04-02' }, { controlAt: '2026-04-01' }, { prerequisiteAt: 'invalid' },
       { controlStatus: 403 }, { refusalStatus: 200 }, { afterRefusal: {} }],
+    'interval-overlap': [{ priorEnd: null }, { attemptStart: '2026-04-08' }, { closedRecordId: '' },
+      { controlStart: '2026-04-03' }, { persistedControlId: 'first' }, { afterRefusal: {} }],
+    'snapshot-stability': [{ observed: 7 }, { consumedAt: '2026-04-02' }, { changed: 'A' },
+      { freshExpected: 5 }, { freshObserved: 5 }, { consumerId: '' }],
+    'restore-rehearsal': [{ restoredInstance: 'source' }, { backupBytes: 0 }, { backupSha256: 'x' },
+      { readStatus: 404 }, { afterRestore: { state: 'draft' } }],
     'history-conflict': [{ newerIds: ['b'] }, { newerIds: ['a', 'b'] }, { newerIds: ['b', 'b'] },
       { pageLimit: 0 }, { reason: 'unrelated' }, { refusalStatus: 200 }],
     capacity: [{ populations: { items: 999 } }, { samples: [] },
@@ -135,4 +150,27 @@ test('worker inventory rejects missing jobs and allows explicitly single-operati
   assert.throws(() => verifyBusinessObservations(plan, observations), /Conflicting/)
   inventory.jobs = 'invalid'
   assert.throws(() => verifyBusinessObservations(plan, observations), /Invalid worker/)
+})
+
+test('a declared process-memory budget requires measured bytes for every workload sample', () => {
+  const { plan, observations } = check('capacity')
+  const budget = plan.businessChecks[0].budget
+  budget.maxWorkingSetBytes = 1000
+  assert.throws(() => verifyBusinessObservations(plan, observations), /working set/)
+  const { samples } = observations[0].proof
+  for (const sample of samples) sample.workingSetBytes = 512
+  verifyBusinessObservations(plan, observations)
+  samples[0].workingSetBytes = 1001
+  assert.throws(() => verifyBusinessObservations(plan, observations), /working set/)
+})
+
+test('inclusive day bookings and half-open timestamps honor their different endpoint rules', () => {
+  const day = { boundary: 'inclusive', priorEnd: '2026-04-01', attemptStart: '2026-04-01',
+    attemptEnd: '2026-04-01', controlStart: '2026-04-02', controlEnd: '2026-04-02' }
+  const { plan, observations } = check('interval-overlap', day)
+  verifyBusinessObservations(plan, observations)
+  observations[0].proof.controlStart = '2026-04-01'
+  assert.throws(() => verifyBusinessObservations(plan, observations), /nonoverlapping/)
+  const touching = check('interval-overlap', { attemptStart: '2026-04-05', attemptEnd: '2026-04-08' })
+  assert.throws(() => verifyBusinessObservations(touching.plan, touching.observations), /overlap a completed interval/)
 })

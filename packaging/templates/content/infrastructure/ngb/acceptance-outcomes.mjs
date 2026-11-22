@@ -42,14 +42,14 @@ export function validateOutcomes(plan) {
   assert.ok(Array.isArray(plan.requirements), 'Declare business requirements and their executable cases.')
   const ids = new Set()
   for (const requirement of plan.requirements) {
-    objectKeys(requirement, ['id', 'description', 'scenarios', 'cases'])
+    objectKeys(requirement, ['id', 'description', 'scenarios', 'cases'], ['serverOnly'])
     assert.ok(typeof requirement.id === 'string' && requirement.id.trim() && !ids.has(requirement.id),
       'Missing or duplicate business requirement identity.')
     ids.add(requirement.id)
     assert.ok(typeof requirement.description === 'string' && requirement.description.trim(), 'Missing business outcome.')
-    assert.ok(Array.isArray(requirement.cases) && requirement.cases.length > 0,
+    assert.ok(Array.isArray(requirement.cases) && (requirement.cases.length > 0 || requirement.serverOnly === true),
       `Required business outcome has no executable cases: ${requirement.id}`)
-    assert.ok(Array.isArray(requirement.scenarios) && requirement.scenarios.length > 0,
+    assert.ok(Array.isArray(requirement.scenarios) && (requirement.scenarios.length > 0 || requirement.serverOnly === true),
       `Classify acceptance risks for requirement: ${requirement.id}`)
     for (const scenario of requirement.scenarios) {
       assert.ok(scenarioOutcomes[scenario], `Unknown requirement scenario: ${scenario}`)
@@ -180,7 +180,7 @@ export function reconcileWorkflows(plan, inventory) {
   }
   const dashboardCases = new Set(plan.requirements.filter(item => workflows.dashboards.includes(item.id)).flatMap(item => item.cases))
   for (const item of inventory.menu ?? []) {
-    if (item.route !== '/dashboard') continue
+    if (!['/home', '/dashboard'].includes(item.route) && item.label?.toLowerCase() !== 'dashboard') continue
     const target = `navigation:${item.code}`
     assert.ok(plan.cases.some(entry => entry.target === target && entry.scenario === 'dashboard-access' && dashboardCases.has(entry.id)),
       `Missing role coverage for dashboard: ${item.code}`)
@@ -192,7 +192,7 @@ export function verifyOutcomeProof(entry, proof) {
   assert.deepEqual([...proof.outcomes].sort(), [...entry.outcomes].sort(),
     `Browser did not verify every expected outcome: ${entry.id}`)
   for (const name of entry.outcomes) {
-    const check = /^(?:reference|flow-amount|registers?|commands?):/.test(name) ? name : requiredChecks[name]
+    const check = /^(?:report-reference|dashboard-layout|reference|flow-amount|registers?|commands?):/.test(name) ? name : requiredChecks[name]
     if (check) assert.ok(Array.isArray(proof.evidence?.[name]) && proof.evidence[name].includes(check),
       `Use the ${check} check for ${entry.id}/${name} and verify its expected business value.`)
   }
@@ -200,6 +200,9 @@ export function verifyOutcomeProof(entry, proof) {
 
 const requiredChecks = {
   'journal-draft': 'journal-draft',
+  'journal-create-access': 'journal-create-access',
+  'business-calendar': 'business-calendar',
+  'dashboard-home': 'dashboard-home',
   'named-fields': 'accessible-fields',
   'linked-records': 'flow',
   'linked-chain': 'chain',

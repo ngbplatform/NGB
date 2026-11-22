@@ -9,8 +9,15 @@ type FlowLink = {
 
 type RegisterFieldExpectation = { label: string, display: string, literalText?: boolean }
 
+type ReportDestination = { code: string, parameters: object, filters: object | null }
+
 interface OutcomeChecks {
   postedRegisters(response: Response, type: string, id: string, operational: string[], reference: string[]): Promise<void>
+  journalCreateAccess(expected: boolean, create: Locator, deniedRequest?: APIResponse): Promise<void>
+  reportReference(field: string, control: Locator, display: string, target: string | ReportDestination, id: string): Promise<void>
+  dashboardHome(control: Locator, path: string): Promise<void>
+  dashboardLayout(size: 'desktop' | 'mobile', toolbar: Locator, attention: Locator, metrics: Locator): Promise<void>
+  businessCalendar(inputs: [Locator, Locator], expected: string): Promise<void>
   journalDraft(memo: string): Promise<void>
   flowAmount(type: string, id: string, expected: number, root?: { type: string, id: string }): Promise<void>
   registerFields(response: Response, type: string, id: string, code: string, recordId: number | string,
@@ -222,6 +229,87 @@ export async function acceptanceProbe(page: Page, info: TestInfo) {
       }
       assertions += 1
       activeChecks?.add('navigation')
+    },
+    async journalCreateAccess(expected: boolean, create: Locator, deniedRequest?: APIResponse) {
+      if (expected) {
+        await expect(create).toBeVisible()
+        await expect(create).toBeEnabled()
+        await create.click()
+        await expect(page).toHaveURL(origin + '/accounting/general-journal-entries/new')
+        await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeEnabled()
+      } else {
+        expect(deniedRequest?.url()).toBe(origin + '/api/accounting/general-journal-entries')
+        expect(deniedRequest?.status()).toBe(403)
+        if (await create.count()) await expect(create).toBeDisabled()
+        await page.goto(origin + '/accounting/general-journal-entries/new')
+        const save = page.getByRole('button', { name: 'Save', exact: true })
+        const editor = page.getByTestId('journal-entry-edit-page')
+        const denial = page.getByText(/access denied|permission denied/i).first()
+        await expect(editor.or(denial).first()).toBeVisible()
+        if (await editor.isVisible()) {
+          await expect(save).toBeDisabled()
+          await expect(editor.getByPlaceholder('Explain the journal entry')).toBeDisabled()
+        }
+      }
+      assertions += 1
+      activeChecks?.add('journal-create-access')
+    },
+    async reportReference(field: string, control: Locator, display: string, target: string | ReportDestination, id: string) {
+      expect(display.trim()).toBeTruthy()
+      expect(display).not.toContain(id)
+      await expect(control).toHaveText(display)
+      expect(await control.evaluate(element => element.closest('td')?.dataset.column)).toBe(field)
+      if (typeof target === 'string') {
+        await control.click()
+        await probe.record(target, id)
+      } else {
+        const execution = page.waitForResponse(response => new URL(response.url()).pathname
+          === '/api/reports/' + encodeURIComponent(target.code) + '/execute')
+        await control.click()
+        await probe.reportRecord(await execution, target.code, target.parameters, target.filters, id)
+      }
+      activeChecks?.add('report-reference:' + field)
+    },
+    async dashboardHome(control: Locator, path: string) {
+      await expect(control.locator('svg[data-icon="home"]')).toBeVisible()
+      await control.click()
+      await expect(page).toHaveURL(url => url.origin === origin && url.pathname === path)
+      assertions += 1
+      activeChecks?.add('dashboard-home')
+    },
+    async dashboardLayout(size: 'desktop' | 'mobile', toolbar: Locator, attention: Locator, metrics: Locator) {
+      const width = await page.evaluate(() => window.innerWidth)
+      expect(size === 'mobile' ? width <= 480 : width >= 1024).toBe(true)
+      for (const element of [toolbar, attention, metrics]) await expect(element).toBeVisible()
+      await expect(attention).toBeInViewport()
+      await expect(attention.getByRole('button').or(attention.getByRole('link')).first()).toBeVisible()
+      const controls = await toolbar.boundingBox()
+      const action = await attention.boundingBox()
+      const summary = await metrics.boundingBox()
+      if (size === 'desktop') {
+        expect(controls!.width).toBeLessThan(width * 0.75)
+        expect(controls!.height).toBeLessThan(action!.height)
+      }
+      expect(controls!.y + controls!.height).toBeLessThanOrEqual(action!.y + 1)
+      expect(action!.y).toBeLessThan(summary!.y)
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width + 1)
+      await info.attach('ngb-dashboard-' + size, { contentType: 'image/png', body: await page.screenshot({ scale: 'css' }) })
+      assertions += 1
+      activeChecks?.add('dashboard-layout:' + size)
+    },
+    async businessCalendar(inputs: [Locator, Locator], expected: string) {
+      expect(expected).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+      const localDays = []
+      for (const input of inputs) {
+        expect(new URL(input.page().url()).origin).toBe(origin)
+        localDays.push(await input.evaluate(() => new Date().toLocaleDateString('en-CA')))
+        await expect(input).toBeVisible()
+        if (await input.evaluate(element => element.tagName === 'TIME')) await expect(input).toHaveAttribute('datetime', expected)
+        else await expect(input).toHaveValue(expected)
+      }
+      expect(localDays[0]).not.toBe(localDays[1])
+      assertions += 1
+      activeChecks?.add('business-calendar')
     },
     async journalDraft(memo: string) {
       expect(memo.trim()).toBeTruthy()
