@@ -2,11 +2,11 @@
   "schemaVersion": 1,
   "package": "NGB.Platform.Application.Abstractions",
   "version": "3.4.0",
-  "packageSha256": "d11ac90b1d4f5f9cb18d28ac05af16185a431c7ecccd77fb1bae03affa1a19c0",
+  "packageSha256": "620967c5fafcf516413edcaf033effd598c16ed7dbc2927d04cc2d218a2fd8e5",
   "assembly": {
     "name": "NGB.Application.Abstractions",
     "version": "3.0.0.0",
-    "sha256": "f4206023567e9aecbaac25e91d9138f85237e0e43c4d6c49712a56611392a291"
+    "sha256": "b7f7eb4f865363d6fd6ac0e9166ddc19d54eaf668cbf4282c8a285147188dc26"
   },
   "contractSha256": "0f6df4bb5349a0d4e439f6675c496759606e16ed5ad42986296661e12b731f36",
   "types": [

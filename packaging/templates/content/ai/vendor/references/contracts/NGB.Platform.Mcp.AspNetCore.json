@@ -2,11 +2,11 @@
   "schemaVersion": 1,
   "package": "NGB.Platform.Mcp.AspNetCore",
   "version": "3.4.0",
-  "packageSha256": "12ff7848824be53329251155367e671b265df4872761f7705c82ccb73b6b1797",
+  "packageSha256": "5d74b47b6c5cce9e80efa6f781f70b2a184d271fa1db746ba59abadbcb18dca4",
   "assembly": {
     "name": "NGB.Mcp.AspNetCore",
     "version": "3.0.0.0",
-    "sha256": "08b900ee28753bde67385317187028fc6f2e4091241de3e6c0e744d21f505253"
+    "sha256": "e40a989771f21de4806ef08acba947d5eafdafe8fb3b8c0966e2717b6da12aa5"
   },
   "contractSha256": "aec7b7dff8c8fb28d9f80ff5681ce9c27140c8a0da66544594c6c92efcfae563",
   "types": [
