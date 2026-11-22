@@ -13,7 +13,7 @@ const state = vi.hoisted(() => ({
   push: vi.fn(), logout: vi.fn(), accessLoad: vi.fn(), menuLoad: vi.fn(),
   openPalette: vi.fn(), paletteHotkeys: vi.fn(),
   groups: [
-    { label: 'Dashboard', items: [{ route: '/', label: 'Dashboard', icon: 'home' }] },
+    { label: 'Dashboard', icon: 'home', items: [{ route: '/', label: 'Dashboard', icon: 'home' }] },
     { label: 'Setup & Controls', items: [
       { route: '/roles', label: 'Roles', icon: 'shield' },
       { route: 'http://localhost:5184/hangfire', label: 'Background Jobs', icon: 'activity' },
@@ -70,7 +70,9 @@ it('renders standalone navigation and navigates once per real sidebar click', as
   await nextTick()
   expect(state.accessLoad).toHaveBeenCalledOnce()
   expect(state.menuLoad).toHaveBeenCalledOnce()
-  await screen.getByRole('button', { name: 'Dashboard', exact: true }).click()
+  const dashboard = screen.getByRole('button', { name: 'Dashboard', exact: true })
+  expect(dashboard.element().querySelector('svg[data-icon="home"]')).toBeVisible()
+  await dashboard.click()
   await screen.getByRole('button', { name: 'Roles', exact: true }).click()
   await screen.getByRole('button', { name: 'Background Jobs', exact: true }).click()
   await screen.getByRole('button', { name: 'Sign out' }).click()

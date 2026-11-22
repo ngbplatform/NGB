@@ -262,7 +262,10 @@ for delayed success and failure responses before ending race tests.
 * Bind `report-reference:<display-field>` to `reportReference(field, control, display, target, id)`.
   Select a real detail cell, open the expected document/catalog path, or pass a
   report destination with `code`, `parameters` and `filters` that identifies the record.
-* Bind `dashboard-home` to `dashboardHome(control, path)` on the actual sidebar item.
+* Start the probe before sign-in so it observes the application's `GET /api/main-menu`.
+  From a different page, bind `dashboard-home` to `dashboardHome(control, path)`.
+  It finds the sidebar button by its registered label, checks the visible home icon,
+  clicks the button and verifies the registered destination.
   Use `dashboard-layout:desktop` and `dashboard-layout:mobile` with
   `dashboardLayout(size, toolbar, attention, metrics)`. It captures PNGs at
   desktop and phone widths, checks element placement and checks for overflow.

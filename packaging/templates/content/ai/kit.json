@@ -12,7 +12,7 @@
     "package": "NGB.Platform.Templates",
     "version": "3.4.0"
   },
-  "payloadSha256": "28cac1a0a8547ff8f5995b42f0636bd334fe61ed64bacfe9b1ac5f498c291841",
+  "payloadSha256": "fb2756e3228c31c67d0bf3615d8361c2acffc50f547faa273020d331f853bb54",
   "capabilitySha256": "750c59faeeff60ea7b174935bb61dd7f5f87d0a65dbd7cdbe676160f77c41e28",
   "files": [
     {
@@ -1228,7 +1228,7 @@
     {
       "path": "ai/vendor/examples/equipment-inspection/web/src/App.vue",
       "role": "file",
-      "sha256": "79e93df6a2e19177366599793ff87757867e1e9e0268dd155a7f6801fe6ef3de"
+      "sha256": "13819cb7a5b66aeb3e394449c502407e720744365161361f43df23756204c964"
     },
     {
       "path": "ai/vendor/examples/equipment-inspection/web/src/bootstrap.ts",
@@ -1318,7 +1318,7 @@
     {
       "path": "ai/vendor/examples/equipment-inspection/web/tests/e2e/acceptance.ts",
       "role": "file",
-      "sha256": "5d9c76bf35aa69095efb39ce9ec36fb390b60ac0f8c605f29d8da3861a886e24"
+      "sha256": "ef4817bf853a5114ed0af1498e039a4bf6b584021ac90bc7ddfb3956de85e3b0"
     },
     {
       "path": "ai/vendor/examples/equipment-inspection/web/tests/e2e/browser.ts",
@@ -1353,7 +1353,7 @@
     {
       "path": "ai/vendor/examples/equipment-inspection/web/tests/unit/composition.spec.ts",
       "role": "file",
-      "sha256": "aa6c21d994d05a646ac8f06778e5a82ade0115bea76e28377a3e1f726182602d"
+      "sha256": "f3f09240020e20ecc3ce5bf81312731156ab4dc662dab703585fef13cf817483"
     },
     {
       "path": "ai/vendor/examples/equipment-inspection/web/tests/unit/derived-lines.spec.ts",
@@ -1423,7 +1423,7 @@
     {
       "path": "ai/vendor/references/application-generation.md",
       "role": "file",
-      "sha256": "4193e52d1a615887327972e320cce930381037e578bc1f929b8689892eed95b5"
+      "sha256": "a16755964196d3f9cd67f145405be19691940226af93e2837299fc2d35e222c9"
     },
     {
       "path": "ai/vendor/references/application.md",
@@ -1438,7 +1438,7 @@
     {
       "path": "ai/vendor/references/browser-acceptance.md",
       "role": "file",
-      "sha256": "a334b24de45565fa84b8adfe3aae244b0e2d0f955a44a7d101bfe800010ff3bc"
+      "sha256": "39c29545b99f5e853eaddbebcce3591b0f276e7b7eb80380f6da447a9a63e06e"
     },
     {
       "path": "ai/vendor/references/business-outcome-checks.md",

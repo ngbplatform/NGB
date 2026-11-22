@@ -55,7 +55,9 @@ absence from the business prompt is not a request to omit them or their infrastr
 Make Dashboard the first standalone root link, before the business-area groups.
 Register it as a singleton group whose label matches its item, with an earlier
 group ordinal. Set both group and item icons to `home` from the public
-[menu icon catalog](menu-icons.json) and preserve the starter shell's singleton-to-root mapping. Do not put
+[menu icon catalog](menu-icons.json). Read the label, route and icon from
+`/api/main-menu` through `useMainMenuStore` and preserve the starter shell's
+singleton-to-root mapping. Do not put
 Dashboard inside the first business group. A partial capability example without a
 dashboard is not a complete application's navigation template.
 

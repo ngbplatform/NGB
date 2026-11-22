@@ -62,15 +62,30 @@ test('runtime menu icons, dashboard proofs and selectable record identifiers are
     { target: 'report:example.activity', outcomes: ['report-reference:source_display'] },
   ] }
   verifyPresentationInventory(plan, inventory, icons)
+  const localized = structuredClone(inventory)
+  const localizedGroup = localized.menuGroups[0]
+  localizedGroup.label = 'Übersicht'
+  localizedGroup.items[0].label = localizedGroup.label
+  localizedGroup.items[0].route = '/uebersicht'
+  const dashboardPlan = { ...plan, workflows: { dashboards: ['daily-review'] } }
+  verifyPresentationInventory(dashboardPlan, localized, icons)
+  delete localizedGroup.items[0].icon
+  assert.throws(() => verifyPresentationInventory(dashboardPlan, localized, icons), /Dashboard item icon/)
   for (const name of plan.cases[0].outcomes) {
     const changed = structuredClone(plan)
     changed.cases[0].outcomes = changed.cases[0].outcomes.filter(item => item !== name)
     assert.throws(() => verifyPresentationInventory(changed, inventory, icons))
   }
-  for (const icon of ['file-text', 'unsupported', null]) {
-    const changed = structuredClone(inventory)
-    changed.menuGroups[0].items[0].icon = icon
-    assert.throws(() => verifyPresentationInventory(plan, changed, icons))
+  for (const level of ['group', 'item']) {
+    for (const icon of ['file-text', 'unsupported', null, undefined]) {
+      const changed = structuredClone(inventory)
+      const group = changed.menuGroups[0]
+      const registration = level === 'group' ? group : group.items[0]
+      if (icon === undefined) delete registration.icon
+      else registration.icon = icon
+      const message = icon === 'unsupported' ? `Unknown menu ${level} icon` : `Dashboard ${level} icon`
+      assert.throws(() => verifyPresentationInventory(plan, changed, icons), new RegExp(message))
+    }
   }
   for (const fields of [[{ ...id, isSelectable: true }], [{ ...id, isGroupable: true }, display]]) {
     assert.throws(() => verifyPresentationInventory(plan, { ...inventory,

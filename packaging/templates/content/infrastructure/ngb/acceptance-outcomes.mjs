@@ -146,6 +146,12 @@ const workflowScenarios = {
   metrics: 'dashboard-complete',
 }
 
+export function isDashboardMenuItem(item, cases) {
+  return ['/home', '/dashboard'].includes(item.route) || item.label?.toLowerCase() === 'dashboard'
+    || cases.some(entry => entry.target === 'navigation:' + item.code
+      && (entry.scenario === 'dashboard-access' || entry.outcomes.includes('dashboard-home')))
+}
+
 export function reconcileWorkflows(plan, inventory) {
   const workflows = plan.workflows
   assert.ok(workflows, 'Classify the business workflows from the requirements in ai/acceptance.json. See browser-acceptance.md.')
@@ -180,7 +186,7 @@ export function reconcileWorkflows(plan, inventory) {
   }
   const dashboardCases = new Set(plan.requirements.filter(item => workflows.dashboards.includes(item.id)).flatMap(item => item.cases))
   for (const item of inventory.menu ?? []) {
-    if (!['/home', '/dashboard'].includes(item.route) && item.label?.toLowerCase() !== 'dashboard') continue
+    if (!isDashboardMenuItem(item, plan.cases)) continue
     const target = `navigation:${item.code}`
     assert.ok(plan.cases.some(entry => entry.target === target && entry.scenario === 'dashboard-access' && dashboardCases.has(entry.id)),
       `Missing role coverage for dashboard: ${item.code}`)

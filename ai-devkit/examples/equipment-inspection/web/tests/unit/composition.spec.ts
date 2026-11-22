@@ -1,11 +1,12 @@
 import { defineComponent, h, nextTick, ref } from 'vue'
 import { render } from 'vitest-browser-vue'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import type { EntityEditorHandle } from '@ngbplatform/ui'
+import type { EntityEditorHandle, MainMenuGroup } from '@ngbplatform/ui'
 
 const state = vi.hoisted(() => ({
   push: vi.fn(), logout: vi.fn(), save: vi.fn(), guard: vi.fn(), beforeEach: vi.fn(),
   openPalette: vi.fn(),
+  menu: { groups: [] as MainMenuGroup[], load: vi.fn() },
   lookup: {}, searchLookup: vi.fn(), lookupTarget: vi.fn(), normalizeLookup: vi.fn(),
   createRouter: vi.fn(), catalog: vi.fn(), document: vi.fn(), documentPersistence: vi.fn(),
   access: { isActive: true, current: { isBootstrapAdmin: true } as { isBootstrapAdmin: boolean } | null,
@@ -33,6 +34,7 @@ vi.mock('vue-router', () => ({
 vi.mock('@ngbplatform/ui', () => ({
   useAuthStore: () => ({ userName: 'Example operator', logout: state.logout }),
   useAccessStore: () => state.access,
+  useMainMenuStore: () => state.menu,
   useCommandPaletteStore: () => ({ open: state.openPalette }),
   useCommandPaletteHotkeys: vi.fn(),
   NgbCommandPaletteDialog: defineComponent({ render: () => null }),
@@ -101,6 +103,10 @@ beforeEach(() => {
   state.access.isActive = true
   state.access.current = { isBootstrapAdmin: true }
   state.access.hasPermission.mockReturnValue(false)
+  state.menu.groups = [{
+    label: 'Operations', ordinal: 0, icon: 'home',
+    items: [{ kind: 'page', code: 'example.dashboard', label: 'Operations', route: '/overview', icon: 'home', ordinal: 10 }],
+  }]
 })
 afterEach(() => {
   document.body.innerHTML = ''
@@ -110,7 +116,9 @@ afterEach(() => {
 it('shows only authorized navigation and forwards shell actions', async () => {
   const { default: App } = await import('../../src/App.vue')
   const screen = render(App)
+  expect(state.menu.load).toHaveBeenCalledOnce()
   expect(state.shellProps.nodes).toHaveLength(8)
+  expect(state.shellProps.nodes[0]).toMatchObject({ label: 'Operations', route: '/overview', icon: 'home' })
   await screen.getByRole('button', { name: 'Navigate' }).click()
   await screen.getByRole('button', { name: 'Select' }).click()
   await screen.getByRole('button', { name: 'Sign out' }).click()
@@ -118,6 +126,13 @@ it('shows only authorized navigation and forwards shell actions', async () => {
   expect(state.push.mock.calls).toEqual([['/documents/example.inspection']])
   expect(state.logout).toHaveBeenCalledOnce()
   expect(state.openPalette).toHaveBeenCalledOnce()
+})
+
+it('omits Dashboard when it is absent from the registered menu', async () => {
+  state.menu.groups = []
+  const { default: App } = await import('../../src/App.vue')
+  render(App)
+  expect(state.shellProps.nodes).toHaveLength(7)
 })
 
 it.each([

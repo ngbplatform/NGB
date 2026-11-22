@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import type { MainMenuDto } from '@ngbplatform/ui'
 import { expect, type APIResponse, type ElementHandle, type Locator, type Page, type Response, type TestInfo } from '@playwright/test'
 
 type FlowLink = {
@@ -67,8 +68,12 @@ export async function acceptanceProbe(page: Page, info: TestInfo) {
   let activeChecks: Set<string> | undefined
   let lastReplay: { key: string, url: string } | undefined
   let access: Promise<Access> | undefined
+  let mainMenu: Response | undefined
+  const isMainMenu = (response: Response) =>
+    response.url() === `${origin}/api/main-menu` && response.request().method() === 'GET'
   const missingApiPaths: string[] = []
   page.on('response', response => {
+    if (isMainMenu(response)) mainMenu = response
     if (response.url() === `${origin}/api/security/me/access` && response.status() === 200) access = response.json()
     if (response.status() === 404 && response.url().startsWith(origin + '/api/')) {
       missingApiPaths.push(new URL(response.url()).pathname)
@@ -271,8 +276,19 @@ export async function acceptanceProbe(page: Page, info: TestInfo) {
       activeChecks?.add('report-reference:' + field)
     },
     async dashboardHome(control: Locator, path: string) {
-      await expect(control.locator('svg[data-icon="home"]')).toBeVisible()
-      await control.click()
+      const response = mainMenu ?? await page.waitForResponse(isMainMenu)
+      expect(response.status()).toBe(200)
+      const menu: MainMenuDto = await response.json()
+      const group = menu.groups[0]
+      expect(group?.items).toHaveLength(1)
+      const [item] = group.items
+      expect(group).toMatchObject({ label: item.label, icon: 'home' })
+      expect(item).toMatchObject({ route: path, icon: 'home' })
+      const button = page.getByTestId('site-sidebar-nav').getByRole('button', { name: item.label, exact: true })
+      const home = control.and(button)
+      await expect(home.locator('svg[data-icon="home"]')).toBeVisible()
+      expect(new URL(page.url()).pathname).not.toBe(path)
+      await home.click()
       await expect(page).toHaveURL(url => url.origin === origin && url.pathname === path)
       assertions += 1
       activeChecks?.add('dashboard-home')

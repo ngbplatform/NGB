@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { isDashboardMenuItem } from './acceptance-outcomes.mjs'
 import { readAsset } from './file-data.mjs'
 import { objectKeys } from './kit-contracts.mjs'
 
@@ -72,7 +73,7 @@ export async function verifyRequirementTrace(root, plan, passedTests) {
 
 export function verifyPresentationInventory(plan, inventory, icons) {
   assert.ok(Array.isArray(icons) && icons.includes('home'), 'Missing SDK menu icon catalog.')
-  const isDashboard = item => ['/home', '/dashboard'].includes(item.route) || item.label?.toLowerCase() === 'dashboard'
+  const isDashboard = item => isDashboardMenuItem(item, plan.cases)
   if (plan.workflows?.dashboards?.length) {
     assert.ok(inventory.menuGroups.some(group => group.items.some(isDashboard)), 'Register the required dashboard in the main menu.')
   }
@@ -81,8 +82,10 @@ export function verifyPresentationInventory(plan, inventory, icons) {
     for (const item of group.items) {
       assert.ok(item.icon == null || icons.includes(item.icon), `Unknown menu item icon: ${item.code}/${item.icon}`)
       if (!isDashboard(item)) continue
-      assert.ok(inventory.menuGroups[0] === group && group.items.length === 1 && group.label === item.label
-        && group.icon === 'home' && item.icon === 'home', 'Use a standalone Dashboard root with the home icon.')
+      assert.ok(inventory.menuGroups[0] === group && group.items.length === 1 && group.label === item.label,
+        'Register Dashboard as the first standalone root link.')
+      assert.equal(group.icon, 'home', `Set the Dashboard group icon to home: ${group.label}.`)
+      assert.equal(item.icon, 'home', `Set the Dashboard item icon to home: ${item.code}.`)
       assert.ok(plan.cases.some(entry => entry.target === 'navigation:' + item.code
         && entry.outcomes.includes('dashboard-home')), 'Verify the rendered home icon and dashboard destination.')
       for (const size of ['desktop', 'mobile']) {

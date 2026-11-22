@@ -1,23 +1,34 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { NgbCommandPaletteDialog, NgbSiteShell, useAccessStore, useAuthStore,
-  useCommandPaletteHotkeys, useCommandPaletteStore } from '@ngbplatform/ui'
+  useCommandPaletteHotkeys, useCommandPaletteStore, useMainMenuStore } from '@ngbplatform/ui'
 
 const router = useRouter()
 const route = useRoute()
 const auth = useAuthStore()
 const access = useAccessStore()
+const menu = useMainMenuStore()
 const palette = useCommandPaletteStore()
 useCommandPaletteHotkeys()
+onMounted(() => menu.load())
+
 function canView(resourceKind: string, resourceCode: string): boolean {
   return access.isActive && (access.current?.isBootstrapAdmin === true
     || access.hasPermission({ resourceKind, resourceCode, actionCode: 'view' }))
 }
 
+const dashboard = computed(() => menu.groups.flatMap(group => group.items)
+  .find(item => item.kind === 'page' && item.code === 'example.dashboard'))
+
 const nodes = computed(() => [
-  { id: '/dashboard', label: 'Dashboard', route: '/dashboard', icon: 'home',
-    allowed: canView('page', 'example.dashboard') },
+  ...(dashboard.value ? [{
+    id: dashboard.value.route,
+    label: dashboard.value.label,
+    route: dashboard.value.route,
+    icon: dashboard.value.icon,
+    allowed: canView(dashboard.value.kind, dashboard.value.code),
+  }] : []),
   { id: '/catalogs/example.equipment', label: 'Equipment', route: '/catalogs/example.equipment',
     allowed: canView('catalog', 'example.equipment') },
   { id: '/documents/example.inspection', label: 'Inspections', route: '/documents/example.inspection',
