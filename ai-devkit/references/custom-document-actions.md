@@ -11,6 +11,13 @@ as the context enricher under `IDocumentActionContextEnricher`. The metadata bin
 the exact types. Standard lifecycle actions already come from the document's
 handler bindings; do not register them a second time alongside a custom action.
 
+Save a business date through the authorized draft write together with the fields
+that depend on it. Synchronizing a technical field is part of that operation.
+Expose a separate date command only when the requirements describe a distinct
+user decision with a meaningful result. Define availability when the result
+would be unchanged, preserve unsaved header and line edits, and show the outcome
+after execution. Test the action on a saved draft and reload the changed value.
+
 ## Authorization and availability
 
 A custom non-derivation action without an authorization evaluator defaults to the

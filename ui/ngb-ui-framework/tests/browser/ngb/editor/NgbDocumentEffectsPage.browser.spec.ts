@@ -407,6 +407,34 @@ describe('NgbDocumentEffectsPage', () => {
     )
   })
 
+  it('renders the current document, dimension displays and business dates inside reference fields', async () => {
+    const id = '11111111-1111-4111-8111-111111111111'
+    const source = '22222222-2222-4222-8222-222222222222'
+    mocks.route.params.id = id
+    mocks.editorConfig.loadDocumentEffects.mockResolvedValueOnce({
+      accountingEntries: [],
+      operationalRegisterMovements: [],
+      referenceRegisterWrites: [{
+        recordId: 7, registerCode: 'terms', recordedAtUtc: '2026-10-12T15:00:00Z',
+        dimensions: [{ dimensionId: 'source', valueId: source, display: 'Approval A-42' }],
+        fields: {
+          terms_document_id: id, source_document_id: source, due_date: '2026-10-12T00:00:00Z',
+          reviewer: { id: source, display: 'Review board' },
+          start_date: '2026-10-10', memo: '2026-10-12T00:00:00Z',
+        },
+      }],
+    })
+    const view = await render(NgbDocumentEffectsPage)
+    await view.getByRole('button', { name: 'Reference Registers (1)' }).click()
+    const row = view.getByTestId('register-row-7')
+    await expect.element(row).toHaveTextContent('Terms Document: Invoice INV-001')
+    await expect.element(row).toHaveTextContent('Source Document: Approval A-42')
+    await expect.element(row).toHaveTextContent('Reviewer: Review board')
+    await expect.element(row).toHaveTextContent('Due Date: ' + new Date(2026, 9, 12).toLocaleDateString())
+    await expect.element(row).toHaveTextContent('Start Date: ' + new Date(2026, 9, 10).toLocaleDateString())
+    await expect.element(row).toHaveTextContent('Memo: 2026-10-12T00:00:00Z')
+  })
+
   it('renders resolved reference-register document fields via the effects behavior hook', async () => {
     await page.viewport(1280, 900)
 

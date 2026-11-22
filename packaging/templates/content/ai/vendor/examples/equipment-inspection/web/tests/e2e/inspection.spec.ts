@@ -1,7 +1,10 @@
 import { expect, test as base, type Page } from '@playwright/test'
 import type { ReportExecutionRequestDto } from '@ngbplatform/ui/contracts'
+import { acceptanceProbe } from './acceptance'
 
 const test = base.extend<{ diagnostics: void }>({
+  locale: 'en-US',
+  timezoneId: 'America/New_York',
   diagnostics: [async ({ page }, use, info) => {
     const errors: string[] = []
     const responses: { path: string, status: number }[] = []
@@ -456,7 +459,8 @@ test('equipment usage posts measured hours and displays the real operational reg
   await expect(page.getByText(equipmentName, { exact: true })).toBeVisible()
 })
 
-test('equipment assessment displays its current reference effect and clears it after Unpost', async ({ page }) => {
+test('equipment assessment displays its current reference effect and clears it after Unpost', async ({ page }, info) => {
+  const probe = await acceptanceProbe(page, info)
   await signIn(page, 'administrator')
   const origin = process.env.NGB_EXAMPLE_ORIGIN
   const equipmentName = `Assessment bench ${test.info().repeatEachIndex}`
@@ -496,11 +500,20 @@ test('equipment assessment displays its current reference effect and clears it a
 
   const effectsLoaded = page.waitForResponse(response => new URL(response.url()).pathname === `/api${documentPath}/effects`)
   await page.goto(`${origin}${documentPath}/effects`)
-  const effects = await (await effectsLoaded).json()
+  const effectsResponse = await effectsLoaded
+  const effects = await effectsResponse.json()
   expect(effects.referenceRegisterWrites).toHaveLength(1)
-  expect(effects.referenceRegisterWrites[0].fields.condition).toBe('Ready for service')
-  expect(effects.referenceRegisterWrites[0].isTombstone).toBe(false)
-  await page.getByRole('tab', { name: 'Reference Registers (1)', exact: true }).click()
+  const record = effects.referenceRegisterWrites[0]
+  expect(record.isTombstone).toBe(false)
+  expect(record.fields).toEqual({
+    condition: 'Ready for service', source_document_id: assessment.id, due_date: '2026-10-12T00:00:00Z',
+  })
+  await probe.outcome('register:example.equipment-condition/' + record.registerCode, checks =>
+    checks.registerFields(effectsResponse, 'example.equipment-condition', assessment.id, record.registerCode, record.recordId, {
+      condition: { label: 'Condition', display: 'Ready for service' },
+      source_document_id: { label: 'Source Document', display: assessment.display },
+      due_date: { label: 'Due Date', display: '10/12/2026' },
+    }))
   await expect(page.getByText('Equipment assessment records', { exact: true })).toBeVisible()
   await expect(page.getByText(equipmentName, { exact: true })).toBeVisible()
   await expect(page.getByText('Condition: Ready for service', { exact: true })).toBeVisible()
@@ -519,9 +532,18 @@ test('equipment assessment displays its current reference effect and clears it a
   expect((await clearedResponse.json()).referenceRegisterWrites).toEqual([])
   await page.getByRole('tab', { name: 'Reference Registers (0)', exact: true }).click()
   await expect(page.getByText('Equipment assessment records', { exact: true })).toHaveCount(0)
+  await probe.finish('example-assessment-fields', 'ngb-admin')
 })
 
-test('equipment service posts accounting, operational and reference effects together', async ({ page }) => {
+test('the journal list opens a new editable draft and saves it through the typed API', async ({ page }, info) => {
+  const probe = await acceptanceProbe(page, info)
+  await signIn(page, 'administrator')
+  await probe.outcome('journal-draft', checks => checks.journalDraft('Inspection review journal'))
+  await probe.finish('example-journal-draft', 'ngb-admin')
+})
+
+test('equipment service posts accounting, operational and reference effects together', async ({ page }, info) => {
+  const probe = await acceptanceProbe(page, info)
   await signIn(page, 'administrator')
   const origin = process.env.NGB_EXAMPLE_ORIGIN
   const equipmentName = `Service bench ${test.info().repeatEachIndex}`
@@ -575,8 +597,17 @@ test('equipment service posts accounting, operational and reference effects toge
   await expect(page.getByRole('tabpanel', { name: 'Accounting Entries (1)' }).getByText('125.50', { exact: true })).toHaveCount(2)
   await page.getByRole('tab', { name: 'Operational Registers (1)', exact: true }).click()
   await expect(page.getByText('Equipment service hours', { exact: true })).toBeVisible()
-  await page.getByRole('tab', { name: 'Reference Registers (1)', exact: true }).click()
-  await expect(page.getByText('Condition: Ready after service', { exact: true })).toBeVisible()
+  const register = effects.referenceRegisterWrites[0]
+  const operational = ['example.equipment-service-hours']
+  const reference = ['example.equipment-condition-records']
+  await probe.outcome('registers:example.equipment-service/' + JSON.stringify([operational, reference]), checks =>
+    checks.postedRegisters(effectsResponse, 'example.equipment-service', service.id, operational, reference))
+  await probe.outcome('register:example.equipment-service/' + register.registerCode, checks =>
+    checks.registerFields(effectsResponse, 'example.equipment-service', service.id, register.registerCode, register.recordId,
+      { condition: { label: 'Condition', display: 'Ready after service' } }))
+  await probe.outcome('flow-amount:example.equipment-service', checks =>
+    checks.flowAmount('example.equipment-service', service.id, 125.5))
+  await probe.finish('example-service-effects', 'ngb-admin')
 })
 test('withdrawal reaches another tab through SignalR and Work Center preferences preserve required reviews', async ({ page, context }) => {
   await signIn(page, 'administrator')

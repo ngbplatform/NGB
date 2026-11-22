@@ -30,6 +30,7 @@ public sealed class EquipmentServiceDefinitions : IDefinitionsContributor
                         new("amount", ColumnType.Decimal, UiLabel: "Service cost"),
                         new("condition", ColumnType.String, MaxLength: 200, UiLabel: "Condition after service")
                     ])
-            ])));
+            ],
+            Presentation: new DocumentPresentationMetadata(AmountField: "amount"))));
     }
 }

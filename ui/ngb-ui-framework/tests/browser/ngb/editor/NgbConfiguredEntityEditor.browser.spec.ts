@@ -664,7 +664,10 @@ test('normalizes labels, saves dirty documents before posting, and handles refre
   mocks.persistenceContext!.model.value = { known: 'after' }
   await nextTick()
   expect((wrapper.vm as any).getIsDirty()).toBe(true)
-  expect(await mocks.configuredArgs!.beforeExecute('copy')).toBe(true)
+  expect(await mocks.configuredArgs!.beforeExecute('defer')).toBe(false)
+  expect(mocks.persistenceContext!.model.value).toEqual({ known: 'after' })
+  expect(mocks.shellProps!.displayedError?.summary).toContain('Save your changes')
+  expect(mocks.save).not.toHaveBeenCalled()
 
   mocks.save.mockImplementationOnce(async () => {
     mocks.persistenceContext!.setEditorError({ summary: 'Save failed', issues: [] })
@@ -673,6 +676,7 @@ test('normalizes labels, saves dirty documents before posting, and handles refre
   mocks.persistenceContext!.setEditorError(null)
   mocks.save.mockImplementationOnce(async () => mocks.persistenceContext!.resetInitialSnapshot())
   expect(await mocks.configuredArgs!.beforeExecute('post')).toEqual({ proceed: true, refreshState: true })
+  expect(await mocks.configuredArgs!.beforeExecute('defer')).toBe(true)
 
   mocks.refreshDocumentActions.mockRejectedValueOnce(new Error('Actions unavailable'))
   mocks.configuredArgs!.applyActionDocument({ id: 'document-id', status: 2, payload: undefined })

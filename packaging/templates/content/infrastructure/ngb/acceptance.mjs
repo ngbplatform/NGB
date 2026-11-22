@@ -28,7 +28,9 @@ export function acceptancePlan(value) {
   unique(value.cases.map(item => item.id), 'case')
   unique(value.cases.map(item => JSON.stringify([item.file, item.title, item.project])), 'browser test binding')
   for (const document of value.documents) {
-    objectKeys(document, ['type', 'sourceDriven', 'priced', 'asynchronous'], current ? ['informationalReferences', 'withdrawalDependencies'] : [])
+    objectKeys(document, ['type', 'sourceDriven', 'priced', 'asynchronous'], current
+      ? ['informationalReferences', 'withdrawalDependencies', 'flowAmountField', 'flowAmountReason', 'commands', 'referenceRegisters', 'operationalRegisters',
+        'effectivePrerequisites', 'uniqueHistoryKeys'] : [])
     for (const key of ['sourceDriven', 'priced', 'asynchronous']) {
       assert.equal(typeof document[key], 'boolean', `Classify ${document.type}/${key}.`)
     }
@@ -49,6 +51,64 @@ export function acceptancePlan(value) {
     validateBusinessChecks(value)
   }
   return value
+}
+
+function documentOutcomes(plan, document, metadata) {
+  const target = 'document:' + document.type
+  const required = []
+  const needsOutcome = (name, scenario, role) => {
+    assert.ok(plan.cases.some(entry => entry.target === target && entry.outcomes.includes(name)
+      && (!scenario || entry.scenario === scenario) && (!role || entry.role === role)),
+    `Missing browser outcome: ${target}/${name}`)
+    required.push(target + '/' + name)
+  }
+  const fields = [
+    ...(metadata.form?.sections?.flatMap(section => section.rows.flatMap(row => row.fields)) ?? []),
+    ...(metadata.list?.columns ?? []),
+    ...(metadata.parts?.flatMap(part => part.list?.columns ?? []) ?? []),
+  ]
+  const numericFields = fields.some(field => ['Money', 'Decimal'].includes(field.dataType))
+  if (metadata.presentation?.amountField || numericFields
+    || Object.hasOwn(document, 'flowAmountField')) {
+    assert.ok(document.flowAmountField === null || (typeof document.flowAmountField === 'string' && document.flowAmountField.trim()),
+      `Classify the business total for ${target} with flowAmountField (null for no document total).`)
+    assert.equal(metadata.presentation?.amountField ?? null, document.flowAmountField, `Incorrect AmountField for ${target}.`)
+    if (numericFields && document.flowAmountField === null) {
+      assert.ok(typeof document.flowAmountReason === 'string' && document.flowAmountReason.trim(),
+        `Explain which numeric values are present and why ${target} has no business total (flowAmountReason).`)
+    }
+    if (document.flowAmountField) needsOutcome('flow-amount:' + document.type)
+  }
+  if (document.type === 'general_journal_entry') needsOutcome('journal-draft', 'draft-edit')
+  else if (metadata.form || document.commands) {
+    const codes = unique(document.commands ?? [], 'command')
+    needsOutcome('commands:' + document.type + '/' + JSON.stringify(codes), 'draft-edit', 'ngb-admin')
+    for (const code of codes) needsOutcome('command:' + document.type + '/' + code)
+  }
+  const references = unique(document.referenceRegisters ?? [], 'reference register')
+  const operational = unique(document.operationalRegisters ?? [], 'operational register')
+  if (metadata.form && document.type !== 'general_journal_entry' && metadata.capabilities?.canPost !== false) {
+    const prefix = 'registers:' + document.type + '/'
+    const observed = plan.cases.filter(entry => entry.target === target)
+      .flatMap(entry => entry.outcomes.filter(name => name.startsWith(prefix)).map(name => JSON.parse(name.slice(prefix.length))))
+    assert.ok(observed.length, `Missing posted register inventory for ${target}.`)
+    for (const [index, codes] of [operational, references].entries()) {
+      assert.ok(observed.every(pair => Array.isArray(pair) && pair.length === 2 && Array.isArray(pair[index])),
+        'Declare operational and reference register codes for each posting fixture.')
+      assert.deepEqual([...new Set(observed.flatMap(pair => pair[index]))].sort(), codes,
+        `Reconcile actual posting registers with the business requirements for ${target}.`)
+    }
+  }
+  for (const code of references) {
+    needsOutcome('register:' + document.type + '/' + code)
+  }
+  for (const key of unique(document.effectivePrerequisites ?? [], 'effective prerequisite')) {
+    requireBusinessCheck(plan, 'effective-prerequisite', target, key)
+  }
+  for (const key of unique(document.uniqueHistoryKeys ?? [], 'historical uniqueness key')) {
+    requireBusinessCheck(plan, 'history-conflict', target, key)
+  }
+  return required
 }
 
 export function reconcileAcceptance(plan, inventory) {
@@ -98,6 +158,7 @@ export function reconcileAcceptance(plan, inventory) {
         `Missing acceptance scenario: ${document.type}/${kind}`)
       required.push(`${document.type}/${kind}`)
     }
+    if (plan.schemaVersion === 2) required.push(...documentOutcomes(plan, document, metadata))
     for (const role of plan.roles) {
       assert.ok(plan.cases.some(entry => matches(entry, document.type) && entry.role === role && entry.scenario === 'access'),
         `Missing role acceptance: ${document.type}/${role}`)

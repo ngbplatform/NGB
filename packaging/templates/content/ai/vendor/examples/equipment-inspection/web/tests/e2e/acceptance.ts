@@ -7,7 +7,17 @@ type FlowLink = {
   code: 'based_on' | 'created_from' | 'reversal_of' | 'related_to' | 'supersedes'
 }
 
+type RegisterFieldExpectation = { label: string, display: string, literalText?: boolean }
+
 interface OutcomeChecks {
+  postedRegisters(response: Response, type: string, id: string, operational: string[], reference: string[]): Promise<void>
+  journalDraft(memo: string): Promise<void>
+  flowAmount(type: string, id: string, expected: number, root?: { type: string, id: string }): Promise<void>
+  registerFields(response: Response, type: string, id: string, code: string, recordId: number | string,
+    expected: Record<string, RegisterFieldExpectation>): Promise<void>
+  draftCommands(response: Response, type: string, id: string, codes: string[]): Promise<void>
+  commandChange(type: string, id: string, code: string, trigger: () => Promise<void>,
+    field: Locator, before: string, after: string): Promise<void>
   text(locator: Locator, expected: string | RegExp): Promise<void>
   value(locator: Locator, expected: string): Promise<void>
   disabled(locator: Locator): Promise<void>
@@ -50,8 +60,12 @@ export async function acceptanceProbe(page: Page, info: TestInfo) {
   let activeChecks: Set<string> | undefined
   let lastReplay: { key: string, url: string } | undefined
   let access: Promise<Access> | undefined
+  const missingApiPaths: string[] = []
   page.on('response', response => {
     if (response.url() === `${origin}/api/security/me/access` && response.status() === 200) access = response.json()
+    if (response.status() === 404 && response.url().startsWith(origin + '/api/')) {
+      missingApiPaths.push(new URL(response.url()).pathname)
+    }
   })
   await page.exposeBinding('__ngbAcceptanceInput', ({ frame }) => {
     if (frame === page.mainFrame() && new URL(frame.url()).origin === origin) interactions += 1
@@ -209,10 +223,120 @@ export async function acceptanceProbe(page: Page, info: TestInfo) {
       assertions += 1
       activeChecks?.add('navigation')
     },
+    async journalDraft(memo: string) {
+      expect(memo.trim()).toBeTruthy()
+      const before = missingApiPaths.length
+      const path = '/accounting/general-journal-entries'
+      await page.goto(origin + path)
+      await page.getByTestId('journal-entry-list-page').getByRole('button', { name: 'Create' }).click()
+      await expect(page).toHaveURL(origin + path + '/new')
+      const editor = page.getByTestId('journal-entry-edit-page')
+      const input = editor.getByPlaceholder('Explain the journal entry')
+      await expect(editor.getByText('HTTP 404', { exact: true })).toHaveCount(0)
+      await input.fill(memo)
+      const created = page.waitForResponse(r => r.url() === origin + '/api' + path && r.request().method() === 'POST')
+      await editor.getByRole('button', { name: 'Save', exact: true }).click()
+      const response = await created
+      expect(response.ok()).toBe(true)
+      const { document } = await response.json()
+      await probe.record(path + '/' + document.id, document.id)
+      // Save also persists the header and the draft lines after assigning the ID.
+      await expect(editor.getByRole('button', { name: 'Save', exact: true })).toBeEnabled()
+      const read = page.waitForResponse(r => r.url() === origin + '/api' + path + '/' + document.id && r.request().method() === 'GET')
+      await page.reload()
+      const reloaded = await read
+      expect(reloaded.ok()).toBe(true)
+      expect(await reloaded.json()).toMatchObject({ document: { id: document.id }, header: { memo } })
+      await probe.value(input, memo)
+      expect(missingApiPaths.slice(before), 'Unexpected missing API route while creating or reopening the journal').toEqual([])
+      activeChecks?.add('journal-draft')
+    },
+    async flowAmount(type: string, id: string, expected: number, root = { type, id }) {
+      expect(Number.isFinite(expected)).toBe(true)
+      const path = '/documents/' + encodeURIComponent(root.type) + '/' + root.id
+      const read = page.waitForResponse(r => r.url().split('?')[0] === origin + '/api' + path + '/graph' && r.request().method() === 'GET')
+      await page.goto(origin + path + '/flow')
+      const response = await read
+      expect(response.ok()).toBe(true)
+      const { nodes } = await response.json()
+      const node = nodes.find((item: { typeCode: string, entityId: string }) => item.typeCode === type && item.entityId === id)
+      expect(node).toMatchObject({ amount: expected })
+      const amount = await page.evaluate(n => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }), expected)
+      const button = page.locator('[data-ngb-flow-document=' + JSON.stringify(id) + ']')
+      await expect(button).toHaveAttribute('title', node.title)
+      await probe.figure(button.getByText(amount, { exact: true }), amount)
+      activeChecks?.add('flow-amount:' + type)
+    },
+    async postedRegisters(response: Response, type: string, id: string, operational: string[], reference: string[]) {
+      const path = '/documents/' + encodeURIComponent(type) + '/' + id + '/effects'
+      const url = new URL(response.url())
+      expect(url.origin + url.pathname).toBe(origin + '/api' + path)
+      expect(response.ok()).toBe(true)
+      await expect.poll(() => new URL(page.url()).pathname).toBe(path)
+      await expect(page.getByText('Posted', { exact: true })).toBeVisible()
+      const snapshot = await response.json()
+      const codes = (rows: { registerCode: string }[]) => [...new Set(rows.map(row => row.registerCode))].sort()
+      const observed = [codes(snapshot.operationalRegisterMovements), codes(snapshot.referenceRegisterWrites)]
+      expect(observed).toEqual([[...operational].sort(), [...reference].sort()])
+      assertions += 1
+      activeChecks?.add('registers:' + type + '/' + JSON.stringify(observed))
+    },
+    async registerFields(response: Response, type: string, id: string, code: string, recordId: number | string,
+      expected: Record<string, RegisterFieldExpectation>) {
+      const path = '/documents/' + encodeURIComponent(type) + '/' + id + '/effects'
+      const url = new URL(response.url())
+      expect(url.origin + url.pathname).toBe(origin + '/api' + path)
+      expect(response.ok()).toBe(true)
+      await expect.poll(() => new URL(page.url()).pathname).toBe(path)
+      const { referenceRegisterWrites } = await response.json()
+      const record = referenceRegisterWrites.find((item: { registerCode: string, recordId: number | string }) =>
+        item.registerCode === code && item.recordId === recordId)
+      expect(record).toBeDefined()
+      expect(Object.keys(expected).length).toBeGreaterThan(0)
+      expect(Object.keys(record.fields).sort()).toEqual(Object.keys(expected).sort())
+      await page.getByRole('tab', { name: /^Reference Registers/ }).click()
+      const panel = page.getByRole('tabpanel', { name: /^Reference Registers/ })
+      const row = panel.locator('[data-ngb-register-row=' + JSON.stringify(String(recordId)) + ']')
+      for (const [key, { label, display, literalText }] of Object.entries(expected)) {
+        expect(label.trim()).toBeTruthy()
+        expect(display.trim()).toBeTruthy()
+        if (literalText) expect(record.fields[key]).toBe(display)
+        else expect(display).not.toMatch(/^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$|^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/i)
+        await expect(row.locator('[data-ngb-register-column="fields"]').getByText(label + ': ' + display, { exact: true })).toBeVisible()
+      }
+      assertions += 1
+      activeChecks?.add('register:' + type + '/' + code)
+    },
+    async draftCommands(response: Response, type: string, id: string, codes: string[]) {
+      expect(response.url()).toBe(origin + '/api/documents/' + encodeURIComponent(type) + '/' + id + '/editor-state')
+      expect(response.ok()).toBe(true)
+      const state = await response.json()
+      expect(state.document).toMatchObject({ id, status: 'Draft' })
+      const lifecycle = ['post', 'unpost', 'repost', 'mark_for_deletion', 'unmark_for_deletion']
+      const commands = state.actions.filter((a: { code: string, executionKind: string }) =>
+        a.executionKind === 'Command' && !lifecycle.includes(a.code)).map((a: { code: string }) => a.code).sort()
+      expect(commands).toEqual([...codes].sort())
+      assertions += 1
+      activeChecks?.add('commands:' + type + '/' + JSON.stringify(commands))
+    },
+    async commandChange(type: string, id: string, code: string, trigger: () => Promise<void>,
+      field: Locator, before: string, after: string) {
+      expect(after).not.toBe(before)
+      const check = await field.evaluate(element => element.matches('input, textarea, select')) ? probe.value : probe.text
+      await check(field, before)
+      const path = origin + '/api/documents/' + encodeURIComponent(type) + '/' + id + '/actions/' + encodeURIComponent(code)
+      const execution = page.waitForResponse(r => r.url() === path && r.request().method() === 'POST')
+      await trigger()
+      expect((await execution).ok()).toBe(true)
+      await check(field, after)
+      await page.reload()
+      await check(field, after)
+      activeChecks?.add('command:' + type + '/' + code)
+    },
     async flow(documentType: string, rootId: string, links: FlowLink[]) {
       expect(links.length).toBeGreaterThan(0)
       const path = `/documents/${encodeURIComponent(documentType)}/${rootId}`
-      const loaded = page.waitForResponse(response => new URL(response.url()).pathname === `/api${path}/graph`)
+      const loaded = page.waitForResponse(r => r.url().split('?')[0] === origin + '/api' + path + '/graph' && r.request().method() === 'GET')
       await page.goto(`${origin}${path}/flow`)
       const response = await loaded
       expect(response.ok()).toBe(true)
@@ -234,7 +358,9 @@ export async function acceptanceProbe(page: Page, info: TestInfo) {
       for (const id of ids) {
         const node = nodes.get(id)
         expect(node, `Missing related document ${id}`).toBeDefined()
-        await expect(page.getByRole('button', { name: node!.title, exact: true })).toBeVisible()
+        const button = page.locator('[data-ngb-flow-document=' + JSON.stringify(id) + ']')
+        await expect(button).toBeVisible()
+        await expect(button).toHaveAttribute('title', node!.title)
       }
       for (const link of links) {
         expect(link.from).not.toBe(link.to)

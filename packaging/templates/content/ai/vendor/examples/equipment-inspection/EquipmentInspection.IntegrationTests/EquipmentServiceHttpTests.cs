@@ -8,6 +8,7 @@ using NGB.Accounting.Accounts;
 using NGB.Accounting.Reports.GeneralJournal;
 using NGB.Contracts.Documents;
 using NGB.Contracts.Effects;
+using NGB.Contracts.Graph;
 using NGB.Contracts.Metadata;
 using NGB.Contracts.Services;
 using NGB.Core.AuditLog;
@@ -73,6 +74,8 @@ public sealed class EquipmentServiceHttpTests
             using var post = await ExecutePostAsync(admin, path, draft.DocumentVersion, "revision-" + index);
             var posted = await ReadActionAsync(post);
             Assert.Equal(DocumentStatus.Posted, posted.Document.Status);
+            var graph = await admin.GetFromJsonAsync<RelationshipGraphDto>(path + "/graph", Json);
+            Assert.Equal(version.Amount, Assert.Single(graph!.Nodes, node => node.EntityId == document.Id).Amount);
             Assert.Equal(version.Date, (await services.GetRequiredService<IDocumentRepository>().GetAsync(document.Id))!.DateUtc);
             using var replay = await ExecutePostAsync(admin, path, draft.DocumentVersion, "revision-" + index);
             Assert.Equal(posted.ExecutionId, (await ReadActionAsync(replay)).ExecutionId);

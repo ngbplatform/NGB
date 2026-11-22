@@ -470,16 +470,22 @@ const {
     print: openDocumentPrintPage,
   },
   beforeExecute: async (actionCode) => {
-    if (actionCode !== 'post' || !isDirty.value) return true
+    if (!isDirty.value) return true
+    if (actionCode !== 'post') {
+      setEditorError({ summary: 'Save your changes before running this action.', issues: [] })
+      return false
+    }
     await save()
     return { proceed: !error.value && !isDirty.value, refreshState: true }
   },
   applyActionDocument: (document) => {
     doc.value = document
     model.value = { ...(document.payload?.fields ?? {}) }
+    if (document.payload?.parts !== undefined) partsModel.value = clonePlainData(document.payload.parts)
     resetInitialSnapshot()
     emit('changed')
   },
+  onCommandCompleted: (label) => toasts.push({ title: label, message: 'Action completed.', tone: 'success' }),
 })
 
 const canPost = computed(() => isDocumentActionAllowed('post'))
@@ -631,7 +637,7 @@ const afterFormExtensions = computed<EntityEditorRenderExtension[]>(() => {
       'onUpdate:modelValue': (value: RecordPayload['parts'] | null) => {
         partsModel.value = value
       },
-      readonly: isReadOnly.value,
+      readonly: isReadOnly.value || executingDocumentAction.value,
       behavior: props.configuration.metadataFormBehavior,
       errors: partErrors.value,
     },
@@ -696,7 +702,7 @@ defineExpose(exposedHandle)
     :model="model"
     :entity-type-code="typeCode"
     :status="kind === 'document' ? status : undefined"
-    :is-read-only="isReadOnly"
+    :is-read-only="isReadOnly || executingDocumentAction"
     :errors="inlineFieldErrors"
     :after-form-extensions="afterFormExtensions"
     :dialog-extensions="[]"

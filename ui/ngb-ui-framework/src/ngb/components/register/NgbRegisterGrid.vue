@@ -108,6 +108,7 @@
             <!-- data row -->
             <div
               v-else
+              :data-ngb-register-row="row.key"
               class="grid text-sm"
               :class="rowClass(row)"
               :style="{ gridTemplateColumns }"
@@ -120,6 +121,7 @@
               <div
                 v-for="(col, colIdx) in visibleColumns"
                 :key="col.key"
+                :data-ngb-register-column="col.key"
                 class="px-3 py-2 min-w-0 overflow-hidden border-l border-ngb-border self-stretch"
                 :class="cellClass(col, row[col.key])"
                 :style="cellStickyStyle(col)"

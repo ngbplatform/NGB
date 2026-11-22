@@ -12,7 +12,7 @@
     "package": "NGB.Platform.Templates",
     "version": "3.4.0"
   },
-  "payloadSha256": "959466cc640f77606e8261174544e921a560927828b6a3c48f55f5fc1a48b143",
+  "payloadSha256": "d043820d74c82dddb3f68627b5ecdc5b2a5084c2bfe70016b7a9499e486ef27c",
   "capabilitySha256": "750c59faeeff60ea7b174935bb61dd7f5f87d0a65dbd7cdbe676160f77c41e28",
   "files": [
     {
@@ -283,7 +283,7 @@
     {
       "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Definitions/EquipmentServiceDefinitions.cs",
       "role": "file",
-      "sha256": "90d7108e4487ab0dedaa54140a063bc04cd0b8496dcd3fac0a55360b1daeb5a3"
+      "sha256": "fc15424f52c0e0ee79d5664d8b876cc31d32ec6d0d1af693a6321766d20e8ad9"
     },
     {
       "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.Definitions/EquipmentUsageDefinitions.cs",
@@ -388,7 +388,7 @@
     {
       "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/BrowserTestHost.cs",
       "role": "file",
-      "sha256": "53a143508282d2977c248859ba926c6e598e1c042578ec8aa10ff9a8c9df8121"
+      "sha256": "437ffaff784fe88afe52bff247c9edc4c2fecdbd1428b59481c22ebecfa7c076"
     },
     {
       "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/BuiltInMaintenanceJobsTests.cs",
@@ -468,7 +468,7 @@
     {
       "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/EquipmentServiceHttpTests.cs",
       "role": "file",
-      "sha256": "ff012c2182cdffc8772fc7fb5775757eb6ebef5d5af322d67a0ad2272f06a80f"
+      "sha256": "58e2f74b2e65ca03c8e8135b9100b8b06fe4f870a0a48cb2c23cac4ab9d66c27"
     },
     {
       "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/EquipmentUsageHttpTests.cs",
@@ -493,7 +493,7 @@
     {
       "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/IndependentReferenceRegisterTests.cs",
       "role": "file",
-      "sha256": "b418b403aaa5924d7461d35598d8e46610b1877d8a6674a9b6c4b66ed37a2600"
+      "sha256": "29fedb2e589378dde00b747d49bfb7be9e703209ee2d30efba14794c5ec88566"
     },
     {
       "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/InspectionAuthorizationTests.cs",
@@ -538,7 +538,7 @@
     {
       "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/InspectionReportTests.cs",
       "role": "file",
-      "sha256": "2a9c0bd0b2757c6bd81ae32ad455280b0072c318683de20f0dfb7a1076ccc23d"
+      "sha256": "1e6fc6c15883f54aa0387e480ec0892af95c45854df48fdfdd10cf507714a72c"
     },
     {
       "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/InspectionRequests.cs",
@@ -624,6 +624,11 @@
       "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/PostgresCompositionTests.cs",
       "role": "file",
       "sha256": "46c4082b8043d912a9f021349a46de5bfa40dd7736d8be88a0f40c0621dbc4e1"
+    },
+    {
+      "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/ReferenceFieldBrowserFixture.cs",
+      "role": "file",
+      "sha256": "86f5fa7fc6ed47b01a6fe4fdafad600213df27f00c53451167ac809c972a9fef"
     },
     {
       "path": "ai/vendor/examples/equipment-inspection/EquipmentInspection.IntegrationTests/ReferenceRegisterAdministrationTests.cs",
@@ -1283,7 +1288,7 @@
     {
       "path": "ai/vendor/examples/equipment-inspection/web/src/router.ts",
       "role": "file",
-      "sha256": "49d5eed112d5732ec43e1ca007335612643dd35f2c43d6150180fc5cf8835192"
+      "sha256": "3a774ae661843ff4ca6bc044c2215e7c94d7d2b866ee9d992fc9094b8271961d"
     },
     {
       "path": "ai/vendor/examples/equipment-inspection/web/src/search.ts",
@@ -1298,12 +1303,12 @@
     {
       "path": "ai/vendor/examples/equipment-inspection/web/tests/e2e/acceptance.ts",
       "role": "file",
-      "sha256": "c8f5279ae80af96faee522f1dee361381d44b88ab7ca51c81380b56872cc3d71"
+      "sha256": "54fe4d30bc15da40cbaceb5fcf088fe7edaecce22758933c7f8303757aa7176a"
     },
     {
       "path": "ai/vendor/examples/equipment-inspection/web/tests/e2e/inspection.spec.ts",
       "role": "file",
-      "sha256": "0f1eb8e3ca2b8b70551a5657b594000b17d44512d9dc1edd7fd9994674e5e209"
+      "sha256": "5def4d18fbf2937f89deb306b1e8dfcef2695a69a22930390cbb9cd9527f1ba4"
     },
     {
       "path": "ai/vendor/examples/equipment-inspection/web/tests/e2e/search-and-dependencies.spec.ts",
@@ -1318,7 +1323,7 @@
     {
       "path": "ai/vendor/examples/equipment-inspection/web/tests/e2e/source-eligibility.spec.ts",
       "role": "file",
-      "sha256": "83cfcb4dac73bebb620d01ea3d6adcc9bc07f6b0fa9a2e903bab7066d0c72fdb"
+      "sha256": "25fd9c6de5189ad49ca3fe68d48883df1386a79d8cb45e4bccf249052b5afdc9"
     },
     {
       "path": "ai/vendor/examples/equipment-inspection/web/tests/unit/bootstrap.spec.ts",
@@ -1383,7 +1388,7 @@
     {
       "path": "ai/vendor/instructions.md",
       "role": "file",
-      "sha256": "c607482135db7a906b5ab143a5c8fe695bce5fa2ba2dd8b783906688baee616a"
+      "sha256": "a15ea96de10e14ac7db4452ebe66c0c481c51cedfb59eaca3b28307082d684c7"
     },
     {
       "path": "ai/vendor/known-limitations.json",
@@ -1393,12 +1398,12 @@
     {
       "path": "ai/vendor/references/accounting.md",
       "role": "file",
-      "sha256": "94ee57a9d5460e1c738ab5229ab28d2bc99babbdfa2ff6f4918a1abce6ef240b"
+      "sha256": "9671b8d75a6bcdc3bce5b4254a9332a35c16086e77a59df7203cfa7aefa6b451"
     },
     {
       "path": "ai/vendor/references/application-generation.md",
       "role": "file",
-      "sha256": "1b2bce9055f4b95d59571d8170c2c8ced2b820499ebe838d23e65e92e349a3a5"
+      "sha256": "a673504ec6fb8eea15a860640dc0a14f2de1969cc76f10fa506e14dcf8e8c446"
     },
     {
       "path": "ai/vendor/references/application.md",
@@ -1413,7 +1418,7 @@
     {
       "path": "ai/vendor/references/browser-acceptance.md",
       "role": "file",
-      "sha256": "fbb4e080c6cdb7c4e1cc547329afa38a90d5f8ba5a6bfe6d06264a838d9b637c"
+      "sha256": "aa531f78388c3b8bd8557a6a06e23f68d45323b4c23c0c748ba48e0814dd0ebd"
     },
     {
       "path": "ai/vendor/references/business-outcome-checks.md",
@@ -1598,7 +1603,7 @@
     {
       "path": "ai/vendor/references/custom-document-actions.md",
       "role": "file",
-      "sha256": "4b1cac7f05fc8282a513e36ad76e1c90686e08d4e3d28e2c227950695e84b0ec"
+      "sha256": "888c274186bf75b048ac183e967446604e0a790eaef3130733fd6e086261e0b0"
     },
     {
       "path": "ai/vendor/references/documents.md",
@@ -1648,7 +1653,7 @@
     {
       "path": "ai/vendor/references/registers.md",
       "role": "file",
-      "sha256": "ef92fbd0157f2da2c8bbf98548d2f72ab5ef98f5d64afe6be711f822e6f20161"
+      "sha256": "e286e114e694b3dc130a3472ce57117ac9b686f5efcc7c67641634978063775f"
     },
     {
       "path": "ai/vendor/references/release.md",
@@ -1668,7 +1673,7 @@
     {
       "path": "ai/vendor/references/server-acceptance.md",
       "role": "file",
-      "sha256": "5a45d9321ac35e1401368cd44de8180d6bde3ac85d20a8846c1200a601bc0c4c"
+      "sha256": "1475a5abe424ff0290daadc55878f99edc254dd7446960514f717ffe20154d66"
     },
     {
       "path": "ai/vendor/references/testing.md",
@@ -1678,7 +1683,7 @@
     {
       "path": "ai/vendor/references/upgrades.md",
       "role": "file",
-      "sha256": "f87e0b4fef766987888c3bd7fd3ded7683d67ba7dc3058da70907ea768d9e6a6"
+      "sha256": "45d2fe7d682795ca392da68209ad6ea0fae73942ae78a655c441d1b62107cc98"
     },
     {
       "path": "ai/vendor/references/work-center.md",

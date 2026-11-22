@@ -13,6 +13,69 @@ async function signIn(page: Page, username: string) {
   return (await (await access).allHeaders()).authorization
 }
 
+test('a secondary command preserves unsaved input and executes after an explicit save', async ({ page }, info) => {
+  const probe = await acceptanceProbe(page, info)
+  const headers = { Authorization: await signIn(page, 'administrator') }
+  const origin = process.env.NGB_EXAMPLE_ORIGIN!
+  const equipment = await page.request.post(origin + '/api/catalogs/example.equipment', {
+    headers, data: { fields: { display: 'Deferred inspection bench' } },
+  })
+  expect(equipment.ok()).toBe(true)
+  const type = 'example.inspection'
+  const created = await page.request.post(origin + '/api/documents/' + type, {
+    headers, data: { fields: { equipment_id: (await equipment.json()).id, result: 'Initial observation' } },
+  })
+  expect(created.ok()).toBe(true)
+  const { id } = await created.json()
+  const path = origin + '/documents/' + type + '/' + id
+  const api = origin + '/api/documents/' + type + '/' + id
+  async function readDocumentDay() {
+    const response = await page.request.get(api + '/graph', { headers })
+    expect(response.ok()).toBe(true)
+    const graph = await response.json()
+    const node = graph.nodes.find((item: { entityId: string }) => item.entityId === id)
+    expect(node.subtitle).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    return node.subtitle as string
+  }
+  const originalDay = await readDocumentDay()
+  const state = page.waitForResponse(r => r.url() === api + '/editor-state')
+  await page.goto(path)
+  await probe.outcome('commands:' + type + '/["example.defer-one-day"]', async checks =>
+    checks.draftCommands(await state, type, id, ['example.defer-one-day']))
+  const field = page.locator('[data-validation-key="result"] input, [data-validation-key="result"] textarea').first()
+  await field.fill('Keep this observation')
+  const execute = async () => {
+    await page.getByRole('button', { name: 'More actions', exact: true }).click()
+    await page.getByRole('menuitem', { name: 'Defer one day', exact: true }).click()
+    const dialog = page.getByRole('dialog')
+    await dialog.getByRole('textbox', { name: 'Reason' }).fill('Bench unavailable today')
+    await dialog.getByRole('button', { name: 'Defer', exact: true }).click()
+  }
+  const executions: string[] = []
+  page.on('request', request => {
+    if (request.url() === api + '/actions/example.defer-one-day') executions.push(request.method())
+  })
+  await execute()
+  await expect(page.getByText('Save your changes before running this action.', { exact: true })).toBeVisible()
+  await expect(field).toHaveValue('Keep this observation')
+  expect(executions).toEqual([])
+  expect(await readDocumentDay()).toBe(originalDay)
+  const saved = page.waitForResponse(r => r.url() === api && r.request().method() === 'PUT')
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  expect((await saved).ok()).toBe(true)
+  const result = page.waitForResponse(r => r.url() === api + '/actions/example.defer-one-day')
+  await execute()
+  expect((await result).ok()).toBe(true)
+  expect(executions).toEqual(['POST'])
+  await expect(page.getByText('Action completed.', { exact: true })).toBeVisible()
+  await page.reload()
+  await expect(field).toHaveValue('Keep this observation')
+  const nextDay = new Date(originalDay + 'T00:00:00Z')
+  nextDay.setUTCDate(nextDay.getUTCDate() + 1)
+  expect(await readDocumentDay()).toBe(nextDay.toISOString().slice(0, 10))
+  await probe.finish('example-draft-command-inventory', 'ngb-admin')
+})
+
 test('server eligibility excludes draft and consumed sources before real lookup selection', async ({ page }, info) => {
   const proof = await acceptanceProbe(page, info)
   const authorization = await signIn(page, 'administrator')

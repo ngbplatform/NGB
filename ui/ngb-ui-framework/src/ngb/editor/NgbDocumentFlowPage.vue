@@ -400,6 +400,7 @@ watch(
             class="group w-full min-w-0 rounded-[var(--ngb-radius)] border text-left transition-colors"
             :class="rowButtonClass(row)"
             :title="displayForNode(row.node)"
+            :data-ngb-flow-document="row.node.entityId"
             @click="openNode(row.node)"
           >
             <div class="grid grid-cols-[30px,minmax(0,1fr),160px] items-center gap-3 px-4 py-3.5">

@@ -378,6 +378,10 @@ async function renderPage(initialUrl: string, props: { listPath?: string | null 
         component: NgbGeneralJournalEntryEditPage,
       },
       {
+        path: '/journal/:id',
+        component: NgbGeneralJournalEntryEditPage,
+      },
+      {
         path: '/dashboard',
         component: {
           template: '<div>Dashboard</div>',
@@ -471,6 +475,13 @@ beforeEach(() => {
       },
     ],
   })))
+})
+
+test('a parameterized journal route treats new as a draft and never requests a record named new', async () => {
+  const { view } = await renderPage('/journal/new')
+  await expect.element(view.getByText('New General Journal Entry', { exact: true })).toBeVisible()
+  expect(gjeEditMocks.getEntry).not.toHaveBeenCalled()
+  await expect.element(view.getByPlaceholder('Explain the journal entry')).toBeEnabled()
 })
 
 test('creates a new draft, saves header and lines, and replaces the route with the new entry id', async () => {

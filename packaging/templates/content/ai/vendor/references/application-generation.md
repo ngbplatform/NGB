@@ -14,6 +14,10 @@ Accounting entries, Operational Register movements, Reference Register records,
 effective date, and Post/Unpost/Repost behavior. Explain an absent effect by its
 business meaning. These are decisions for the generator, not questions for the user.
 
+For each register, identify the fact it owns, the operation that changes it and
+the report, validation or historical lookup that consumes it. The posting fixtures
+must account for the actual register codes, including conditional and empty sets.
+
 - Use Accounting for monetary recognition, settlement and financial statements.
 - Use Operational Registers for quantities, custody, open items, allocations and
   other operational balances needed by business decisions. When the application
@@ -113,6 +117,11 @@ and detail rows lead to their source documents or records. Preserve the selected
 period, filters and permissions. Follow [report actions](reporting.md#time-fields-and-drill-down).
 Use standard document relationships for Document Flow; domain relationships may
 supplement them. A reference field alone does not create a visible flow edge.
+For each document with a business total, set `DocumentPresentationMetadata.AmountField`
+to the payload field containing that total. Persist the authoritative value at the
+same time as its inputs. A rate, quantity or percentage alone does not define a
+document total. Check the actual graph and the rendered amount on the root and
+linked monetary documents. Include zero as a valid amount.
 See [flow composition](documents.md#visible-document-flow).
 
 Connect the favicon explicitly in HTML. Test the built and served asset with the

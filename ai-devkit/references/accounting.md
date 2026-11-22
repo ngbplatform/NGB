@@ -55,6 +55,12 @@ for operations and `IAuthorizedGeneralJournalEntryReadService` for reads.
 composition in the independent example. Use the resolved package's public
 `NGB.Contracts.Accounting` request/result types.
 
+Register the list, the literal `/accounting/general-journal-entries/new` and
+the saved journal route `/accounting/general-journal-entries/:id` with the
+SDK list and typed editor. Start browser acceptance at the list and click
+Create. Save a memo, follow the assigned ID and reload it from the typed API.
+Loading the creation form must never request an existing journal with ID `new`.
+
 The HTTP controller requires the existing document permissions for
 `general_journal_entry`: create, edit-draft, post, unpost, view and deletion marks
 as appropriate. Active registered application administrators and trusted Keycloak

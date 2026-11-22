@@ -6,6 +6,9 @@ const kinds = {
   'source-membership': 'document',
   'withdrawal-cycle': 'document',
   'historical-cutoff': 'report',
+  'effective-prerequisite': 'document',
+  'history-conflict': 'document',
+  capacity: null,
   'worker-backlog': 'job',
 }
 
@@ -26,13 +29,22 @@ export function validateBusinessChecks(plan) {
   }
   const bindings = new Set()
   for (const entry of plan.businessChecks) {
-    objectKeys(entry, ['kind', 'target', 'key', 'test'], ['unrestrictedReason'])
+    objectKeys(entry, ['kind', 'target', 'key', 'test'], ['unrestrictedReason', 'budget'])
     assert.ok(Object.hasOwn(kinds, entry.kind), 'Unknown server acceptance check.')
-    const prefix = kinds[entry.kind] + ':'
-    assert.ok(nonempty(entry.target) && entry.target.startsWith(prefix) && nonempty(entry.target.slice(prefix.length)),
-      'Invalid server acceptance target.')
+    const [type, ...code] = String(entry.target).split(':')
+    const allowedTypes = entry.kind === 'capacity' ? ['document', 'catalog', 'report', 'navigation'] : [kinds[entry.kind]]
+    assert.ok(allowedTypes.includes(type) && nonempty(code.join(':')), 'Invalid server acceptance target.')
     if (entry.kind !== 'worker-backlog') assert.ok(plan.surfaces.includes(entry.target), 'Unknown server acceptance surface.')
     assert.ok(nonempty(entry.key) && nonempty(entry.test), 'Bind each server check to a business key and integration test.')
+    if (entry.kind === 'capacity') {
+      objectKeys(entry.budget, ['populations', 'samples', 'p95Milliseconds', 'maxQueries'])
+      assert.ok(entry.budget.populations && Object.keys(entry.budget.populations).length > 0
+        && Object.entries(entry.budget.populations).every(([key, size]) => nonempty(key) && Number.isSafeInteger(size) && size > 0),
+      'Declare minimum persisted populations for the business workload.')
+      for (const key of ['samples', 'p95Milliseconds', 'maxQueries']) {
+        assert.ok(Number.isSafeInteger(entry.budget[key]) && entry.budget[key] > 0, 'Declare positive workload budgets.')
+      }
+    } else assert.ok(entry.budget === undefined, 'Workload budgets apply only to capacity checks.')
     if (entry.unrestrictedReason !== undefined) {
       assert.ok(entry.kind === 'source-membership' && nonempty(entry.unrestrictedReason),
         'Explain why distinct in-scope sources are interchangeable.')
@@ -98,6 +110,37 @@ function verifyObservation(entry, proof) {
       assert.ok([400, 409, 422].includes(proof.otherStatus) && nonempty(proof.reason) && proof.reason === proof.expectedReason, 'Expected a business refusal for the unrelated source.')
       unchanged(proof.beforeRefusal, proof.afterRefusal)
     }
+  } else if (entry.kind === 'effective-prerequisite' || entry.kind === 'history-conflict') {
+    assert.ok(successful(proof.controlStatus), 'The authorized positive control must succeed.')
+    assert.ok([400, 409, 422].includes(proof.refusalStatus) && nonempty(proof.expectedReason)
+      && proof.reason === proof.expectedReason, 'Expected the specific business refusal.')
+    unchanged(proof.beforeRefusal, proof.afterRefusal)
+    if (entry.kind === 'effective-prerequisite') {
+      assert.ok(Date.parse(proof.attemptAt) < Date.parse(proof.prerequisiteAt)
+        && Date.parse(proof.prerequisiteAt) <= Date.parse(proof.controlAt),
+      'Exercise both sides of the prerequisite effective date.')
+    } else {
+      assert.ok(Number.isSafeInteger(proof.pageLimit) && proof.pageLimit > 0
+        && Array.isArray(proof.newerIds) && proof.newerIds.length >= proof.pageLimit
+        && proof.newerIds.every(nonempty) && new Set(proof.newerIds).size === proof.newerIds.length
+        && nonempty(proof.conflictId) && !proof.newerIds.includes(proof.conflictId),
+      'Place the conflicting key beyond the first full page of distinct newer records.')
+    }
+  } else if (entry.kind === 'capacity') {
+    const budget = entry.budget
+    for (const [key, minimum] of Object.entries(budget.populations)) {
+      assert.ok(Number.isSafeInteger(proof.populations?.[key]) && proof.populations[key] >= minimum,
+        `Insufficient persisted population for ${key}.`)
+    }
+    assert.ok(Array.isArray(proof.samples) && proof.samples.length >= budget.samples, 'Run the declared business workload.')
+    for (const sample of proof.samples) {
+      assert.ok(successful(sample.status) && Number.isFinite(sample.milliseconds) && sample.milliseconds > 0
+        && Number.isSafeInteger(sample.queries) && sample.queries >= 0 && sample.queries <= budget.maxQueries,
+      'Business request failed or exceeded its query budget.')
+    }
+    assert.ok(proof.samples.some(sample => sample.queries > 0), 'Include an instrumented database read in the measured workload.')
+    const times = proof.samples.map(sample => sample.milliseconds).sort((a, b) => a - b)
+    assert.ok(times[Math.ceil(times.length * 0.95) - 1] <= budget.p95Milliseconds, 'Business workload exceeded its latency budget.')
   } else if (entry.kind === 'withdrawal-cycle') {
     const events = [proof.prerequisite, proof.laterUse, proof.laterRelease]
     assert.ok(events.every(nonempty) && new Set(events).size === events.length, 'Exercise a distinct, completed later cycle.')

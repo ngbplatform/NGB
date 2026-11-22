@@ -262,10 +262,12 @@ export type EditorDocumentEffectsBehavior = {
     item: EffectDimensionValue | null | undefined;
     lookupStore: LookupStoreApi | null;
   }) => string;
+  resolveFieldLabel?: (args: { registerCode: string; fieldKey: string }) => string | null | undefined;
   resolveFieldValue?: (args: {
     documentType: string;
     documentId: string;
     document: DocumentRecord | null;
+    registerCode?: string;
     fieldKey: string;
     value: unknown;
     fields: Record<string, unknown>;

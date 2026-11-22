@@ -12,6 +12,12 @@ const ids = ['a', 'b', 'c']
 
 function check(kind, changes = {}, options = {}) {
   const samples = {
+    'effective-prerequisite': { target, key: 'funding', attemptAt: '2026-04-01', prerequisiteAt: '2026-04-02',
+      controlAt: '2026-04-02', controlStatus: 200, refusalStatus: 409, ...refusal },
+    'history-conflict': { target, key: 'schedule', pageLimit: 2, newerIds: ['b', 'c'], conflictId: 'a',
+      controlStatus: 201, refusalStatus: 409, ...refusal },
+    capacity: { target: report, key: 'position', populations: { items: 1100 },
+      samples: [{ status: 200, milliseconds: 30, queries: 3 }, { status: 200, milliseconds: 45, queries: 4 }] },
     'source-membership': { target, key: 'source', sourceType: 'request', otherType: 'request', sourceState: 'Posted',
       otherState: 'Posted', correctSource: 'a', otherSource: 'b', otherStatus: 422, correctStatus: 200, ...refusal },
     'withdrawal-cycle': { target, key: 'capacity', prerequisite: 'one', laterUse: 'two', laterRelease: 'three',
@@ -23,6 +29,7 @@ function check(kind, changes = {}, options = {}) {
   }
   const proof = { kind, ...samples[kind], ...changes }
   const entry = { kind, target: proof.target, key: proof.key, test: 'Example.Tests.ReadBack', ...options }
+  if (kind === 'capacity') entry.budget = { populations: { items: 1000 }, samples: 2, p95Milliseconds: 100, maxQueries: 4 }
   const plan = { businessChecks: [entry], surfaces: [target, report], cases: [] }
   const observations = [{ test: entry.test, proof }]
   if (kind === 'worker-backlog') observations.push({ test: 'Worker.Test', proof: { kind: 'worker-inventory', jobs: ['example.dispatch'] } })
@@ -73,6 +80,15 @@ other output
 
 test('each check rejects the observed defect and incomplete or unrelated evidence', () => {
   const invalid = {
+    'effective-prerequisite': [{ attemptAt: '2026-04-02' }, { controlAt: '2026-04-01' }, { prerequisiteAt: 'invalid' },
+      { controlStatus: 403 }, { refusalStatus: 200 }, { afterRefusal: {} }],
+    'history-conflict': [{ newerIds: ['b'] }, { newerIds: ['a', 'b'] }, { newerIds: ['b', 'b'] },
+      { pageLimit: 0 }, { reason: 'unrelated' }, { refusalStatus: 200 }],
+    capacity: [{ populations: { items: 999 } }, { samples: [] },
+      { samples: Array(2).fill({ status: 200, queries: 0, milliseconds: 1 }) },
+      { samples: Array(2).fill({ status: 403, queries: 1, milliseconds: 1 }) },
+      { samples: Array(2).fill({ status: 200, queries: 5, milliseconds: 1 }) },
+      { samples: Array(2).fill({ status: 200, queries: 3, milliseconds: 101 }) }],
     'source-membership': [{ otherStatus: 200 }, { otherSource: 'a' }, { correctSource: '' }, { otherType: 'other' },
       { sourceType: '' }, { sourceState: null }, { otherState: 'Draft' }, { correctStatus: 403 }, { reason: '' },
       { reason: 'permission' }, { beforeRefusal: {} }, { afterRefusal: { movements: 3 } }],

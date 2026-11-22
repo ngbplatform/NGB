@@ -108,7 +108,8 @@ const tabs = [
 
 const currentId = computed(() => {
   const raw = route.params.id
-  return typeof raw === 'string' && raw.trim().length > 0 ? raw.trim() : null
+  const id = typeof raw === 'string' ? raw.trim() : ''
+  return id && id !== 'new' ? id : null
 })
 
 const resolvedListPath = computed(() => {
@@ -544,7 +545,9 @@ function extractErrorMessages(error: unknown): string[] {
       <template #secondary>
         <div class="min-w-0 flex flex-wrap items-center gap-2">
           <NgbBadge :tone="documentStatusBadgeTone">{{ documentStatusLabel(documentStatus) }}</NgbBadge>
-          <NgbBadge :tone="badgeToneForApproval()">{{ generalJournalEntryApprovalStateLabel(approvalState) }}</NgbBadge>
+          <NgbBadge v-if="generalJournalEntryApprovalStateLabel(approvalState) !== documentStatusLabel(documentStatus)" :tone="badgeToneForApproval()">
+            {{ generalJournalEntryApprovalStateLabel(approvalState) }}
+          </NgbBadge>
           <NgbBadge tone="neutral">{{ generalJournalEntrySourceLabel(source) }}</NgbBadge>
           <NgbBadge v-if="sourceDocumentLabel" tone="neutral">Reversal Of: {{ sourceDocumentLabel }}</NgbBadge>
         </div>

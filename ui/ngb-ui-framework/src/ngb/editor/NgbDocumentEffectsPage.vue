@@ -5,6 +5,8 @@ import { useRoute, useRouter } from 'vue-router';
 import NgbBadge from '../primitives/NgbBadge.vue';
 import NgbIcon from '../primitives/NgbIcon.vue';
 import NgbTabs from '../primitives/NgbTabs.vue';
+import { isReferenceValue } from '../metadata/entityModel';
+import { formatDateOnlyValue, formatDateTimeValue } from '../metadata/entityValueFormatting';
 import { useMetadataStore } from '../metadata/store';
 import type { DocumentTypeMetadata } from '../metadata/types';
 import { useToasts } from '../primitives/toast';
@@ -34,6 +36,7 @@ import type {
   EffectAccount,
   EffectDimensionValue,
   EffectResourceValue,
+  ReferenceRegisterWriteEffect,
 } from './types';
 
 const route = useRoute();
@@ -151,7 +154,7 @@ const referenceRows = computed<RegisterDataRow[]>(() => {
     register: formatRegisterName(item.registerName, item.registerCode),
     status: item.isTombstone ? 'Tombstone' : 'Write',
     dimensionSet: formatDimensionSummary(item.dimensions, item.dimensionSetId),
-    fields: formatFieldSummary(item.fields),
+    fields: formatFieldSummary(item),
     __status: item.isTombstone ? 'marked' as const : 'posted' as const,
   }));
 });
@@ -243,23 +246,47 @@ function formatResourceSummary(value: EffectResourceValue[] | Record<string, unk
   return parts.length > 0 ? parts : '—';
 }
 
-function formatFieldSummary(fields: Record<string, unknown>): string | string[] {
+function defaultFieldValue(key: string, value: unknown, record: ReferenceRegisterWriteEffect): string {
+  if (isReferenceValue(value) && value.display.trim()) return value.display;
+  if (isNonEmptyGuid(value)) {
+    const id = value.toLowerCase();
+    if (document.value?.id.toLowerCase() === id && document.value.display) return document.value.display;
+    const field = document.value?.payload?.fields?.[key];
+    if (isReferenceValue(field) && field.id.toLowerCase() === id && field.display.trim()) return field.display;
+    const dimension = record.dimensions?.find(item => item.valueId.toLowerCase() === id && item.display);
+    if (dimension) return dimension.display;
+  }
+  if (typeof value === 'string' && /(?:^|_)date$/i.test(key)) {
+    const calendarDate = /^(\d{4}-\d{2}-\d{2})(?:T00:00:00(?:\.0+)?Z)?$/.exec(value);
+    if (calendarDate) return formatDateOnlyValue(calendarDate[1]!);
+  }
+  if (typeof value === 'string' && /(?:^|_)at_utc$/i.test(key) && /^\d{4}-\d{2}-\d{2}T.*Z$/.test(value)) {
+    return formatDateTimeValue(value);
+  }
+  return formatScalar(value);
+}
+
+function formatFieldSummary(record: ReferenceRegisterWriteEffect): string | string[] {
+  const fields = record.fields;
   const parts = Object.entries(fields)
     .map(([key, value]) => {
-      const label = key.endsWith('_document_id')
+      const defaultLabel = key.endsWith('_document_id')
         ? humanizeCode(key.slice(0, -3))
-        : humanizeCode(key)
-      const resolved = resolveNgbEditorEffectsBehavior().resolveFieldValue?.({
+        : humanizeCode(key);
+      const behavior = resolveNgbEditorEffectsBehavior();
+      const label = behavior.resolveFieldLabel?.({ registerCode: record.registerCode, fieldKey: key }) ?? defaultLabel;
+      const resolved = behavior.resolveFieldValue?.({
         documentType: documentType.value,
         documentId: documentId.value,
         document: document.value,
+        registerCode: record.registerCode,
         fieldKey: key,
         value,
         fields,
         lookupStore,
-      })
+      });
 
-      return `${label}: ${resolved ?? formatScalar(value)}`
+      return `${label}: ${resolved ?? defaultFieldValue(key, value, record)}`;
     });
 
   return parts.length > 0 ? parts : '—';

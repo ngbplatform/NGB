@@ -36,6 +36,7 @@ type UseConfiguredEntityEditorDocumentActionsArgs = {
   normalizeEditorError: (cause: unknown) => EditorErrorState
   applyActionDocument?: (document: DocumentEditorStateDto['document'], actionCode: string) => void | Promise<void>
   reloadDocument?: () => Promise<void>
+  onCommandCompleted?: (label: string) => void
   gateway?: DocumentActionsGateway
   localActionHandlers?: Record<string, (() => void | Promise<void>) | undefined>
   beforeExecute?: (
@@ -188,6 +189,7 @@ export function useConfiguredEntityEditorDocumentActions(
 
   async function executeAction(action: DocumentActionDto, reason: string | null): Promise<void> {
     const documentId = args.currentId.value
+    const documentType = args.typeCode.value
     if (!documentId || !unifiedState.value || busy.value || !action.isAllowed) return
 
     const localHandler = args.localActionHandlers?.[action.code]
@@ -214,24 +216,28 @@ export function useConfiguredEntityEditorDocumentActions(
       const proceed = typeof preparation === 'boolean' ? preparation : preparation.proceed
       if (!proceed) return
       const state = typeof preparation === 'object' && preparation.refreshState
-        ? await gateway.loadEditorState(args.typeCode.value, documentId)
+        ? await gateway.loadEditorState(documentType, documentId)
         : unifiedState.value
-      if (!state) return
+      if (!state || args.currentId.value !== documentId || args.typeCode.value !== documentType) return
       unifiedState.value = state
       const refreshedAction = state.actions.find((candidate) => candidate.code === action.code)
       if (!refreshedAction?.isAllowed) return
       const result = await gateway.execute(
-        args.typeCode.value,
+        documentType,
         documentId,
         refreshedAction.code,
         { expectedVersion: state.documentVersion, reason },
       )
+      if (args.currentId.value !== documentId || args.typeCode.value !== documentType) return
       unifiedState.value = {
         document: result.document,
         documentVersion: result.documentVersion,
         actions: result.actions,
       }
       await args.applyActionDocument?.(result.document, refreshedAction.code)
+      if (refreshedAction.executionKind === 'Command' && !lifecycleActionCodes.has(refreshedAction.code)) {
+        args.onCommandCompleted?.(refreshedAction.label)
+      }
 
       if (result.createdDocument) {
         const target = refreshedAction.target

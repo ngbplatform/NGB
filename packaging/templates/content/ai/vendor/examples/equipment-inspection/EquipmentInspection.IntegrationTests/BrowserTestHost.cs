@@ -29,13 +29,14 @@ internal static class BrowserTestHost
         await using var storage = new TestAttachmentStorage(input.BrowserOrigin);
         await storage.StartAsync();
         await using var host = new InspectionHost(browserOrigin: input.BrowserOrigin,
-            notesEnabled: true, configuration: storage.Configuration);
+            configureServices: ReferenceFieldBrowserFixture.Configure, notesEnabled: true, configuration: storage.Configuration);
         await host.StartAsync();
         await host.LinkUserAsync("administrator", true, InspectionHost.AdministratorRoleCode, "Application administrator");
         await host.LinkUserAsync("imitator", true, "example.content-reader", "Content reader");
         await using (var scope = host.Services.CreateAsyncScope())
         {
             var services = scope.ServiceProvider;
+            await ReferenceFieldBrowserFixture.PrepareAsync(services);
             var role = await services.GetRequiredService<IPlatformRoleRepository>().GetByCodeAsync("example.content-reader");
             await services.GetRequiredService<IUnitOfWork>().ExecuteInUowTransactionAsync(ct =>
                 services.GetRequiredService<IPermissionSnapshotRepository>().ReplaceRolePermissionsAsync(role!.RoleId,

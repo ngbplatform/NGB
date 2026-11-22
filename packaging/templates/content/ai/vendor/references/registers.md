@@ -11,6 +11,20 @@ requirement before modeling dimensions and resources. Register definitions and
 provider schema through public contracts; keep physical storage in PostgreSQL.
 Do not create a substitute generic effects table.
 
+Trace each proposed register to a consumer and the business key it reads.
+For a reference register, identify the value that must survive a later change
+or be resolved as of a date. For an operational register, identify the movement,
+unit and balance or turnover used by the consumer. Copying an entire document
+header solely to reproduce it on the Effects page adds no business fact.
+
+Exercise the posted Effects page with real field values. Use the application
+locale for business dates and resolve document references to authorized display
+names. The shared UI can reuse the current document and matching references
+already visible in the response. For another reference or an application-specific
+field key, supply the register-aware `resolveFieldValue` and, where needed,
+`resolveFieldLabel` hooks. Test timezone boundaries and references to different
+documents. Do not fetch restricted records to manufacture display strings.
+
 For document-driven Operational Registers, implement
 `IDocumentOperationalRegisterPostingHandler.BuildMovementsAsync(DocumentRecord,
 IOperationalRegisterMovementsBuilder, CancellationToken)`. The handler's TypeCode

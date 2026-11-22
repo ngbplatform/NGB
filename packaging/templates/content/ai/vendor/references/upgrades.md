@@ -10,6 +10,12 @@ A different SDK version needs `upgrade --to <exact-version>`, which coordinates
 SDK, UI, CLI and Kit changes. A new template installation does not rewrite an
 existing application. Preview never writes application files or local caches.
 
+When bringing a generated application to the revised browser gate, merge the
+updated template's `web/tests/e2e/acceptance.ts` into its application-owned
+helper. Update its schema 2 case bindings and server evidence together. The
+[document outcomes](browser-acceptance.md#document-outcomes-in-schema-version-2)
+describe the probes used by the CLI.
+
 Three-way comparison uses verified old bytes, local bytes and incoming bytes.
 Unchanged files update; local-only changes remain customized. Changed upstream
 content conflicting with local edits requires a decision. Local deletion is a

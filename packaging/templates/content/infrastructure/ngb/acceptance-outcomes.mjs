@@ -192,13 +192,14 @@ export function verifyOutcomeProof(entry, proof) {
   assert.deepEqual([...proof.outcomes].sort(), [...entry.outcomes].sort(),
     `Browser did not verify every expected outcome: ${entry.id}`)
   for (const name of entry.outcomes) {
-    const check = name.startsWith('reference:') ? name : requiredChecks[name]
+    const check = /^(?:reference|flow-amount|registers?|commands?):/.test(name) ? name : requiredChecks[name]
     if (check) assert.ok(Array.isArray(proof.evidence?.[name]) && proof.evidence[name].includes(check),
       `Use the ${check} check for ${entry.id}/${name} and verify its expected business value.`)
   }
 }
 
 const requiredChecks = {
+  'journal-draft': 'journal-draft',
   'named-fields': 'accessible-fields',
   'linked-records': 'flow',
   'linked-chain': 'chain',

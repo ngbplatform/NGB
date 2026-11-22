@@ -19,6 +19,32 @@ namespace EquipmentInspection.IntegrationTests;
 public sealed class IndependentReferenceRegisterTests
 {
     [Fact]
+    public async Task Effective_date_lookup_finds_an_earlier_key_beyond_a_full_history_page()
+    {
+        await using var host = new InspectionHost();
+        await host.StartAsync();
+        var key = await CreateEquipmentKeyAsync(host, "Scheduled service bench");
+        await using var scope = host.Services.CreateAsyncScope();
+        var register = await ConfigureAsync(scope.ServiceProvider, "example.service-schedule", ReferenceRegisterPeriodicity.Day);
+        var writes = scope.ServiceProvider.GetRequiredService<IReferenceRegisterIndependentWriteService>();
+        var reads = scope.ServiceProvider.GetRequiredService<IReferenceRegisterReadService>();
+        var first = DateTime.UtcNow.Date.AddDays(2);
+        const int pageSize = 50;
+        for (var minute = 0; minute <= pageSize; minute++)
+            await writes.UpsertAsync(register, key, first.AddMinutes(minute), Values(10m + minute), Guid.CreateVersion7());
+
+        var cutoff = first.AddHours(1);
+        var page = await reads.GetKeyHistoryAsync(register, key, cutoff, periodUtc: first, limit: pageSize);
+        Assert.Equal(pageSize, page.Count);
+        Assert.DoesNotContain(page, row => row.PeriodUtc == first);
+        Assert.Null(await reads.SliceLastAsync(register, key, first.AddSeconds(-1)));
+        var exact = await reads.SliceLastAsync(register, key, first);
+        Assert.Equal(first, exact!.PeriodUtc);
+        Assert.Equal(10m, exact.Values["amount"]);
+        Assert.Equal(60m, (await reads.SliceLastAsync(register, key, cutoff))!.Values["amount"]);
+    }
+
+    [Fact]
     public async Task Compensating_a_future_change_restores_the_previous_value_without_erasing_later_values_or_history()
     {
         await using var host = new InspectionHost();

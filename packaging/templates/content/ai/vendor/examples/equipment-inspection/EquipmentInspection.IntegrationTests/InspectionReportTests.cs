@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.IO.Compression;
 using System.Net;
@@ -102,6 +103,44 @@ public sealed class InspectionReportTests(ITestOutputHelper output)
         Assert.Single(Groups(last.Sheet.Rows));
         Assert.Equal(count, Total(last.Sheet.Rows));
         Assert.Equal(count, Groups(first.Sheet.Rows).Concat(Groups(last.Sheet.Rows)).Sum(row => row.Count));
+
+        var samples = new List<object>();
+        for (var index = 0; index < 6; index++)
+        {
+            using var trace = new Activity("paged-summary").SetIdFormat(ActivityIdFormat.W3C).Start();
+            var queries = 0;
+            using var listener = new ActivityListener
+            {
+                ShouldListenTo = source => source.Name.StartsWith("Npgsql", StringComparison.Ordinal)
+                    || source.Name is "System.Net.Http" or "Microsoft.AspNetCore",
+                Sample = static (ref _) => ActivitySamplingResult.AllData,
+                SampleUsingParentId = static (ref _) => ActivitySamplingResult.AllData,
+                ActivityStopped = activity =>
+                {
+                    if (activity.TraceId == trace.TraceId
+                        && (activity.GetTagItem("db.query.text") is not null || activity.GetTagItem("db.statement") is not null))
+                        Interlocked.Increment(ref queries);
+                }
+            };
+            ActivitySource.AddActivityListener(listener);
+            var timer = Stopwatch.StartNew();
+            using var response = await admin.PostAsJsonAsync(ExecutePath, request);
+            timer.Stop();
+            await EnsureSuccessAsync(response);
+            var page = await response.Content.ReadFromJsonAsync<ReportExecutionResponseDto>(Json);
+            Assert.Equal(500, Groups(page!.Sheet.Rows).Length);
+            Assert.InRange(queries, 1, 24);
+            samples.Add(new { status = (int)response.StatusCode, milliseconds = timer.Elapsed.TotalMilliseconds, queries });
+        }
+
+        output.WriteLine("NGB-CHECK " + JsonSerializer.Serialize(new
+        {
+            kind = "capacity",
+            target = "report:" + InspectionReports.Summary,
+            key = "summary-page",
+            populations = new { inspections = Total(last.Sheet.Rows) },
+            samples
+        }));
     }
 
     [Fact]

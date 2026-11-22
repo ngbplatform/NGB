@@ -75,5 +75,8 @@ adjustments, historical report dimensions, dashboard permissions and drill-downs
 idempotent operations from the requirements. Bind each applicable workflow to its own expected records,
 amounts, scope or state transitions in the [business outcome checks](references/business-outcome-checks.md).
 
-Bind source membership, historical measures, withdrawal dependencies and recurring work
+Bind source membership, effective prerequisites, historical uniqueness, historical
+measures, withdrawal dependencies, required workload budgets and recurring work
 to [server acceptance](references/server-acceptance.md) before generating tests.
+For each document, verify its declared graph total, exposed commands and actual
+posted registers against the [browser outcomes](references/browser-acceptance.md#document-outcomes-in-schema-version-2).

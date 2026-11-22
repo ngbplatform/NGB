@@ -219,6 +219,34 @@ for race tests may be held and released, but must originate from the real servic
 Never manufacture attachments or treat the probe's single visible assertion as a
 substitute for the scenario's complete domain assertions.
 
+## Document outcomes in schema version 2
+
+Declare each document's `flowAmountField` for a business total, or use null for
+a document containing numeric fields without a total. Record the business meaning
+of those fields in `flowAmountReason`, including numeric line fields. Use `flowAmount(type, id,
+expected, root?)` for `flow-amount:<type>`. Supply the root when checking a
+linked document. Compute the expected amount independently of the graph.
+
+Bind `journal-draft` to `journalDraft(memo)` in the typed journal's draft-edit
+case. For other configured forms list the declared custom `commands`. In an
+administrator draft-edit case call `draftCommands(response, type, id, codes)`
+on the loaded editor-state response, including an empty list. For each command
+exercise `commandChange(type, id, code, trigger, field, before, after)` with an
+observable persisted result. Verify the dirty form protects existing edits too.
+The inventory outcome is `commands:<type>/<JSON sorted codes>`; each individual
+outcome is `command:<type>/<code>`.
+
+List `operationalRegisters` and `referenceRegisters` by document. Call
+`postedRegisters(response, type, id, operational, reference)` on the Effects
+response for each distinct posting outcome. Its key includes both sorted arrays,
+for example `registers:example.approval/[[],[]]` for a posting with no registers.
+Their union must equal the declared inventory. For each reference register use
+`registerFields(response, type, id, code, recordId, expected)` for
+`register:<type>/<code>`. Supply a field-keyed map of expected labels and display
+strings for that row. Check a document reference and a date wherever applicable.
+Use `literalText: true` only for business text whose exact stored spelling is
+significant, such as a supplier's opaque tracking code.
+
 The raw Playwright report, inventory, source hash and gate results are retained in
 `.ngb/reports/<run>/`. A passing browser gate is not FULL Certification. It does not
 replace integration tests, per-file coverage, load tests or business review.

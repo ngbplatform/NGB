@@ -170,6 +170,7 @@ export type DocumentCapabilities = {
 
 export type DocumentPresentation = {
   displayName?: string | null
+  amountField?: string | null
   hasNumber?: boolean
   computedDisplay?: boolean
   hideSystemFieldsInEditor?: boolean

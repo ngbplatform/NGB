@@ -85,6 +85,36 @@ The `Posting_a_later_inspection_preserves_the_count_at_the_earlier_cutoff` examp
 in `InspectionReportTests.cs` executes both cutoffs against the report endpoint
 and emits the observed counts from the test.
 
+## Effective prerequisites and uniqueness in history
+
+List each required dated dependency in the document's `effectivePrerequisites`.
+Bind an `effective-prerequisite` check to its key. Post the prerequisite with
+a later effective date and attempt the dependent operation at an earlier date.
+Read the persisted status, movements and balances before and after refusal. Run
+the same authorized operation with sufficient resources at a permitted date.
+Report `attemptAt`, `prerequisiteAt`, `controlAt`, `controlStatus`,
+`refusalStatus`, `reason`, `expectedReason`, `beforeRefusal` and `afterRefusal`.
+
+List effective-key uniqueness rules in `uniqueHistoryKeys` and bind each to a
+`history-conflict` check. Apply the whole key, applicable status, effective date
+and allowed correction exclusions before limiting a query, or exhaust its pages.
+Seed a conflict behind a full page of newer distinct rows. Read back their
+`newerIds`, the original `conflictId` and the actual `pageLimit`. Capture the
+same refusal and control evidence as above, omitting the three date properties.
+Where concurrent writes are possible, enforce the rule inside the transaction.
+
+## Business workload budgets
+
+For a scale or latency requirement bind a `capacity` check to the actual
+document, catalog, report or navigation workload. Set `budget.populations`
+by meaningful entity, plus `samples`, `p95Milliseconds` and `maxQueries`
+from the requirement before the run. Seed and read back the persisted population.
+Measure each authenticated request through the response body, including at
+least one database read. Count database commands in that request's trace.
+Emit actual `populations` and the array of `{status, milliseconds, queries}`
+on the passing integration test. The CLI computes the percentile and checks
+each query count. The starter's role/menu load profile covers only those reads.
+
 ## Bounded recurring work
 
 Keep the starter worker-host integration test that reads `IBackgroundJobCatalog`

@@ -184,6 +184,8 @@ test('journal reversal remains mandatory for legacy and corrected metadata', () 
     journal.scenario = 'reversal'
     journal.outcomes = scenarioOutcomes.reversal
     plan.requirements[0].scenarios = plan.requirements[0].scenarios.map(name => name === 'lifecycle' ? 'reversal' : name)
+    assert.throws(() => reconcileAcceptance(plan, inventory), /journal-draft/)
+    plan.cases.find(entry => entry.scenario === 'draft-edit').outcomes.push('journal-draft')
     reconcileAcceptance(plan, inventory)
   }
 })
@@ -280,6 +282,8 @@ test('a saved Flow edge and an editable source still require proof of server mem
   assert.equal(plan.documents[0].sourceDriven, false)
   assert.throws(() => reconcileAcceptance(plan, inventory), /source-membership.*parent_id/)
   plan.businessChecks.push({ kind: 'source-membership', target, key: 'parent_id', test: 'Example.Tests.Source' })
+  plan.cases.find(entry => entry.scenario === 'draft-edit').outcomes.push('commands:example.order/[]')
+  plan.cases.find(entry => entry.scenario === 'lifecycle').outcomes.push('registers:example.order/[[],[]]')
   assert.throws(() => reconcileAcceptance(plan, inventory), /Missing form-labels/)
   add('form-labels', ['named-fields'])
   reconcileAcceptance(plan, inventory)
@@ -297,4 +301,51 @@ test('metadata can omit part columns and navigation when checking server depende
   assert.deepEqual(businessReferences({ parts: [{ partCode: 'items' }] }), [])
   delete inventory.menu
   reconcileWorkflows(plan, inventory)
+})
+
+test('business totals, custom commands and register fields require evidence from the matching document', () => {
+  const { plan, inventory } = fixture()
+  const doc = plan.documents[0]
+  const target = plan.surfaces[0]
+  const draft = plan.cases.find(entry => entry.scenario === 'draft-edit')
+  const posted = plan.cases.find(entry => entry.scenario === 'lifecycle')
+  const metadata = inventory.documents[0]
+  metadata.form = { sections: [{ rows: [{ fields: [{ key: 'cost', dataType: 'Decimal' }] }] }] }
+  const labels = { ...draft, id: 'labels', title: 'labels', scenario: 'form-labels', outcomes: ['named-fields'] }
+  plan.cases.push(labels)
+  plan.requirements[0].cases.push(labels.id)
+  plan.requirements[0].scenarios.push(labels.scenario)
+  assert.throws(() => reconcileAcceptance(plan, inventory), /flowAmountField/)
+  doc.flowAmountField = null
+  assert.throws(() => reconcileAcceptance(plan, inventory), /flowAmountReason/)
+  doc.flowAmountReason = 'The numeric field is a per-unit rate.'
+  assert.throws(() => reconcileAcceptance(plan, inventory), /commands:/)
+  delete doc.flowAmountReason
+  doc.flowAmountField = 'cost'
+  assert.throws(() => reconcileAcceptance(plan, inventory), /Incorrect AmountField/)
+  metadata.presentation = { amountField: 'cost' }
+  assert.throws(() => reconcileAcceptance(plan, inventory), /flow-amount:example.order/)
+  posted.outcomes.push('flow-amount:example.order')
+  doc.commands = ['approve']
+  assert.throws(() => reconcileAcceptance(plan, inventory), /commands:/)
+  draft.outcomes.push('commands:example.order/["approve"]')
+  assert.throws(() => reconcileAcceptance(plan, inventory), /command:example.order\/approve/)
+  draft.outcomes.push('command:example.order/approve')
+  assert.throws(() => reconcileAcceptance(plan, inventory), /register inventory/)
+  posted.outcomes.push('registers:example.order/[[],["terms"]]')
+  assert.throws(() => reconcileAcceptance(plan, inventory), /Reconcile actual posting registers/)
+  doc.referenceRegisters = ['terms']
+  assert.throws(() => reconcileAcceptance(plan, inventory), /register:example.order\/terms/)
+  posted.outcomes.push('register:example.order/terms')
+  doc.effectivePrerequisites = ['approval']
+  assert.throws(() => reconcileAcceptance(plan, inventory), /effective-prerequisite/)
+  plan.businessChecks.push({ kind: 'effective-prerequisite', target, key: 'approval', test: 'Example.Tests.Approval' })
+  doc.uniqueHistoryKeys = ['rate']
+  assert.throws(() => reconcileAcceptance(plan, inventory), /history-conflict/)
+  plan.businessChecks.push({ kind: 'history-conflict', target, key: 'rate', test: 'Example.Tests.Rate' })
+  reconcileAcceptance(plan, inventory)
+  for (const name of [...posted.outcomes, ...draft.outcomes].filter(item => item.includes(':'))) {
+    assert.throws(() => verifyOutcomeProof({ id: 'foreign', outcomes: [name] },
+      { outcomes: [name], evidence: { [name]: ['text'] } }), /verify its expected business value/)
+  }
 })
