@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
-import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -18,7 +18,7 @@ test('only an empty starter can use the legacy plan, even before obligations are
   const plan = { schemaVersion: 1, documents: [] }
   await verifyRequirementTrace(root, plan)
   await assert.rejects(verifyRequirementTrace(root, { ...plan, documents: [{ type: 'example.booking' }] }), /Use schema 2/)
-  for (const file of ['business-obligations.json', 'business-obligations.lock.json', 'requirement-trace.json']) {
+  for (const file of ['business-obligations.json', 'business-obligations.lock.json', 'brief-sources.json', 'brief-context.json', 'requirement-trace.json']) {
     const path = join(root, 'ai', file)
     await writeFile(path, '{}')
     await assert.rejects(verifyRequirementTrace(root, plan), /Use schema 2/)
@@ -31,6 +31,7 @@ test('source bindings survive deletion of a declared check and preserve dated an
   t.after(() => rm(root, { recursive: true, force: true }))
   await mkdir(join(root, 'ai'))
   await verifyRequirementTrace(root, { schemaVersion: 1 })
+  await writeFile(join(root, 'ai/brief-sources.json'), JSON.stringify(['brief.md']))
   const quote = 'A resource can only be booked once in a given interval.'
   await writeFile(join(root, 'brief.md'), quote + '\nLimit the monthly report working set.')
   const plan = { schemaVersion: 2, documents: [{ type: 'example.booking' }],
@@ -70,7 +71,7 @@ test('source bindings survive deletion of a declared check and preserve dated an
   await save(weakened)
   await assert.rejects(verifyRequirementTrace(root, searchOnly), /Missing required server proof/)
   await writeFile(obligationsPath, JSON.stringify(obligations.slice(1)))
-  await assert.rejects(verifyRequirementTrace(root, searchOnly), /reviewed baseline/)
+  await assert.rejects(verifyRequirementTrace(root, searchOnly), /Unreviewed brief text/)
   await writeFile(obligationsPath, JSON.stringify(obligations))
   await save(trace)
   await assert.rejects(verifyRequirementTrace(root, { ...plan, businessChecks: plan.businessChecks.slice(1) }), /Missing required/)
@@ -151,6 +152,7 @@ test('a reviewed baseline binds actual values, named tests, visual evidence and 
     { integrationTest: testName }, visual] }]
   const write = (name, value) => writeFile(join(root, name), JSON.stringify(value))
   await writeFile(join(root, source), quote)
+  await write('ai/brief-sources.json', [source])
   await write('ai/business-obligations.json', [{ ...requirement, effect: 'write', proofs: [visual] }])
   await assert.rejects(captureObligations(root, true), /persisted readback/)
   await write('ai/business-obligations.json', [{ ...requirement, effect: 'recovery', proofs: [{ integrationTest: testName }] }])
@@ -182,11 +184,128 @@ test('a reviewed baseline binds actual values, named tests, visual evidence and 
     process.env.NGB_OBLIGATIONS_SHA256 = baseline.baselineSha256
     await captureObligations(root, false)
     await writeFile(join(root, source), quote + '\nNew business condition.')
-    await assert.rejects(captureObligations(root, true), /reviewed brief/)
+    await assert.rejects(captureObligations(root, true), /Unreviewed brief text/)
   } finally {
     if (previous === undefined) delete process.env.NGB_OBLIGATIONS_SHA256
     else process.env.NGB_OBLIGATIONS_SHA256 = previous
   }
+})
+
+test('initial capture identifies omitted text and fingerprints explicit context alongside requirements', async t => {
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'ngb-brief-')))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  await mkdir(join(root, 'ai'))
+  const source = 'brief.md'
+  const opening = 'Only active resources can start work.'
+  const additional = '每项资源单独结算。'
+  const heading = 'Operations'
+  await writeFile(join(root, source), '# ' + heading + '\n\n' + opening + '\n' + additional)
+  const write = (file, data) => writeFile(join(root, 'ai', file), JSON.stringify(data))
+  const obligation = { id: 'active', source, quote: opening, effect: 'write',
+    proofs: [{ kind: 'state-invariant', target: 'catalog:example.resource', key: 'retire' }] }
+  await write('business-obligations.json', [obligation])
+  await write('brief-sources.json', [source])
+  await write('brief-context.json', [{ source, quote: heading, reason: 'Section heading.' }])
+  for (const apply of [false, true]) {
+    await assert.rejects(captureObligations(root, apply), /brief.md:4: 每项资源/)
+  }
+  const lock = join(root, 'ai/business-obligations.lock.json')
+  await assert.rejects(readFile(lock), { code: 'ENOENT' })
+  const complete = [obligation, { id: 'scope', source, quote: additional, effect: 'read',
+    proofs: [{ integrationTest: 'Example.Matchers.NeverMixResources' }] }]
+  await write('business-obligations.json', complete)
+  const preview = await captureObligations(root, false)
+  assert.deepEqual(await captureObligations(root, true), preview)
+  await write('brief-context.json', [{ source, quote: heading, reason: 'Updated explanation.' }])
+  assert.notEqual((await captureObligations(root, false)).baselineSha256, preview.baselineSha256)
+  await write('brief-context.json', [{ source, quote: heading, reason: ' ' }])
+  await assert.rejects(captureObligations(root, true), /exact context excerpt/)
+  assert.deepEqual(JSON.parse(await readFile(lock, 'utf8')), preview)
+})
+
+test('capture checks each independently declared source before writing a lock', async t => {
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'ngb-appendix-')))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  await mkdir(join(root, 'ai'))
+  const source = 'requirements.md'
+  const appendix = 'limits.txt'
+  const quote = 'Show the account position. The limits are specified in limits.txt.'
+  const limit = 'Reject a withdrawal above the remaining balance.'
+  const write = (name, value) => writeFile(join(root, 'ai', name), JSON.stringify(value))
+  const reviewed = [{ id: 'position', source, quote, effect: 'read', proofs: [{ integrationTest: 'Example.Position' }] }]
+  await writeFile(join(root, source), quote)
+  await write('business-obligations.json', reviewed)
+  await assert.rejects(captureObligations(root, true), /brief-sources.json/)
+  for (const paths of [[], {}, [source, source.toUpperCase()], ['../limits.txt'], ['limits.json']]) {
+    await write('brief-sources.json', paths)
+    await assert.rejects(captureObligations(root, true))
+  }
+
+  await write('brief-sources.json', [source, appendix])
+  await assert.rejects(captureObligations(root, true), /Missing declared brief source: limits.txt/)
+  await writeFile(join(root, appendix), limit)
+  await assert.rejects(captureObligations(root, true), /Unreviewed brief text at limits.txt/)
+  await assert.rejects(readFile(join(root, 'ai/business-obligations.lock.json')), { code: 'ENOENT' })
+  reviewed.push({ id: 'limits', source: appendix, quote: limit, effect: 'write',
+    proofs: [{ kind: 'state-invariant', target: 'document:example.withdrawal', key: 'funds' }] })
+  await write('business-obligations.json', reviewed)
+  const cli = fileURLToPath(new URL('../../packaging/templates/content/infrastructure/ngb.mjs', import.meta.url))
+  const args = [cli, 'ai', 'capture', '--app', root, '--format', 'json']
+  const baseline = JSON.parse(execFileSync(process.execPath, [...args, '--apply'], { encoding: 'utf8' })).baseline
+  assert.deepEqual(Object.keys(baseline.sources), [source, appendix])
+  const pinned = { ...process.env, NGB_OBLIGATIONS_SHA256: baseline.baselineSha256 }
+  execFileSync(process.execPath, args, { env: pinned })
+  await writeFile(join(root, appendix), limit + '\n')
+  assert.throws(() => execFileSync(process.execPath, args, { env: pinned }), /Command failed/)
+  await write('brief-sources.json', [source])
+  await assert.rejects(captureObligations(root, true), /outside ai\/brief-sources.json/)
+})
+
+test('capture requires fixture values and a row-growth budget independent of the observed results', async t => {
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'ngb-fixture-')))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  await mkdir(join(root, 'ai'))
+  const requirement = { id: 'position', source: 'brief.md', quote: 'Show the position for each resource.' }
+  await writeFile(join(root, requirement.source), requirement.quote)
+  const write = (name, data) => writeFile(join(root, 'ai', name), JSON.stringify(data))
+  await write('brief-sources.json', [requirement.source])
+  const target = 'report:example.position'
+  const history = { kind: 'historical-cutoff', target, key: 'balance' }
+  const growth = { kind: 'query-growth', target, key: 'resource-position' }
+  const budget = { smallRows: 1, largeRows: 12, maxAdditionalQueries: 0 }
+  const record = proofs => write('business-obligations.json', [{ ...requirement, effect: 'read', proofs }])
+  for (const [kind, field] of [['report-export', 'expectedCells'], ['dated-withdrawal', 'expectedControl'],
+    ['historical-cutoff', 'expected']]) {
+    await record([{ ...history, kind, target: kind === 'dated-withdrawal' ? 'document:example.request' : target }])
+    await assert.rejects(captureObligations(root, false), new RegExp('fixture expectation ' + field))
+  }
+  const fixture = { expected: 0, laterExpected: 7, timeZone: 'UTC' }
+  const values = { valueFields: ['number'] }
+  await record([{ ...history, expect: { expected: 0 } }])
+  await assert.rejects(captureObligations(root, false), /laterExpected/)
+  for (const [proof, error] of [
+    [{ ...history, kind: 'xlsx-export', expect: { expectedCells: [7] } }, /Unknown server acceptance check: xlsx-export/],
+    [{ ...history, kind: 'report-export', expect: { expectedCells: { total: 7 } } }, /populated business cell/],
+    [{ ...history, expect: { expected: 0, laterExpected: 0, timeZone: 'UTC' } }, /observable effect/],
+    [{ kind: 'dated-withdrawal', target: 'document:example.request', key: 'release',
+      expect: { expectedControl: { source: null, consumer: null, balance: null } } }, /persisted lifecycle/],
+  ]) {
+    await record([proof])
+    await assert.rejects(captureObligations(root, true), error)
+  }
+  await record([{ ...growth, budget }])
+  await assert.rejects(captureObligations(root, false), /valueFields/)
+  await record([{ ...history, expect: { ...fixture, timeZone: null } }])
+  await captureObligations(root, false)
+  await record([{ ...history, expect: fixture }, { ...growth, budget, expect: values }])
+  await captureObligations(root, true)
+  await write('requirement-trace.json', { documentRules: [], requirements: [{ ...requirement, checks: [history, growth] }] })
+  const plan = { schemaVersion: 2, requirements: [{ id: requirement.id, cases: [] }], cases: [], documents: [],
+    businessChecks: [history, { ...growth, budget }] }
+  await verifyRequirementTrace(root, plan, new Set(), [{ proof: { ...history, ...fixture } }, { proof: { ...growth, ...values } }])
+  await assert.rejects(verifyRequirementTrace(root, plan, new Set(), [{ proof: { ...history, expected: 0, laterExpected: 1 } }]), /laterExpected/)
+  plan.businessChecks[1].budget = { ...budget, maxAdditionalQueries: 5 }
+  await assert.rejects(verifyRequirementTrace(root, plan), /reviewed query-growth/)
 })
 
 test('release upgrade evidence distinguishes an unavailable predecessor from a verified release pair', async t => {

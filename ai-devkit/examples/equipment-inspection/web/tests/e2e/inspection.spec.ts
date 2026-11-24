@@ -356,6 +356,23 @@ test('administrator creates equipment, saves an incomplete Draft, completes and 
   await expect(page.getByTestId('report-sheet-table').getByRole('row').filter({ hasText: 'All checks passed' }))
     .toContainText('1')
 
+  const previousDay = new Date(now - day).toISOString().slice(0, 10)
+  const earlierContext = Buffer.from(JSON.stringify({
+    reportCode: 'example.inspection-summary',
+    request: {
+      ...reportRequest,
+      parameters: { from_utc: previousDay, to_utc: previousDay },
+      layout: { detailFields: ['inspection_display'], showDetails: true, showSubtotals: false, showGrandTotals: false },
+    } satisfies ReportExecutionRequestDto,
+  })).toString('base64url')
+  const earlierRead = page.waitForResponse(response => new URL(response.url()).pathname
+    === '/api/reports/example.inspection-summary/execute')
+  await page.goto(`${origin}/reports/example.inspection-summary?ctx=${earlierContext}`)
+  const earlier = await earlierRead
+  expect(earlier.ok()).toBe(true)
+  expect((await earlier.json()).sheet.rows).toHaveLength(0)
+  await expect(page.getByTestId('report-sheet-empty')).toBeVisible()
+
   const detailsContext = Buffer.from(JSON.stringify({
     reportCode: 'example.inspection-summary',
     request: {

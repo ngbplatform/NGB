@@ -7,6 +7,9 @@ Use when implementing verification or diagnosing a failed development profile.
 Use the captured obligations to select each negative case, correction and positive
 control. Keep the reviewed source input outside plan generators. Check both sides
 of date boundaries, intervening changes and the effects left after a rejected write.
+Check each appendix in the independently declared brief inventory. Verify local-day
+boundaries in the report zone, per-resource writes and simultaneous intervals on
+different resources. Reconcile measured lookup rows with independently seeded values.
 Use the same-input retry and dashboard context checks with the installed UI.
 Do not infer complete certification from one passing suite or lower a failing gate.
 
@@ -56,4 +59,8 @@ settlement and correction scenarios in the application plan. Give each competing
 write and each replayable operation a dedicated executable case.
 
 Bind the server-side business observations to passing integration tests in the current run.
+Check dated corrections against the original records and both event dates.
+Compare historical results and populated XLSX cells with the captured fixture.
+For batching requirements, compare trace-scoped SQL counts for the same authenticated
+form operation at the two reviewed row counts. Exercise empty results separately.
 Follow [server acceptance](../../references/server-acceptance.md).

@@ -1,29 +1,72 @@
 import assert from 'node:assert/strict'
 import { isDashboardMenuItem } from './acceptance-outcomes.mjs'
+import { businessDateFormat, validateBusinessTarget, validateExportCells, validateGrowthBudget, validateHistoricalControl,
+  validateValueFields, validateWithdrawalState } from './business-checks.mjs'
 import { readAsset } from './file-data.mjs'
-import { digest, objectKeys } from './kit-contracts.mjs'
+import { digest, distinctPaths, objectKeys } from './kit-contracts.mjs'
 import { applyAssets } from './kit-files.mjs'
 
 const binding = check => JSON.stringify([check.kind, check.target, check.key])
 const obligationPath = 'ai/business-obligations.json'
+const sourceListPath = 'ai/brief-sources.json'
 const baselinePath = 'ai/business-obligations.lock.json'
+const contextPath = 'ai/brief-context.json'
 const tracePath = 'ai/requirement-trace.json'
 const writeChecks = new Set(['source-membership', 'withdrawal-cycle', 'effective-prerequisite', 'dated-withdrawal',
   'state-invariant', 'history-conflict', 'interval-overlap', 'snapshot-stability'])
+const expectedFields = {
+  'historical-cutoff': ['expected', 'laterExpected', 'timeZone'],
+  'query-growth': ['valueFields'],
+  'report-export': ['expectedCells'],
+  'dated-withdrawal': ['expectedControl'],
+}
+
+function verifyBriefCoverage(path, source, excerpts) {
+  const ranges = []
+  for (const quote of new Set(excerpts)) {
+    let start = source.indexOf(quote)
+    while (start !== -1) {
+      const end = start + quote.length
+      ranges.push([start, end])
+      start = source.indexOf(quote, end)
+    }
+  }
+  ranges.sort(([left], [right]) => left - right)
+  let covered = 0
+  for (const [start, end] of [...ranges, [source.length, source.length]]) {
+    const gap = source.slice(covered, start)
+    const missing = gap.search(/[\p{L}\p{N}]/u)
+    if (missing >= 0) {
+      const line = source.slice(0, covered + missing).split('\n').length
+      assert.fail(`Unreviewed brief text at ${path}:${line}: ${gap.slice(missing, missing + 120).trim()}. Bind it to an obligation or explain its context in ${contextPath}.`)
+    }
+    covered = Math.max(covered, end)
+  }
+}
 
 async function readObligations(root) {
   const original = await readAsset(root, obligationPath)
   assert.ok(original, 'Capture ai/business-obligations.json from the brief before generating the plan. See server-acceptance.md.')
   const obligations = JSON.parse(original)
   assert.ok(Array.isArray(obligations) && obligations.length, 'Capture the individual obligations from the original brief.')
+  const sourceListText = await readAsset(root, sourceListPath)
+  assert.ok(sourceListText, 'List every authoritative brief and appendix in ai/brief-sources.json before capture.')
+  const sourcePaths = JSON.parse(sourceListText)
+  assert.ok(Array.isArray(sourcePaths) && sourcePaths.length > 0, 'List the reviewed brief source paths.')
+  distinctPaths(sourcePaths)
   const sources = new Map()
+  for (const path of sourcePaths) {
+    assert.match(path, /\.(?:md|txt)$/i, 'Use a Markdown or text source for the brief.')
+    const source = await readAsset(root, path)
+    assert.ok(source !== null, 'Missing declared brief source: ' + path)
+    sources.set(path, source)
+  }
   const ids = new Set()
   for (const item of obligations) {
     objectKeys(item, ['id', 'source', 'quote', 'effect', 'proofs'])
     assert.ok(typeof item.id === 'string' && item.id.trim() && !ids.has(item.id), 'Use a distinct obligation ID.')
     ids.add(item.id)
-    assert.match(item.source, /\.(?:md|txt)$/i)
-    if (!sources.has(item.source)) sources.set(item.source, await readAsset(root, item.source))
+    assert.ok(sources.has(item.source), 'Obligation cites a source outside ai/brief-sources.json: ' + item.source)
     assert.ok(typeof item.quote === 'string' && item.quote.trim() && sources.get(item.source)?.includes(item.quote),
       'Cannot find the cited requirement in the original brief: ' + item.id)
     assert.ok(Array.isArray(item.proofs) && item.proofs.length, 'Specify observable proof for ' + item.id)
@@ -32,7 +75,10 @@ async function readObligations(root) {
     for (const proof of item.proofs) {
       if (proof.scenario) objectKeys(proof, ['scenario', 'target', 'outcome'])
       else if (proof.integrationTest) objectKeys(proof, ['integrationTest'])
-      else objectKeys(proof, ['kind', 'target', 'key'], ['stores', 'expect'])
+      else {
+        objectKeys(proof, ['kind', 'target', 'key'], ['stores', 'expect', 'budget'])
+        validateBusinessTarget(proof.kind, proof.target)
+      }
       for (const field of ['scenario', 'target', 'outcome', 'integrationTest', 'kind', 'key']) {
         if (field in proof) assert.ok(typeof proof[field] === 'string' && proof[field].trim(), 'Missing proof ' + field + ' for ' + item.id)
       }
@@ -45,6 +91,20 @@ async function readObligations(root) {
         assert.ok(proof.expect && typeof proof.expect === 'object' && !Array.isArray(proof.expect) && Object.keys(proof.expect).length,
           'Specify concrete observations from the brief.')
       }
+      if (Object.hasOwn(expectedFields, proof.kind)) {
+        for (const field of expectedFields[proof.kind]) {
+          assert.ok(proof.expect && Object.hasOwn(proof.expect, field), 'Capture the independent fixture expectation ' + field + ' for ' + item.id)
+        }
+        if (proof.kind === 'historical-cutoff') {
+          validateHistoricalControl(proof.expect.expected, proof.expect.laterExpected)
+          if (proof.expect.timeZone !== null) businessDateFormat(proof.expect.timeZone)
+        }
+        if (proof.kind === 'query-growth') validateValueFields(proof.expect.valueFields)
+        if (proof.kind === 'report-export') validateExportCells(proof.expect.expectedCells)
+        if (proof.kind === 'dated-withdrawal') validateWithdrawalState(proof.expect.expectedControl)
+      }
+      if (proof.kind === 'query-growth') validateGrowthBudget(proof.budget)
+      else assert.ok(!('budget' in proof), 'Only query-growth obligations carry a row-growth budget.')
     }
     if (item.effect === 'write') {
       assert.ok(item.proofs.some(proof => writeChecks.has(proof.kind) || (proof.scenario && proof.target.startsWith('document:')
@@ -56,15 +116,28 @@ async function readObligations(root) {
         'Bind the declared storage scope to a restore rehearsal: ' + item.id)
     }
   }
+  const contextText = await readAsset(root, contextPath)
+  const context = contextText === null ? [] : JSON.parse(contextText)
+  assert.ok(Array.isArray(context), 'List the reviewed non-requirement excerpts.')
+  for (const item of context) {
+    objectKeys(item, ['source', 'quote', 'reason'])
+    assert.ok(typeof item.quote === 'string' && item.quote.trim() && sources.get(item.source)?.includes(item.quote)
+      && typeof item.reason === 'string' && item.reason.trim(), 'Explain each exact context excerpt from the reviewed brief.')
+  }
+  for (const [path, source] of sources) {
+    verifyBriefCoverage(path, source, [...obligations, ...context].filter(item => item.source === path).map(item => item.quote))
+  }
   const fingerprints = {
+    sourceListSha256: digest(sourceListText),
     obligationsSha256: digest(original),
     sources: Object.fromEntries([...sources].map(([path, value]) => [path, digest(value)])),
+    ...(contextText === null ? {} : { contextSha256: digest(contextText) }),
   }
   const baseline = { ...fingerprints, baselineSha256: digest(JSON.stringify(fingerprints)) }
   if (process.env.NGB_OBLIGATIONS_SHA256) {
     assert.equal(baseline.baselineSha256, process.env.NGB_OBLIGATIONS_SHA256, 'The reviewed brief or business obligations changed.')
   }
-  return { obligations, baseline, snapshot: { ...Object.fromEntries(sources), [obligationPath]: original } }
+  return { obligations, baseline, snapshot: { ...Object.fromEntries(sources), [sourceListPath]: sourceListText, [obligationPath]: original, [contextPath]: contextText } }
 }
 
 export async function captureObligations(root, apply) {
@@ -119,7 +192,7 @@ export async function verifyApplicationUpgrade(root, observations) {
 // requirement binding survives removing a rule and its test from the plan.
 export async function verifyRequirementTrace(root, plan, passedTests, observations) {
   if (plan.schemaVersion === 1) {
-    const inputs = await Promise.all([obligationPath, baselinePath, tracePath].map(path => readAsset(root, path)))
+    const inputs = await Promise.all([sourceListPath, obligationPath, baselinePath, tracePath, contextPath].map(path => readAsset(root, path)))
     assert.ok(!plan.documents?.length && !process.env.NGB_OBLIGATIONS_SHA256 && inputs.every(input => input === null),
       'Use schema 2 for application documents or business obligations. Only the empty starter uses schema 1.')
     return
@@ -139,6 +212,7 @@ export async function verifyRequirementTrace(root, plan, passedTests, observatio
     'Retain each original business obligation in the trace and acceptance plan.')
   const sources = new Map()
   const checked = new Set()
+  const reviewedBindings = new Set(obligations.flatMap(item => item.proofs.filter(proof => proof.kind).map(binding)))
   const declared = new Map(plan.businessChecks.map(check => [binding(check), check]))
   for (const row of trace.requirements) {
     objectKeys(row, ['id', 'source', 'quote', 'checks'], ['integrationTests', 'browserOnlyReason'])
@@ -158,6 +232,9 @@ export async function verifyRequirementTrace(root, plan, passedTests, observatio
         assert.ok(row.integrationTests?.includes(proof.integrationTest), 'Missing required integration test for ' + row.id)
       } else {
         assert.ok(row.checks.some(check => binding(check) === binding(proof)), 'Missing required server proof for ' + row.id + ': ' + binding(proof))
+        if (proof.kind === 'query-growth') {
+          assert.deepEqual(declared.get(binding(proof))?.budget, proof.budget, 'Keep the reviewed query-growth sizes and budget for ' + row.id)
+        }
         if (proof.stores) {
           assert.deepEqual([...(declared.get(binding(proof))?.stores ?? [])].sort(), [...proof.stores].sort(),
             'Rehearse the complete recovery scope from the original brief.')
@@ -183,6 +260,10 @@ export async function verifyRequirementTrace(root, plan, passedTests, observatio
     for (const check of row.checks) {
       objectKeys(check, ['kind', 'target', 'key'], ['workingSet'])
       const id = binding(check)
+      if (Object.hasOwn(expectedFields, check.kind)) {
+        assert.ok(reviewedBindings.has(id),
+          'Capture the fixture expectations or growth budget in the independent brief review: ' + id)
+      }
       assert.ok(declared.has(id), `Missing required server check for ${row.id}: ${id}`)
       if (check.workingSet !== undefined) {
         assert.ok(check.workingSet === true && check.kind === 'capacity' && declared.get(id).budget.maxWorkingSetBytes,

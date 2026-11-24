@@ -38,7 +38,7 @@ public sealed class DatedWorkflowTests
         await RefusedAsync(() => Post("2026-04-03", -20, -1));
         Assert.Equal(initial, await State());
 
-        await Post("2026-04-04", -20, -1);
+        var consumer = await Post("2026-04-04", -20, -1);
         await Post("2026-04-05", 20, 0);
         var committed = await State();
         await RefusedAsync(() => Withdraw(original));
@@ -55,6 +55,10 @@ public sealed class DatedWorkflowTests
 
         await Post("2026-04-02", 20, 0);
         Assert.Equal(original, await Withdraw(original));
+        const string active = "SELECT active FROM work_example.movement WHERE id = @id";
+        Assert.False(await connection.QuerySingleAsync<bool>(active, new { id = original }));
+        Assert.True(await connection.QuerySingleAsync<bool>(active, new { id = consumer }));
+        Assert.Equal(20, await connection.ExecuteScalarAsync<int>(position, new { day = "2026-04-02" }));
         Assert.Equal(0, await connection.ExecuteScalarAsync<int>(position, new { day = "2026-04-04" }));
     }
 

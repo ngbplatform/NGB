@@ -16,6 +16,7 @@ const kinds = {
   'snapshot-stability': 'document',
   'restore-rehearsal': 'navigation',
   capacity: null,
+  'query-growth': null,
   'worker-backlog': 'job',
 }
 
@@ -23,6 +24,14 @@ const identity = entry => JSON.stringify([entry.kind, entry.target, entry.key])
 
 function nonempty(value) {
   return typeof value === 'string' && value.trim().length > 0
+}
+
+export function validateBusinessTarget(kind, target) {
+  assert.ok(Object.hasOwn(kinds, kind), 'Unknown server acceptance check: ' + kind)
+  const [type, ...code] = String(target).split(':')
+  const allowedTypes = ['capacity', 'query-growth'].includes(kind) ? ['document', 'catalog', 'report', 'navigation']
+    : kind === 'state-invariant' ? ['document', 'catalog'] : [kinds[kind]]
+  assert.ok(allowedTypes.includes(type) && nonempty(code.join(':')), 'Invalid server acceptance target.')
 }
 
 export function validateBusinessChecks(plan) {
@@ -37,11 +46,7 @@ export function validateBusinessChecks(plan) {
   const bindings = new Set()
   for (const entry of plan.businessChecks) {
     objectKeys(entry, ['kind', 'target', 'key', 'test'], ['unrestrictedReason', 'budget', 'stores'])
-    assert.ok(Object.hasOwn(kinds, entry.kind), 'Unknown server acceptance check.')
-    const [type, ...code] = String(entry.target).split(':')
-    const allowedTypes = entry.kind === 'capacity' ? ['document', 'catalog', 'report', 'navigation']
-      : entry.kind === 'state-invariant' ? ['document', 'catalog'] : [kinds[entry.kind]]
-    assert.ok(allowedTypes.includes(type) && nonempty(code.join(':')), 'Invalid server acceptance target.')
+    validateBusinessTarget(entry.kind, entry.target)
     if (entry.kind !== 'worker-backlog') assert.ok(plan.surfaces.includes(entry.target), 'Unknown server acceptance surface.')
     assert.ok(nonempty(entry.key) && nonempty(entry.test), 'Bind each server check to a business key and integration test.')
     if (entry.kind === 'capacity') {
@@ -52,7 +57,9 @@ export function validateBusinessChecks(plan) {
       for (const key of Object.keys(entry.budget).filter(key => key !== 'populations')) {
         assert.ok(Number.isSafeInteger(entry.budget[key]) && entry.budget[key] > 0, 'Declare positive workload budgets.')
       }
-    } else assert.ok(entry.budget === undefined, 'Workload budgets apply only to capacity checks.')
+    } else if (entry.kind === 'query-growth') {
+      validateGrowthBudget(entry.budget)
+    } else assert.ok(entry.budget === undefined, 'Workload budgets apply only to capacity and query-growth checks.')
     if (entry.stores !== undefined) {
       assert.ok(entry.kind === 'restore-rehearsal' && Array.isArray(entry.stores) && entry.stores.includes('database')
         && entry.stores.every(store => ['database', 'identity', 'attachments'].includes(store))
@@ -106,6 +113,100 @@ function successful(status) {
   return Number.isInteger(status) && status >= 200 && status < 300
 }
 
+export function validateGrowthBudget(budget) {
+  objectKeys(budget, ['smallRows', 'largeRows', 'maxAdditionalQueries'])
+  const { smallRows, largeRows, maxAdditionalQueries } = budget
+  assert.ok(Number.isSafeInteger(smallRows) && smallRows > 0 && Number.isSafeInteger(largeRows) && largeRows > smallRows,
+    'Declare two increasing, positive numbers of returned rows.')
+  assert.ok(Number.isSafeInteger(maxAdditionalQueries) && maxAdditionalQueries >= 0 && maxAdditionalQueries < largeRows - smallRows,
+    'The growth budget must detect one additional database command per added row.')
+}
+
+export function validateValueFields(fields) {
+  assert.ok(Array.isArray(fields) && fields.length > 0 && fields.every(field => nonempty(field) && field !== 'id')
+    && new Set(fields).size === fields.length, 'Declare the distinct business fields to compare for every returned identity.')
+}
+
+function checkPageValues(sample, fields) {
+  assert.ok(Array.isArray(sample.expectedRows) && sample.expectedRows.length === sample.returnedRows,
+    'Provide independently seeded identities and field values for the entire requested page.')
+  for (const row of sample.expectedRows) {
+    objectKeys(row, ['id', ...fields])
+    assert.ok(nonempty(row.id) || Number.isSafeInteger(row.id), 'Identify each expected row.')
+  }
+  assert.equal(new Set(sample.expectedRows.map(row => row.id)).size, sample.returnedRows, 'Use distinct expected row identities.')
+  assert.deepEqual(sample.actualRows, sample.expectedRows, 'The ordered row identities and business values differ from the fixture.')
+}
+
+function populated(value) {
+  return Number.isFinite(value) || typeof value === 'boolean' || nonempty(value)
+}
+
+export function validateWithdrawalState(snapshot) {
+  for (const field of ['source', 'consumer']) {
+    assert.ok(populated(snapshot?.[field]), 'Read the persisted lifecycle state of both source and consumer.')
+  }
+  assert.ok(Number.isFinite(snapshot.balance) || (nonempty(snapshot.balance) && /^-?\d+(?:\.\d+)?$/.test(snapshot.balance)),
+    'Read the numeric balance at the dependent operation date.')
+}
+
+export function validateExportCells(cells) {
+  assert.ok(Array.isArray(cells) && cells.some(populated), 'Reconcile at least one populated business cell in the exported worksheet.')
+}
+
+const calendarDate = /^\d{4}-\d{2}-\d{2}$/
+const offsetTimestamp = /^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.(\d{1,9}))?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/
+
+function checkedDate(value) {
+  assert.ok(calendarDate.test(value) && Number.isFinite(Date.parse(value))
+    && new Date(value).toISOString().slice(0, 10) === value, 'Use a valid ISO calendar date.')
+  return value
+}
+
+function instant(value) {
+  const match = offsetTimestamp.exec(value)
+  assert.ok(match, 'Use an ISO timestamp with an explicit UTC offset.')
+  checkedDate(value.slice(0, 10))
+  // Date.parse retains milliseconds. Keep the sub-millisecond part of database timestamps.
+  const fraction = (match[1] ?? '').padEnd(9, '0')
+  return BigInt(Date.parse(value)) * 1000000n + BigInt(fraction.slice(3))
+}
+
+export function businessDateFormat(timeZone) {
+  assert.ok(nonempty(timeZone), 'Identify the configured business time zone for a date-based report.')
+  return new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' })
+}
+
+function verifyCutoffPeriod(proof) {
+  if (proof.timeZone === null) {
+    const event = instant(proof.laterEffectiveAt)
+    assert.ok(instant(proof.cutoff) < event && event <= instant(proof.laterCutoff),
+      'The later event must fall between the two requested instants.')
+    return
+  }
+
+  const format = businessDateFormat(proof.timeZone)
+  const cutoff = checkedDate(proof.cutoff)
+  const laterCutoff = checkedDate(proof.laterCutoff)
+  const boundary = instant(proof.cutoffExclusive)
+  const milliseconds = Date.parse(proof.cutoffExclusive)
+  assert.ok(boundary % 1000000n === 0n && format.format(milliseconds - 1) === cutoff
+    && format.format(milliseconds) > cutoff, 'Use the first instant after the selected business day.')
+  let eventDay
+  if (calendarDate.test(proof.laterEffectiveAt)) {
+    eventDay = checkedDate(proof.laterEffectiveAt)
+  } else {
+    assert.ok(instant(proof.laterEffectiveAt) >= boundary, 'The later event is inside the original period.')
+    eventDay = format.format(Date.parse(proof.laterEffectiveAt))
+  }
+  assert.ok(cutoff < eventDay && eventDay <= laterCutoff, 'The later event must belong to the later requested business period.')
+}
+
+export function validateHistoricalControl(expected, laterExpected) {
+  assert.notDeepEqual(laterExpected, expected,
+    'Use a later event with an observable effect; include a changing detail or state alongside an invariant total.')
+}
+
 function unchanged(before, after) {
   assert.ok(before && typeof before === 'object' && Object.keys(before).length > 0, 'Capture the persisted business state.')
   assert.deepEqual(after, before, 'A refused operation changed the persisted state.')
@@ -138,9 +239,12 @@ function verifyObservation(entry, proof) {
       if (proof.replacementAt !== undefined) {
         assert.ok(Date.parse(proof.consumerAt) < Date.parse(proof.replacementAt), 'Exercise a replacement effective after the dependent operation.')
       }
-      assert.ok(Object.hasOwn(proof.beforeRefusal, 'consumer') && Object.hasOwn(proof.beforeRefusal, 'source')
-        && Object.hasOwn(proof.beforeRefusal, 'balance') && nonempty(proof.persistedControlId),
-      'Compare persisted source, consumer and balance and read back the permitted correction.')
+      validateWithdrawalState(proof.beforeRefusal)
+      validateWithdrawalState(proof.afterControl)
+      assert.equal(proof.persistedControlId, proof.sourceId, 'Read back the original source after its permitted withdrawal.')
+      assert.equal(proof.controlConsumerId, proof.consumerId, 'Read back the same dependent operation after correction.')
+      assert.notDeepEqual(proof.afterControl.source, proof.beforeRefusal.source, 'The permitted correction must withdraw the source.')
+      assert.deepEqual(proof.afterControl, proof.expectedControl, 'Incorrect source, consumer or dated balance after correction.')
     } else if (entry.kind === 'effective-prerequisite') {
       assert.ok(nonempty(proof.persistedControlId) && Date.parse(proof.attemptAt) < Date.parse(proof.prerequisiteAt)
         && Date.parse(proof.prerequisiteAt) <= Date.parse(proof.controlAt),
@@ -182,7 +286,7 @@ function verifyObservation(entry, proof) {
   } else if (entry.kind === 'report-export') {
     assert.ok(successful(proof.downloadStatus) && proof.contentType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       'Download the workbook through the report endpoint.')
-    assert.ok(Array.isArray(proof.expectedCells) && proof.expectedCells.length, 'Reconcile populated business cells in the exported worksheet.')
+    validateExportCells(proof.expectedCells)
     assert.deepEqual(proof.screenCells, proof.expectedCells, 'Incorrect report figures for the selected scope.')
     assert.deepEqual(proof.worksheetCells, proof.expectedCells, 'Incorrect exported cells for the selected scope.')
   } else if (entry.kind === 'business-day-cutoff') {
@@ -222,6 +326,17 @@ function verifyObservation(entry, proof) {
       assert.match(file.originalSha256, /^[a-f0-9]{64}$/)
       assert.equal(file.sha256, file.originalSha256, 'Compare the downloaded contents with the original attachment.')
     }
+  } else if (entry.kind === 'query-growth') {
+    const { small, large } = proof
+    validateValueFields(proof.valueFields)
+    for (const [sample, rows] of [[small, entry.budget.smallRows], [large, entry.budget.largeRows]]) {
+      assert.ok(sample && successful(sample.status) && sample.returnedRows === rows
+        && Number.isSafeInteger(sample.queries) && sample.queries > 0, 'Measure a successful, instrumented read of the declared row count.')
+      assert.ok(nonempty(sample.actor) && sample.operation === entry.key, 'Measure the bound operation with an identified actor.')
+      checkPageValues(sample, proof.valueFields)
+    }
+    assert.equal(small.actor, large.actor, 'Use the same actor for both requests.')
+    assert.ok(large.queries - small.queries <= entry.budget.maxAdditionalQueries, 'Database command growth exceeded the reviewed row budget.')
   } else if (entry.kind === 'capacity') {
     const budget = entry.budget
     for (const [key, minimum] of Object.entries(budget.populations)) {
@@ -251,7 +366,8 @@ function verifyObservation(entry, proof) {
     assert.ok(successful(proof.recoveryStatus), 'Exercise the permitted recovery sequence.')
   } else if (entry.kind === 'historical-cutoff') {
     assert.ok(nonempty(proof.cutoff) && proof.repeatedCutoff === proof.cutoff, 'Execute the same historical cutoff twice.')
-    assert.ok(Date.parse(proof.laterEffectiveAt) > Date.parse(proof.cutoff) && nonempty(proof.laterEvent) && successful(proof.laterStatus),
+    verifyCutoffPeriod(proof)
+    assert.ok(nonempty(proof.laterEvent) && successful(proof.laterStatus),
       'Commit a distinct later event affecting this measure.')
     assert.ok(Object.hasOwn(proof, 'expected') && Object.hasOwn(proof, 'before') && Object.hasOwn(proof, 'after'),
       'Capture the expected and both observed values for this measure.')
@@ -259,6 +375,7 @@ function verifyObservation(entry, proof) {
     assert.deepEqual(proof.after, proof.expected, 'A later event changed the earlier result.')
     assert.ok(Object.hasOwn(proof, 'laterExpected') && Object.hasOwn(proof, 'laterActual'), 'Read a control result at the later cutoff.')
     assert.deepEqual(proof.laterActual, proof.laterExpected, 'Incorrect later-period control result.')
+    validateHistoricalControl(proof.expected, proof.laterExpected)
   } else {
     assert.ok(Number.isSafeInteger(proof.batchLimit) && proof.batchLimit > 0, 'Use the effective worker batch limit.')
     assert.ok(Array.isArray(proof.eligible) && proof.eligible.length > proof.batchLimit

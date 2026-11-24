@@ -68,10 +68,15 @@ are not passes. Never claim certification for business behavior that was not
 tested or for a release whose required evidence is incomplete.
 
 Complete the [executed browser acceptance matrix](references/browser-acceptance.md) before declaring generation complete.
-Before implementing a business brief, retain its text, extract the individual rules into
+Before implementing a business brief, inventory every supplied requirements file and authoritative appendix in
+`ai/brief-sources.json`. Retain these files and extract their individual rules into
 `ai/business-obligations.json` and record the reviewed baseline with
 `node infrastructure/ngb.mjs ai capture --apply`. Keep this input independent of the
 code that generates tests, `ai/acceptance.json` and `ai/requirement-trace.json`.
+Review every source and substantive clause a second time against the original text.
+Record the actor, operation, date, expected result and a positive control. Explain
+non-requirement excerpts in `ai/brief-context.json` when needed. Freeze fixture
+expectations and any per-operation query-growth bounds during this review.
 The [server acceptance guide](references/server-acceptance.md) describes the bindings,
 the upgrade path for existing plans and the observable results to record.
 Classify effective prerequisites, closed intervals and facts captured for later use

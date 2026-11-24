@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -101,6 +102,81 @@ public sealed class InspectionSourceTests(ITestOutputHelper output)
             using var denied = await anonymous.GetAsync(path);
             Assert.Equal(HttpStatusCode.Unauthorized, denied.StatusCode);
         }
+    }
+
+    [Fact]
+    public async Task Source_lookup_reads_a_larger_page_with_the_same_number_of_database_commands()
+    {
+        await using var host = new InspectionHost();
+        await host.StartAsync();
+        const string actor = "administrator";
+        const string operation = "available-sources";
+        using var admin = await host.CreateClientAsync(actor);
+        var equipment = await PostAsync<CatalogItemDto>(admin, "/api/catalogs/example.equipment", Payload(("display", "Lookup volume")));
+        await using var scope = host.Services.CreateAsyncScope();
+        var drafts = scope.ServiceProvider.GetRequiredService<IDocumentDraftService>();
+        var firstDay = new DateTime(2026, 5, 1, 12, 0, 0, DateTimeKind.Utc);
+        var seeded = new List<InspectionSource>();
+        for (var index = 0; index < 12; index++)
+        {
+            var result = index % 2 == 0 ? "Passed" : "Rejected";
+            var draft = await PostAsync<DocumentDto>(admin, Documents, CompleteInspectionPayload(equipment.Id, result));
+            await drafts.UpdateDraftAsync(draft.Id, number: null, dateUtc: firstDay.AddDays(index));
+            var confirmed = await ConfirmAsync(admin, draft);
+            Assert.False(string.IsNullOrWhiteSpace(confirmed.Number));
+            seeded.Add(new InspectionSource(confirmed.Id, confirmed.Number, equipment.Id, result));
+        }
+
+        // Each date is unique. The lookup presents the most recent source first.
+        seeded.Reverse();
+
+        var path = $"/api/inspection-sources?equipmentId={equipment.Id}&limit=";
+        var warm = (await admin.GetFromJsonAsync<InspectionSource[]>(path + seeded.Count, Json))!;
+        Assert.Equal(seeded.ToArray(), warm);
+
+        async Task<SourcePageEvidence> ReadPageAsync(int limit)
+        {
+            using var trace = new Activity(operation).SetIdFormat(ActivityIdFormat.W3C).Start();
+            var queries = 0;
+            using var listener = new ActivityListener
+            {
+                ShouldListenTo = source => source.Name.StartsWith("Npgsql", StringComparison.Ordinal)
+                    || source.Name is "System.Net.Http" or "Microsoft.AspNetCore",
+                Sample = static (ref _) => ActivitySamplingResult.AllData,
+                SampleUsingParentId = static (ref _) => ActivitySamplingResult.AllData,
+                ActivityStopped = activity =>
+                {
+                    if (activity.TraceId == trace.TraceId
+                        && (activity.GetTagItem("db.query.text") is not null || activity.GetTagItem("db.statement") is not null))
+                        Interlocked.Increment(ref queries);
+                }
+            };
+            ActivitySource.AddActivityListener(listener);
+            using var response = await admin.GetAsync(path + limit);
+            await EnsureSuccessAsync(response);
+            var page = (await response.Content.ReadFromJsonAsync<InspectionSource[]>(Json))!;
+            var expected = seeded.Take(limit).ToArray();
+            Assert.Equal(expected, page);
+            Assert.True(queries > 0);
+            return new SourcePageEvidence(actor, operation, (int)response.StatusCode, queries, expected, page);
+        }
+
+        var small = await ReadPageAsync(1);
+        var large = await ReadPageAsync(12);
+        Assert.True(large.Queries <= small.Queries);
+        output.WriteLine("NGB-CHECK " + JsonSerializer.Serialize(new
+        {
+            kind = "query-growth", target = "document:" + EquipmentDefinitions.InspectionCode, key = operation,
+            valueFields = new[] { "number", "equipmentId", "result" },
+            small,
+            large
+        }, Json));
+    }
+
+    private sealed record SourcePageEvidence(string Actor, string Operation, int Status, int Queries,
+        InspectionSource[] ExpectedRows, InspectionSource[] ActualRows)
+    {
+        public int ReturnedRows => ActualRows.Length;
     }
 
     [Fact]

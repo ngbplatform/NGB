@@ -77,9 +77,19 @@ effective cutoff as the movements. Preserve separate business and recording date
 For each measure capture `cutoff`, `repeatedCutoff`, independent `expected`,
 and actual `before` and `after` at that exact cutoff. Between executions commit
 the later event and capture its ID, successful response and effective timestamp
-as `laterEvent`, `laterStatus` and `laterEffectiveAt`. Use ISO dates/timestamps.
+as `laterEvent`, `laterStatus` and `laterEffectiveAt`. Record `laterCutoff` from the
+second report request. For calendar dates, bind the report's configured `timeZone`
+in the obligation and emit it with the first instant after the earlier local day
+(`cutoffExclusive`, an ISO timestamp with offset). Include an event inside the
+day and an event on the exclusive boundary. Verify midnight using the configured
+zone on short and long DST days. A date-only effective value represents a local
+business date. For instant-based reports bind and emit `timeZone: null` and use
+offset-qualified timestamps for the cutoffs and event. In both modes the later
+read must include the event.
 Read the later period as a positive control and include its independent
-`laterExpected` and observed `laterActual`. Use a fixture that exercises the condition of interest.
+`laterExpected` and observed `laterActual`. Choose a later event whose effect is visible.
+When a total stays constant, include a changing detail ID, count or lifecycle state
+from the same read in both expected snapshots. Zero is a valid earlier or later value.
 One scenario may emit several observations when it actually reads every measure.
 The `Posting_a_later_inspection_preserves_the_count_at_the_earlier_cutoff` example
 in `InspectionReportTests.cs` executes both cutoffs against the report endpoint
@@ -115,6 +125,29 @@ Emit actual `populations` and the array of `{status, milliseconds, queries}`
 on the passing integration test. The CLI computes the percentile and checks
 each query count. The starter's role/menu load profile covers only those reads.
 
+For a batching or per-row query requirement, bind a `query-growth` check to each
+ordinary operation in scope, including line pricing, dependent lookups and editor
+reads. Seed enough eligible rows and warm the authenticated route. Read two
+different page or document sizes with the same actor, filters and operation.
+Fetch related values in a set-based read and match them to the requested rows
+by key. Verify the identities and values as well as the number of rows.
+Count SQL commands within each request trace, including serialization of the result.
+The size of the whole database belongs to the separate capacity workload.
+
+Capture a `budget` such as `{"smallRows":1,"largeRows":12,"maxAdditionalQueries":0}`
+in the obligation and copy it to the bound check. Emit `small` and `large`, each
+with `actor`, `operation` (the binding key), HTTP `status`, actual `returnedRows`
+and `queries`. Bind the fields required by the brief in `expect.valueFields`
+(for example `["number","result"]`) and emit the same list as `valueFields`.
+For each sample emit ordered `expectedRows` from independently seeded records
+and `actualRows` projected from the measured response. Each row contains its
+distinct `id` and the named business fields. Use synthetic values safe for test
+reports. Derive fixture ordering from the contract and include distinct labels
+so a constant or swapped value fails even when IDs and query counts match.
+Choose the permitted increase before implementation and keep it
+below one additional command per added row. The working source lookup in
+`InspectionSourceTests.cs` exercises the same form endpoint at both sizes.
+
 ## Bounded recurring work
 
 Keep the starter worker-host integration test that reads `IBackgroundJobCatalog`
@@ -138,7 +171,12 @@ in both observed arrays. Assert resolution behavior wherever the brief defines i
 
 ### Capture the obligations before implementing
 
-Read the original brief independently of the acceptance-plan generator. Split compound
+Start from the requirements supplied by the project owner. Inventory all authoritative
+Markdown and text files, including referenced appendices. Save their project-relative
+paths as a JSON array in `ai/brief-sources.json` before extracting any obligations.
+A one-file brief uses an array with one path, for example `["requirements.md"]`.
+A multi-file brief might use `["requirements.md","appendices/limits.txt"]`.
+Read this inventory independently of the acceptance-plan generator. Split compound
 requirements when their rules can fail independently. Identify the operation, business
 key, effective date, prerequisite, consumer and permitted correction. Include creation,
 edits and changes of state. For an interval, specify endpoint inclusion and check both
@@ -165,19 +203,42 @@ Store these project-owned inputs in `ai/business-obligations.json`. For example:
 ]
 ```
 
+Make a second pass over every authoritative source file in its original order.
+For each substantive clause, identify the actor, write or read, applicable date,
+observable effect and independent positive control. Include independent resource
+histories, an active sibling beside a retired record, and permitted correction
+at each affected date when the brief requires these distinctions. For a scoped
+balance, fund one resource, refuse a withdrawal on its unfunded sibling, read
+both balances, then fund the sibling and allow the withdrawal. For scoped
+intervals, also allow two independent resources to occupy the same interval. Keep separately
+testable clauses bound even when their quotations overlap. Record headings,
+context or deliberate exclusions in the optional `ai/brief-context.json` array,
+for example `[{"source":"requirements.md","quote":"Operations","reason":"Section heading."}]`.
+The CLI checks text coverage across the entire declared inventory, including files
+with no obligation quotes. It fingerprints the inventory, source contents and context. Review the list of source files, the meaning of each
+quotation and each exclusion independently of the code and generated test plan.
+
 `node infrastructure/ngb.mjs ai capture` previews the fingerprint. Add `--apply`
-to record the reviewed input and the complete source-file digests. Commit the two
-obligation files with the brief. For CI or model comparison, keep the reviewed
+to record the reviewed input and the complete source-file digests. Commit the source list, obligations and lock with the brief. For CI or model comparison, keep the reviewed
 `baselineSha256` independently and provide it as `NGB_OBLIGATIONS_SHA256`.
 Once an application declares documents, obligations or a requirement trace, its
 acceptance plan must use schema 2, including for the integration-only profile.
-When migrating a schema 2 plan, extract these inputs from the original requirements,
-then reconcile the existing tests. Recapture differences only as a reviewed change
+For an existing schema 2 plan, review the original delivery and its appendices to
+create the source list. Recover the intended report zone and lookup fields from
+the requirements, update the test observations, then preview and record the new
+fingerprint. Update any independently pinned digest after reviewing that change. Recapture differences only as a reviewed change
 of requirements or acceptance criteria. Keep capture out of test/plan generators.
 
-Each obligation binds one or more checks by kind, target and key. Optional `expect`
+Each obligation binds one or more checks by kind, target and key. Its `expect`
 fields compare precomputed values with the current integration test's observed
-properties. A named behavioral integration test can use `{"integrationTest":"..."}`.
+properties. Bind `historical-cutoff` to `expected`, `laterExpected` and `timeZone`,
+`report-export` to an ordered array of `expectedCells`, and `dated-withdrawal`
+to the `expectedControl` snapshot. For example, when a filtered report should
+export a count of three, the obligation proof is
+`{"kind":"report-export","target":"report:example.activity","key":"filtered-count","expect":{"expectedCells":[3]}}`.
+Derive them from the original fixture and rule before calling the implementation.
+For other observations, use `expect` when the brief specifies a concrete value.
+A named behavioral integration test can use `{"integrationTest":"..."}`.
 A UI obligation uses `{"scenario":"navigation","target":"navigation:example.home","outcome":"dashboard-home"}`.
 Write, identity, financial and final-state rules need a write and a fresh read of
 persisted effects. A label or search check covers only its own presentation rule.
@@ -185,6 +246,11 @@ Classify each obligation as `write`, `read`, `presentation`, `recovery` or
 `operations`. A write requires a structured server mutation check or the matching
 document `command:<type>/<code>` browser proof, which executes the command and
 reopens the changed field. Recovery requires the explicit stores from the brief.
+Classify the behavior the clause requires. Seed postings that establish a report's
+opening and closing values belong to its read fixture. A clause that also specifies
+which postings must succeed or be refused needs a separate write proof. Preview
+the map with `ai capture` and resolve its diagnostics against the source before
+recording the baseline.
 
 ### Exercise the business timeline
 
@@ -199,7 +265,9 @@ For each report advertising XLSX export, bind a `report-export` check. Execute
 the report and download its workbook with the same parameters and filters. Read
 the worksheet cells and compare both results with independently seeded expected
 values. Emit `downloadStatus`, `contentType`, `expectedCells`, `screenCells`
-and `worksheetCells`; use names, dates, details or totals appropriate to the report.
+and `worksheetCells`. Include a populated business value such as a name, date,
+number or boolean. Zero and false are valid. Also exercise a genuinely empty
+filter when applicable, checking the empty report and downloaded worksheet.
 
 * Bind `state-invariant` to the actual catalog or document operation. Exercise blank
   required input, attempts to change or reuse a stable identifier, or a transition
@@ -215,8 +283,15 @@ and `worksheetCells`; use names, dates, details or totals appropriate to the rep
   cannot fund an earlier commitment. Exercise the authorized correction order and,
   where substitution is allowed, an already effective replacement. Emit `sourceId`,
   `consumerId`, `sourceAt`, `consumerAt`, `replacementAt` for substitution,
-  `persistedControlId`, both statuses, refusal reasons and before/after snapshots with
-  `source`, `consumer` and `balance`. Serialize competing writes on the same key.
+  both statuses and refusal reasons. Read the original records before and after
+  refusal and after the permitted correction. Emit `persistedControlId` for the
+  original source and `controlConsumerId` for the original dependent record.
+  Each of `beforeRefusal`, `afterRefusal` and `afterControl` contains persisted
+  lifecycle values in `source` and `consumer` and the numeric balance on the
+  dependent date in `balance`. Compare the permitted result with the separately
+  captured `expectedControl`. Verify the source changed and that both dated
+  balances and the dependent movement match the correction rule.
+  Serialize competing writes on the same key.
   For ID-based reversals specify which arguments are omitted and which effective
   date comes from the original event. Run both the refused and the permitted
   reversal through that same interface and read the resulting dated balances.

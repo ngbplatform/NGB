@@ -50,9 +50,9 @@ The complete test profile checks the full compiled backend source inventory at
 functions and statements. Missing tests, skipped tests and missing required
 evidence fail the profile. Reports and logs are under `.ngb/reports/<run-id>/`.
 
-Before implementation, extract individual source obligations from the supplied
-brief into `ai/business-obligations.json` and run `node infrastructure/ngb.mjs ai capture --apply`.
-Version the brief, obligations and resulting lock together. Keep a reviewed copy
+Before implementation, list the authoritative brief and appendices in
+`ai/brief-sources.json`, extract their individual rules into `ai/business-obligations.json` and run `node infrastructure/ngb.mjs ai capture --apply`.
+Version the source list, briefs, obligations and resulting lock together. Keep a reviewed copy
 of the fingerprint outside the generator when comparing independent implementations.
 See `ai/vendor/references/server-acceptance.md` for the format and migration steps.
 

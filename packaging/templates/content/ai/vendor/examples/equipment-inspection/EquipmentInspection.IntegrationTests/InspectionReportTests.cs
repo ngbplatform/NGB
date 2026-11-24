@@ -13,6 +13,7 @@ using NGB.Contracts.Reporting;
 using NGB.Contracts.Services;
 using NGB.Persistence.Documents;
 using NGB.Persistence.Reporting;
+using NGB.Runtime.Documents;
 using Xunit;
 using Xunit.Abstractions;
 using static EquipmentInspection.IntegrationTests.InspectionRequests;
@@ -62,6 +63,9 @@ public sealed class InspectionReportTests(ITestOutputHelper output)
         var draft = await PostAsync<DocumentDto>(admin, "/api/documents/example.inspection",
             CompleteInspectionPayload(equipment.Id));
         await using var scope = host.Services.CreateAsyncScope();
+        var boundary = new DateTime(2026, 5, 2, 0, 0, 0, DateTimeKind.Utc);
+        var drafts = scope.ServiceProvider.GetRequiredService<IDocumentDraftService>();
+        await drafts.UpdateDraftAsync(draft.Id, number: null, dateUtc: boundary);
         var document = await scope.ServiceProvider.GetRequiredService<IDocumentRepository>().GetAsync(draft.Id);
         Assert.NotNull(document);
         var day = DateOnly.FromDateTime(document.DateUtc);
@@ -70,8 +74,16 @@ public sealed class InspectionReportTests(ITestOutputHelper output)
         var historical = new ReportExecutionRequestDto(
             Parameters: new Dictionary<string, string> { ["from_utc"] = cutoff, ["to_utc"] = cutoff },
             Filters: Filter("equipment_id", new[] { equipment.Id }));
+        var documents = "/api/documents/example.inspection";
+        var midday = await PostAsync<DocumentDto>(admin, documents, CompleteInspectionPayload(equipment.Id));
+        await drafts.UpdateDraftAsync(midday.Id, number: null, dateUtc: boundary.AddHours(-12));
+        var middayPath = documents + "/" + midday.Id;
+        var middayState = await admin.GetFromJsonAsync<DocumentEditorStateDto>(middayPath + "/editor-state", Json);
+        using var middayPost = await ExecutePostAsync(admin, middayPath, middayState!.DocumentVersion, midday.Id.ToString());
+        await ReadActionAsync(middayPost);
+
         var before = Total((await PostAsync<ReportExecutionResponseDto>(admin, ExecutePath, historical)).Sheet.Rows);
-        Assert.Equal(0m, before);
+        Assert.Equal(1m, before);
 
         var path = "/api/documents/example.inspection/" + draft.Id;
         var state = await admin.GetFromJsonAsync<DocumentEditorStateDto>(path + "/editor-state", Json);
@@ -80,23 +92,26 @@ public sealed class InspectionReportTests(ITestOutputHelper output)
         var after = Total((await PostAsync<ReportExecutionResponseDto>(admin, ExecutePath, historical)).Sheet.Rows);
         var later = historical with { Parameters = new Dictionary<string, string> { ["from_utc"] = cutoff, ["to_utc"] = laterCutoff } };
         var laterActual = Total((await PostAsync<ReportExecutionResponseDto>(admin, ExecutePath, later)).Sheet.Rows);
-        Assert.Equal(0m, after);
-        Assert.Equal(1m, laterActual);
+        Assert.Equal(1m, after);
+        Assert.Equal(2m, laterActual);
 
         output.WriteLine("NGB-CHECK " + JsonSerializer.Serialize(new
         {
             kind = "historical-cutoff",
             target = "report:" + InspectionReports.Summary,
             key = "inspection_count",
-            cutoff,
+            cutoff = historical.Parameters!["to_utc"],
             repeatedCutoff = historical.Parameters!["to_utc"],
+            laterCutoff = later.Parameters!["to_utc"],
+            timeZone = "UTC",
+            cutoffExclusive = boundary,
             laterEvent = posted.Document.Id,
             laterEffectiveAt = document.DateUtc,
             laterStatus = (int)post.StatusCode,
-            expected = 0m,
+            expected = 1m,
             before,
             after,
-            laterExpected = 1m,
+            laterExpected = 2m,
             laterActual
         }));
     }
@@ -467,6 +482,17 @@ public sealed class InspectionReportTests(ITestOutputHelper output)
             screenCells = new[] { Total(screen.Sheet.Rows) },
             worksheetCells = new[] { decimal.Parse(totalRow[1], CultureInfo.InvariantCulture) }
         }));
+
+        var unused = await PostAsync<CatalogItemDto>(admin, "/api/catalogs/example.equipment", Payload(("display", "No inspections")));
+        var empty = request with { Filters = Filter("equipment_id", new[] { unused.Id }) };
+        var emptyScreen = await PostAsync<ReportExecutionResponseDto>(admin, ExecutePath, empty);
+        Assert.Empty(Groups(emptyScreen.Sheet.Rows));
+        using var emptyDownload = await admin.PostAsJsonAsync(path, export with { Filters = empty.Filters });
+        await EnsureSuccessAsync(emptyDownload);
+        var emptyRows = await ReadWorksheetAsync(emptyDownload);
+        Assert.DoesNotContain(emptyRows, row => row.Any(cell => cell is "Follow-up" or "Passed" or "Rejected"));
+        foreach (var row in emptyRows.Where(row => row.Length == 2 && row[0].Contains("Total", StringComparison.OrdinalIgnoreCase)))
+            Assert.Equal(0m, decimal.Parse(row[1], CultureInfo.InvariantCulture));
     }
 
     private static async Task<string[][]> ReadWorksheetAsync(HttpResponseMessage response)

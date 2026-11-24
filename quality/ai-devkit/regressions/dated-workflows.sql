@@ -3,6 +3,7 @@ INSERT INTO work_example.resource VALUES (1, 'Q1', 'quality@example.test', 'Amer
 DO $audit$
 DECLARE
     first_credit bigint;
+    dependent bigint;
     original bigint;
     subsequent bigint;
     amounts numeric[];
@@ -23,7 +24,7 @@ BEGIN
         RAISE EXCEPTION 'oracle: future entitlement accepted';
     EXCEPTION WHEN check_violation THEN NULL;
     END;
-    PERFORM work_example.change_position(1, '2026-05-06', -20, -1);
+    dependent := work_example.change_position(1, '2026-05-06', -20, -1);
     PERFORM work_example.change_position(1, '2026-05-08', 20, 0);
     BEGIN
         PERFORM work_example.change_position(1, NULL, 0, 0, first_credit);
@@ -41,6 +42,16 @@ BEGIN
        OR work_example.credit_balance(1, '2026-05-06') IS DISTINCT FROM 0 THEN
         RAISE EXCEPTION 'oracle: permitted replacement changed the balance';
     END IF;
+    -- Read the dependent movement through its public withdrawal interface,
+    -- then roll back this probe so the original history is still exercised below.
+    BEGIN
+        PERFORM work_example.change_position(1, NULL, 0, 0, dependent);
+        IF work_example.credit_balance(1, '2026-05-06') IS DISTINCT FROM 20 THEN
+            RAISE EXCEPTION 'oracle: permitted replacement changed the dependent movement';
+        END IF;
+        RAISE SQLSTATE 'Z0001';
+    EXCEPTION WHEN SQLSTATE 'Z0001' THEN NULL;
+    END;
 
     original := work_example.begin_assignment(1, '2026-05-08T03:20:00Z', 12);
     BEGIN
@@ -101,6 +112,46 @@ BEGIN
     END;
     IF (SELECT contact FROM work_example.resource WHERE id = 1) IS DISTINCT FROM 'quality@example.test' THEN
         RAISE EXCEPTION 'oracle: refused edit changed the contact';
+    END IF;
+
+    INSERT INTO work_example.resource VALUES (2, 'Q3', 'second@example.test', 'UTC', 'B', false);
+    PERFORM work_example.change_position(2, '2026-05-03', 7, 0);
+    IF work_example.credit_balance(1, '2026-05-03') IS DISTINCT FROM 20
+       OR work_example.credit_balance(2, '2026-05-03') IS DISTINCT FROM 7 THEN
+        RAISE EXCEPTION 'oracle: mixed resource balances';
+    END IF;
+
+    BEGIN
+        PERFORM work_example.begin_assignment(1, '2026-05-10T12:00:00Z', 10);
+        RAISE EXCEPTION 'oracle: retired resource accepted new work';
+    EXCEPTION WHEN check_violation THEN NULL;
+    END;
+    IF work_example.begin_assignment(2, '2026-05-10T12:00:00Z', 10) IS NULL THEN
+        RAISE EXCEPTION 'oracle: active resource could not start work';
+    END IF;
+    INSERT INTO work_example.resource VALUES (3, 'Q4', 'third@example.test', 'UTC', 'C', false);
+    BEGIN
+        IF work_example.begin_assignment(3, '2026-05-10T12:00:00Z', 10) IS NULL THEN
+            RAISE EXCEPTION 'oracle: simultaneous independent work was not recorded';
+        END IF;
+    EXCEPTION WHEN check_violation THEN
+        RAISE EXCEPTION 'oracle: independent simultaneous work refused';
+    END;
+
+    BEGIN
+        PERFORM work_example.change_position(3, '2026-05-03', -1, 0);
+        RAISE EXCEPTION 'oracle: used another resource funds';
+    EXCEPTION WHEN check_violation THEN NULL;
+    END;
+    IF work_example.credit_balance(2, '2026-05-03') IS DISTINCT FROM 7
+       OR work_example.credit_balance(3, '2026-05-03') IS DISTINCT FROM 0 THEN
+        RAISE EXCEPTION 'oracle: rejected withdrawal changed an independent balance';
+    END IF;
+    PERFORM work_example.change_position(3, '2026-05-03', 2, 0);
+    PERFORM work_example.change_position(3, '2026-05-03', -1, 0);
+    IF work_example.credit_balance(3, '2026-05-03') IS DISTINCT FROM 1
+       OR work_example.credit_balance(2, '2026-05-03') IS DISTINCT FROM 7 THEN
+        RAISE EXCEPTION 'oracle: own funded withdrawal changed the wrong balance';
     END IF;
 END;
 $audit$;
