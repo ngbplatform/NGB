@@ -8,6 +8,7 @@
     <ItemGroup>
         <None Update="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
         <None Include="../MigrationFixtures/baseline.json" Link="migration-baseline.json" CopyToOutputDirectory="PreserveNewest" />
+        <None Include="../TemporalFixtures/work-calendar.sql" Link="work-calendar.sql" CopyToOutputDirectory="PreserveNewest" />
     </ItemGroup>
 
     <ItemGroup>

@@ -49,6 +49,44 @@ async function search(page: Page, value: string) {
   return page.getByRole('dialog')
 }
 
+test('a failed quote retries with the same inputs and persists its calculated amount on reopening', async ({ page }, info) => {
+  const proof = await acceptanceProbe(page, info)
+  const { origin, headers } = await signIn(page)
+  const type = 'example.equipment-service'
+  const endpoint = origin + '/api/documents/' + type
+  const create = async (display: string, amount: number) => {
+    const response = await page.request.post(endpoint, { headers, data: { fields: { display, hours: 1, amount } } })
+    expect(response.ok(), await response.text()).toBe(true)
+    return (await response.json()).id as string
+  }
+  const source = await create('Standard service estimate', 12.45)
+  const draft = await create('Quoted service draft', 1)
+  await page.goto(origin + '/tests/e2e/fixtures/quoted-service.html?' + new URLSearchParams({ source, draft }))
+  const date = page.getByLabel('Pricing date')
+  await date.fill('2026-04-07')
+  await page.getByRole('button', { name: 'Add line' }).click()
+  const quantity = page.getByRole('spinbutton', { name: 'Quantity' })
+  await quantity.fill('3')
+  const item = page.getByRole('button', { name: 'Item', exact: true })
+  await item.click()
+  const url = endpoint + '/' + source
+  await page.route(url, route => route.fulfill({ status: 503, json: { title: 'Temporary quote failure' } }), { times: 1 })
+  const failed = page.waitForResponse(url)
+  await page.getByRole('option', { name: 'Standard service', exact: true }).click()
+  const save = page.getByRole('button', { name: 'Save estimate' })
+  await expect(save).toBeDisabled()
+  const storedField = page.locator('[data-validation-key="amount"] input').first()
+  await proof.outcome('persisted-retry:' + type, async checks => {
+    await checks.currentRetry(await failed, page.getByRole('status'), page.getByRole('button', { name: 'Retry price' }),
+      item.getByText('Standard service', { exact: true }), 'Standard service', page.getByText('3735', { exact: true }),
+      '3735', 'Price unavailable. Retry the calculation.')
+    await expect(quantity).toHaveValue('3')
+    await expect(date).toHaveValue('2026-04-07')
+    await checks.saveRetriedDraft(type, draft, save, ['fields', 'amount'], 37.35, storedField, '37.35')
+  })
+  await proof.finish('service-quote-retry', 'ngb-admin')
+})
+
 test('Document Flow shows both derivations and opens the original document from the grandchild', async ({ page }, info) => {
   const proof = await acceptanceProbe(page, info)
   const data = await seed(page)
@@ -400,6 +438,10 @@ test('dashboard shows actionable results on desktop and mobile and opens the mat
   const response = await loaded
   expect(response.ok(), await response.text()).toBe(true)
   const snapshot = await response.json()
+  const formatted = new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'numeric', day: 'numeric', timeZone: 'UTC' })
+    .format(new Date(snapshot.asOf + 'T00:00:00Z'))
+  await proof.outcome('dashboard-context', checks => checks.dashboardContext(page.locator('main time'),
+    '· Through ' + formatted))
   const attention = page.getByRole('region', { name: 'Requires attention' })
   const metrics = page.getByRole('region', { name: 'Monthly activity' })
   const toolbar = page.locator('.ngb-dashboard-toolbar-control')

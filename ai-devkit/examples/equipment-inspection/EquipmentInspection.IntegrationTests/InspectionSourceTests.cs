@@ -1,17 +1,61 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using EquipmentInspection.Definitions;
 using EquipmentInspection.Runtime;
+using Microsoft.Extensions.DependencyInjection;
 using NGB.Contracts.Documents;
+using NGB.Contracts.Metadata;
 using NGB.Contracts.Services;
+using NGB.Runtime.Documents;
 using Xunit;
+using Xunit.Abstractions;
 using static EquipmentInspection.IntegrationTests.InspectionRequests;
 
 namespace EquipmentInspection.IntegrationTests;
 
-public sealed class InspectionSourceTests
+public sealed class InspectionSourceTests(ITestOutputHelper output)
 {
     private const string Documents = "/api/documents/example.inspection";
+
+    [Fact]
+    public async Task Reinspection_requires_a_confirmed_source_effective_on_its_own_date()
+    {
+        await using var host = new InspectionHost();
+        await host.StartAsync();
+        using var admin = await host.CreateClientAsync("administrator");
+        var equipment = await PostAsync<CatalogItemDto>(admin, "/api/catalogs/example.equipment", Payload(("display", "Date control")));
+        var original = await CreateAsync(admin, equipment.Id);
+        await using var scope = host.Services.CreateAsyncScope();
+        var drafts = scope.ServiceProvider.GetRequiredService<IDocumentDraftService>();
+        var effective = new DateTime(2026, 4, 2, 12, 0, 0, DateTimeKind.Utc);
+        await drafts.UpdateDraftAsync(original.Id, number: null, dateUtc: effective);
+        var source = await ConfirmAsync(admin, original);
+        var derived = await DeriveAsync(admin, source, equipment.Id);
+        var path = Documents + "/" + derived.Id;
+        await drafts.UpdateDraftAsync(derived.Id, number: null, dateUtc: effective.AddDays(-1));
+        var before = (await admin.GetFromJsonAsync<DocumentDto>(path, Json))!;
+        using var refused = await ExecutePostAsync(admin, path, await VersionAsync(admin, derived.Id), "before-source");
+        const string expectedReason = "example.inspection.source_unavailable";
+        var reason = await AssertErrorAsync(refused, HttpStatusCode.Conflict, expectedReason);
+        var after = (await admin.GetFromJsonAsync<DocumentDto>(path, Json))!;
+        Assert.Equal(before.Status, after.Status);
+        await AssertNoEffectsAsync(admin, path);
+
+        await drafts.UpdateDraftAsync(derived.Id, number: null, dateUtc: effective);
+        using var control = await ExecutePostAsync(admin, path, await VersionAsync(admin, derived.Id), "at-source");
+        await EnsureSuccessAsync(control);
+        var posted = (await admin.GetFromJsonAsync<DocumentDto>(path, Json))!;
+        Assert.Equal(DocumentStatus.Posted, posted.Status);
+        output.WriteLine("NGB-CHECK " + JsonSerializer.Serialize(new
+        {
+            kind = "effective-prerequisite", target = "document:" + EquipmentDefinitions.InspectionCode, key = "source-confirmation",
+            attemptAt = effective.AddDays(-1), prerequisiteAt = effective, controlAt = effective,
+            persistedControlId = posted.Id, controlStatus = (int)control.StatusCode, refusalStatus = (int)refused.StatusCode,
+            expectedReason, reason,
+            beforeRefusal = new { before.Id, before.Status }, afterRefusal = new { after.Id, after.Status }
+        }));
+    }
 
     [Fact]
     public async Task Search_filters_before_paging_and_preview_rechecks_status_scope_and_permission()

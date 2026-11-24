@@ -7,6 +7,10 @@ const kinds = {
   'withdrawal-cycle': 'document',
   'historical-cutoff': 'report',
   'effective-prerequisite': 'document',
+  'dated-withdrawal': 'document',
+  'state-invariant': null,
+  'business-day-cutoff': 'report',
+  'report-export': 'report',
   'history-conflict': 'document',
   'interval-overlap': 'document',
   'snapshot-stability': 'document',
@@ -32,10 +36,11 @@ export function validateBusinessChecks(plan) {
   }
   const bindings = new Set()
   for (const entry of plan.businessChecks) {
-    objectKeys(entry, ['kind', 'target', 'key', 'test'], ['unrestrictedReason', 'budget'])
+    objectKeys(entry, ['kind', 'target', 'key', 'test'], ['unrestrictedReason', 'budget', 'stores'])
     assert.ok(Object.hasOwn(kinds, entry.kind), 'Unknown server acceptance check.')
     const [type, ...code] = String(entry.target).split(':')
-    const allowedTypes = entry.kind === 'capacity' ? ['document', 'catalog', 'report', 'navigation'] : [kinds[entry.kind]]
+    const allowedTypes = entry.kind === 'capacity' ? ['document', 'catalog', 'report', 'navigation']
+      : entry.kind === 'state-invariant' ? ['document', 'catalog'] : [kinds[entry.kind]]
     assert.ok(allowedTypes.includes(type) && nonempty(code.join(':')), 'Invalid server acceptance target.')
     if (entry.kind !== 'worker-backlog') assert.ok(plan.surfaces.includes(entry.target), 'Unknown server acceptance surface.')
     assert.ok(nonempty(entry.key) && nonempty(entry.test), 'Bind each server check to a business key and integration test.')
@@ -48,6 +53,11 @@ export function validateBusinessChecks(plan) {
         assert.ok(Number.isSafeInteger(entry.budget[key]) && entry.budget[key] > 0, 'Declare positive workload budgets.')
       }
     } else assert.ok(entry.budget === undefined, 'Workload budgets apply only to capacity checks.')
+    if (entry.stores !== undefined) {
+      assert.ok(entry.kind === 'restore-rehearsal' && Array.isArray(entry.stores) && entry.stores.includes('database')
+        && entry.stores.every(store => ['database', 'identity', 'attachments'].includes(store))
+        && new Set(entry.stores).size === entry.stores.length, 'Declare the distinct stores in the restore rehearsal.')
+    }
     if (entry.unrestrictedReason !== undefined) {
       assert.ok(entry.kind === 'source-membership' && nonempty(entry.unrestrictedReason),
         'Explain why distinct in-scope sources are interchangeable.')
@@ -65,6 +75,7 @@ export function requireBusinessCheck(plan, kind, target, key) {
 export function reconcileHistoricalChecks(plan, reports) {
   for (const report of reports) {
     const target = `report:${report.reportCode}`
+    if (report.capabilities?.allowsXlsxExport) requireBusinessCheck(plan, 'report-export', target)
     const cutoff = report.parameters?.some(parameter => /^asof(?:utc|date|time|at)?$/i.test(parameter.code.replaceAll('_', '')))
     const declared = plan.businessChecks.some(entry => entry.target === target && entry.kind === 'historical-cutoff')
     if (!cutoff && !declared && !plan.cases.some(entry => entry.target === target && entry.scenario === 'historical-as-of')) continue
@@ -75,7 +86,7 @@ export function reconcileHistoricalChecks(plan, reports) {
 
 // xUnit writes the integration test's own output inside its UnitTestResult. Global
 // run output, unrelated passing tests and stale files cannot satisfy a binding.
-export function integrationObservations(xml, passedTests) {
+export function integrationObservations(xml, passedTests, prefix = 'NGB-CHECK ') {
   const root = readTestXml(xml)
   const observations = []
   for (const result of root.children.find(node => node.name === 'Results')?.children ?? []) {
@@ -84,7 +95,6 @@ export function integrationObservations(xml, passedTests) {
     const output = result.children.find(node => node.name === 'Output')
     const stdout = output?.children.find(node => node.name === 'StdOut')?.text ?? ''
     for (const line of stdout.split(/\r?\n/)) {
-      const prefix = 'NGB-CHECK '
       if (!line.trimStart().startsWith(prefix)) continue
       observations.push({ test: result.attributes.testName, proof: JSON.parse(line.trimStart().slice(prefix.length)) })
     }
@@ -114,12 +124,24 @@ function verifyObservation(entry, proof) {
       assert.ok([400, 409, 422].includes(proof.otherStatus) && nonempty(proof.reason) && proof.reason === proof.expectedReason, 'Expected a business refusal for the unrelated source.')
       unchanged(proof.beforeRefusal, proof.afterRefusal)
     }
-  } else if (['effective-prerequisite', 'history-conflict', 'interval-overlap'].includes(entry.kind)) {
+  } else if (['state-invariant', 'dated-withdrawal', 'effective-prerequisite', 'history-conflict', 'interval-overlap'].includes(entry.kind)) {
     assert.ok(successful(proof.controlStatus), 'The authorized positive control must succeed.')
     assert.ok([400, 409, 422].includes(proof.refusalStatus) && nonempty(proof.expectedReason)
       && proof.reason === proof.expectedReason, 'Expected the specific business refusal.')
     unchanged(proof.beforeRefusal, proof.afterRefusal)
-    if (entry.kind === 'effective-prerequisite') {
+    if (entry.kind === 'state-invariant') {
+      assert.ok(nonempty(proof.persistedControlId) && nonempty(proof.operation),
+        'Exercise the prohibited write and read back the authorized positive control.')
+    } else if (entry.kind === 'dated-withdrawal') {
+      assert.ok(nonempty(proof.sourceId) && nonempty(proof.consumerId) && proof.sourceId !== proof.consumerId
+        && Date.parse(proof.sourceAt) <= Date.parse(proof.consumerAt), 'Read back the dependent operation and its original prerequisite.')
+      if (proof.replacementAt !== undefined) {
+        assert.ok(Date.parse(proof.consumerAt) < Date.parse(proof.replacementAt), 'Exercise a replacement effective after the dependent operation.')
+      }
+      assert.ok(Object.hasOwn(proof.beforeRefusal, 'consumer') && Object.hasOwn(proof.beforeRefusal, 'source')
+        && Object.hasOwn(proof.beforeRefusal, 'balance') && nonempty(proof.persistedControlId),
+      'Compare persisted source, consumer and balance and read back the permitted correction.')
+    } else if (entry.kind === 'effective-prerequisite') {
       assert.ok(nonempty(proof.persistedControlId) && Date.parse(proof.attemptAt) < Date.parse(proof.prerequisiteAt)
         && Date.parse(proof.prerequisiteAt) <= Date.parse(proof.controlAt),
       'Exercise both sides of the prerequisite effective date.')
@@ -157,6 +179,30 @@ function verifyObservation(entry, proof) {
     assert.deepEqual(proof.observed, proof.expected, 'The consumer must use the captured business fact.')
     assert.notDeepEqual(proof.expected, proof.freshExpected, 'Use a fresh transaction affected by the change.')
     assert.deepEqual(proof.freshObserved, proof.freshExpected, 'The new source value must take effect on new work.')
+  } else if (entry.kind === 'report-export') {
+    assert.ok(successful(proof.downloadStatus) && proof.contentType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Download the workbook through the report endpoint.')
+    assert.ok(Array.isArray(proof.expectedCells) && proof.expectedCells.length, 'Reconcile populated business cells in the exported worksheet.')
+    assert.deepEqual(proof.screenCells, proof.expectedCells, 'Incorrect report figures for the selected scope.')
+    assert.deepEqual(proof.worksheetCells, proof.expectedCells, 'Incorrect exported cells for the selected scope.')
+  } else if (entry.kind === 'business-day-cutoff') {
+    assert.match(proof.businessDate, /^\d{4}-\d{2}-\d{2}$/)
+    const instant = Date.parse(proof.businessDate + 'T12:00:00Z')
+    const days = [-1, 0, 1].map(offset => new Date(instant + offset * 86400000).toISOString().slice(0, 10))
+    assert.equal(days[1], proof.businessDate, 'Use a valid calendar date.')
+    assert.ok(nonempty(proof.recordId) && Array.isArray(proof.zones) && proof.zones.length >= 2,
+      'Read the dated record at three consecutive business cutoffs in distinct configured zones.')
+    assert.ok(proof.opening != null && proof.closing != null, 'Read both business positions.')
+    assert.notDeepEqual(proof.opening, proof.closing, 'Use a dated event that changes the measured position.')
+    const offsets = new Set()
+    for (const sample of proof.zones) {
+      const zone = new Intl.DateTimeFormat('en-CA', { timeZone: sample.zone, year: 'numeric', month: '2-digit', day: '2-digit' })
+      assert.ok(nonempty(sample.zone) && sample.configuredZone === sample.zone, 'Read back the configured business zone.')
+      offsets.add(zone.format(instant))
+      assert.deepEqual(sample.dates, days, 'Record the actual three consecutive report cutoffs.')
+      assert.deepEqual(sample.values, [proof.opening, proof.closing, proof.closing], 'Reconcile the previous, selected and next business days.')
+    }
+    assert.ok(offsets.size >= 2, 'Include a zone where noon UTC falls on a different business date.')
   } else if (entry.kind === 'restore-rehearsal') {
     assert.ok(nonempty(proof.sourceInstance) && nonempty(proof.restoredInstance)
       && proof.sourceInstance !== proof.restoredInstance && Number.isSafeInteger(proof.backupBytes) && proof.backupBytes > 0,
@@ -164,6 +210,18 @@ function verifyObservation(entry, proof) {
     assert.match(proof.backupSha256 ?? '', /^[a-f0-9]{64}$/)
     assert.ok(successful(proof.readStatus) && nonempty(proof.recordId), 'Reopen a known business record after restoring.')
     unchanged(proof.beforeBackup, proof.afterRestore)
+    if (entry.stores?.includes('identity')) {
+      const login = proof.restoredLogin
+      assert.ok(login && successful(login.status) && nonempty(login.subject) && login.subject === login.originalSubject,
+        'Log in with the restored identity and compare its subject with the original.')
+    }
+    if (entry.stores?.includes('attachments')) {
+      const file = proof.restoredAttachment
+      assert.ok(file && successful(file.status) && nonempty(file.id) && Number.isSafeInteger(file.bytes) && file.bytes > 0,
+        'Download the restored attachment.')
+      assert.match(file.originalSha256, /^[a-f0-9]{64}$/)
+      assert.equal(file.sha256, file.originalSha256, 'Compare the downloaded contents with the original attachment.')
+    }
   } else if (entry.kind === 'capacity') {
     const budget = entry.budget
     for (const [key, minimum] of Object.entries(budget.populations)) {

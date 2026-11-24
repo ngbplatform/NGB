@@ -17,6 +17,11 @@ interface OutcomeChecks {
   journalCreateAccess(expected: boolean, create: Locator, deniedRequest?: APIResponse): Promise<void>
   reportReference(field: string, control: Locator, display: string, target: string | ReportDestination, id: string): Promise<void>
   dashboardHome(control: Locator, path: string): Promise<void>
+  dashboardContext(context: Locator, expected: string): Promise<void>
+  currentRetry(failed: Response, message: Locator, retry: Locator, input: Locator, selected: string,
+    result: Locator, expected: string, expectedMessage?: string): Promise<void>
+  saveRetriedDraft(type: string, id: string | null, save: Locator, payloadPath: (string | number)[],
+    expected: number, field: Locator, display: string): Promise<void>
   dashboardLayout(size: 'desktop' | 'mobile', toolbar: Locator, attention: Locator, metrics: Locator): Promise<void>
   businessCalendar(inputs: [Locator, Locator], expected: string): Promise<void>
   journalDraft(memo: string): Promise<void>
@@ -292,6 +297,62 @@ export async function acceptanceProbe(page: Page, info: TestInfo) {
       await expect(page).toHaveURL(url => url.origin === origin && url.pathname === path)
       assertions += 1
       activeChecks?.add('dashboard-home')
+    },
+    async dashboardContext(context: Locator, expected: string) {
+      expect(expected.trim()).toBeTruthy()
+      await probe.text(context, expected)
+      activeChecks?.add('dashboard-context')
+    },
+    async currentRetry(failed: Response, message: Locator, retry: Locator, input: Locator, selected: string,
+      result: Locator, expected: string, expectedMessage?: string) {
+      const request = failed.request()
+      expect(failed.status()).toBeGreaterThanOrEqual(500)
+      expect(new URL(failed.url()).origin).toBe(origin)
+      await expect(message).toBeVisible()
+      const explanation = (await message.innerText()).toLowerCase()
+        .replace(failed.statusText().toLowerCase(), '')
+        .replace(/\b(?:http|error|status(?:\s+code)?)\b/g, '')
+      expect(explanation, 'Explain the failed operation to the user.').toMatch(/\p{L}/u)
+      if (expectedMessage !== undefined) await expect(message).toHaveText(expectedMessage)
+      const checkSelection = await input.evaluate(element => element.matches('input, textarea, select')) ? probe.value : probe.text
+      await checkSelection(input, selected)
+      await expect(retry).toBeEnabled()
+      const response = page.waitForResponse(next => next.url() === failed.url()
+        && next.request().method() === request.method() && next.request().postData() === request.postData())
+      await retry.click()
+      expect((await response).ok()).toBe(true)
+      await checkSelection(input, selected)
+      await expect(message).not.toBeVisible()
+      expect(expected.trim()).toBeTruthy()
+      await probe.text(result, expected)
+      activeChecks?.add('current-retry')
+    },
+    async saveRetriedDraft(type: string, id: string | null, save: Locator, payloadPath: (string | number)[],
+      expected: number, field: Locator, display: string) {
+      expect(activeChecks?.has('current-retry')).toBe(true)
+      expect(Number.isFinite(expected)).toBe(true)
+      expect(payloadPath.length).toBeGreaterThan(0)
+      const collection = '/documents/' + encodeURIComponent(type)
+      const endpoint = origin + '/api' + collection
+      const written = page.waitForResponse(response => response.url() === (id ? endpoint + '/' + id : endpoint)
+        && response.request().method() === (id ? 'PUT' : 'POST'))
+      await save.click()
+      const response = await written
+      expect(response.ok()).toBe(true)
+      const document = await response.json()
+      expect(document.id).toBeTruthy()
+      if (id) expect(document.id).toBe(id)
+      const path = collection + '/' + encodeURIComponent(document.id)
+      const loaded = page.waitForResponse(r => r.url() === origin + '/api' + path + '/editor-state' && r.request().method() === 'GET')
+      await page.goto(origin + path)
+      const reopened = await loaded
+      expect(reopened.ok()).toBe(true)
+      const state = (await reopened.json()).document
+      expect(state.id).toBe(document.id)
+      expect(payloadPath.reduce((value, key) => value[key], state.payload)).toEqual(expected)
+      const check = await field.evaluate(element => element.matches('input, textarea, select')) ? probe.value : probe.text
+      await check(field, display)
+      activeChecks?.add('persisted-retry:' + type)
     },
     async dashboardLayout(size: 'desktop' | 'mobile', toolbar: Locator, attention: Locator, metrics: Locator) {
       const width = await page.evaluate(() => window.innerWidth)

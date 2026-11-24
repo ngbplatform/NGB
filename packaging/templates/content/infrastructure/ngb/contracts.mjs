@@ -5,7 +5,7 @@ export const toolVersion = '3.4.0'
 export const migrationGuide = 'https://docs.ngbplatform.com/architecture/external-app-upgrades'
 
 export function withManagedIgnores(original) {
-  const patterns = ['.ngb/', 'NuGet.Local.Config', 'web/.ngb-packages/*.tgz']
+  const patterns = ['.ngb/', 'NuGet.Local.Config', 'web/.ngb-packages/*.tgz', '/backups/', '/backup/']
   const lines = original.split(/\r?\n/)
   const missing = patterns.filter(pattern => !lines.includes(pattern))
   if (missing.length === 0) return original
@@ -65,7 +65,8 @@ export function argumentsFor(args) {
   }
   if (command === 'upgrade') exactVersion(values.to ?? '')
   if (command === 'ai') {
-    assert.ok(['status', 'sync'].includes(positionals[1]), 'Use ai status or ai sync.')
+    assert.ok(['status', 'sync', 'capture'].includes(positionals[1]), 'Use ai status, ai sync or ai capture.')
+    if (positionals[1] === 'capture') assert.ok(!values.to && !values.resolutions, 'ai capture accepts --apply to record the reviewed baseline.')
     if (positionals[1] === 'status') {
       assert.ok(!values.to && !values.apply && !values.resolutions, 'ai status is inspection-only.')
     }

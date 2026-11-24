@@ -9,3 +9,4 @@ NuGet.Local.Config
 web/.ngb-packages/*.tgz
 *.user
 /backups/
+/backup/

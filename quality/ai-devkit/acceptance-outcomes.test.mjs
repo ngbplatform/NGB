@@ -55,7 +55,10 @@ test('a denial cannot stand in for allowed withdrawal and one cleared line canno
     'prerequisite-withdrawal', 'dashboard-complete', 'historical-as-of', 'numbering-date']) {
     const entry = { id: scenario, outcomes: scenarioOutcomes[scenario] }
     verifyOutcomeProof(entry, { outcomes: entry.outcomes,
-      evidence: { 'metric-scope': ['metric-drilldown'], 'reconciled-total': ['figure'] } })
+      evidence: { 'metric-scope': ['metric-drilldown'], 'reconciled-total': ['figure'], 'current-retry': ['current-retry'] } })
+    if (scenario === 'async-race') {
+      assert.throws(() => verifyOutcomeProof(entry, { outcomes: entry.outcomes, evidence: { 'current-retry': ['text'] } }), /current-retry/)
+    }
     for (const missing of entry.outcomes) {
       assert.throws(() => verifyOutcomeProof(entry, { outcomes: entry.outcomes.filter(item => item !== missing) }),
         /every expected outcome/)
@@ -360,4 +363,31 @@ test('business totals, custom commands and register fields require evidence from
     assert.throws(() => verifyOutcomeProof({ id: 'foreign', outcomes: [name] },
       { outcomes: [name], evidence: { [name]: ['text'] } }), /verify its expected business value/)
   }
+})
+
+test('retrying a calculated draft requires a save and readback for that document', () => {
+  const { plan, inventory } = fixture()
+  const document = plan.documents[0]
+  document.priced = true
+  document.asynchronous = true
+  const target = 'document:' + document.type
+  const proof = 'persisted-retry:' + document.type
+  for (const scenario of ['pricing', 'async-race']) {
+    const entry = { ...plan.cases[0], id: scenario, title: scenario, target, scenario, outcomes: [...scenarioOutcomes[scenario]] }
+    plan.cases.push(entry)
+    plan.requirements[0].cases.push(entry.id)
+    plan.requirements[0].scenarios.push(scenario)
+  }
+  assert.throws(() => reconcileAcceptance(plan, inventory), /persisted-retry/)
+  document.synchronousPriceReason = ' '
+  assert.throws(() => reconcileAcceptance(plan, inventory), /independent asynchronous dependency/)
+  document.synchronousPriceReason = 'The price is entered locally. Only the item description loads asynchronously.'
+  reconcileAcceptance(plan, inventory)
+  delete document.synchronousPriceReason
+  plan.cases.at(-1).outcomes.push(proof)
+  assert.ok(reconcileAcceptance(plan, inventory).includes(target + '/' + proof))
+  const entry = { id: 'quote', outcomes: [proof] }
+  assert.throws(() => verifyOutcomeProof(entry, { outcomes: [proof], evidence: { [proof]: ['current-retry'] } }), /persisted-retry/)
+  assert.throws(() => verifyOutcomeProof(entry, { outcomes: [proof], evidence: { [proof]: [proof] } }), /failed calculation/)
+  verifyOutcomeProof(entry, { outcomes: [proof], evidence: { [proof]: ['current-retry', proof] } })
 })

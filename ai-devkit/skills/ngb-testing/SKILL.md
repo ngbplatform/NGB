@@ -4,6 +4,10 @@ description: Verify NGB application architecture, unit/integration/browser suite
 ---
 
 Use when implementing verification or diagnosing a failed development profile.
+Use the captured obligations to select each negative case, correction and positive
+control. Keep the reviewed source input outside plan generators. Check both sides
+of date boundaries, intervening changes and the effects left after a rejected write.
+Use the same-input retry and dashboard context checks with the installed UI.
 Do not infer complete certification from one passing suite or lower a failing gate.
 
 For generated applications, use the [registered-inventory acceptance matrix]({{references}}/application-generation.md#acceptance-evidence).

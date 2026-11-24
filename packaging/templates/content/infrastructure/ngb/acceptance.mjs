@@ -30,7 +30,7 @@ export function acceptancePlan(value) {
   for (const document of value.documents) {
     objectKeys(document, ['type', 'sourceDriven', 'priced', 'asynchronous'], current
       ? ['informationalReferences', 'withdrawalDependencies', 'flowAmountField', 'flowAmountReason', 'commands', 'referenceRegisters', 'operationalRegisters',
-        'effectivePrerequisites', 'uniqueHistoryKeys'] : [])
+        'effectivePrerequisites', 'uniqueHistoryKeys', 'synchronousPriceReason'] : [])
     for (const key of ['sourceDriven', 'priced', 'asynchronous']) {
       assert.equal(typeof document[key], 'boolean', `Classify ${document.type}/${key}.`)
     }
@@ -61,6 +61,12 @@ function documentOutcomes(plan, document, metadata) {
       && (!scenario || entry.scenario === scenario) && (!role || entry.role === role)),
     `Missing browser outcome: ${target}/${name}`)
     required.push(target + '/' + name)
+  }
+  if (document.synchronousPriceReason !== undefined) {
+    assert.ok(document.priced && document.asynchronous && typeof document.synchronousPriceReason === 'string'
+      && document.synchronousPriceReason.trim(), 'Explain the local price calculation and its independent asynchronous dependency.')
+  } else if (document.priced && document.asynchronous) {
+    needsOutcome('persisted-retry:' + document.type, 'async-race')
   }
   const fields = [
     ...(metadata.form?.sections?.flatMap(section => section.rows.flatMap(row => row.fields)) ?? []),

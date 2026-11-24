@@ -97,7 +97,11 @@ public sealed class InspectionSourceReader(IUnitOfWork unitOfWork) : IInspection
             "SELECT equipment_id FROM doc_example_inspection WHERE document_id = @Id", new { Id = documentId },
             unitOfWork.Transaction, cancellationToken: ct));
         return await unitOfWork.Connection.ExecuteScalarAsync<bool>(new CommandDefinition(
-            "SELECT EXISTS (SELECT 1 " + Eligible + " AND source.id = @Id)",
+            "SELECT EXISTS (SELECT 1 " + Eligible + """
+
+              AND source.id = @Id
+              AND source.date_utc <= (SELECT date_utc FROM documents WHERE id = @CurrentId))
+            """,
             new
             {
                 TypeCode = EquipmentDefinitions.InspectionCode,

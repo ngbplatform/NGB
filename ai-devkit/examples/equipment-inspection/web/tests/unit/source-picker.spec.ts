@@ -90,7 +90,10 @@ it('shows safe search errors and retries without restoring stale choices', async
   value.equipmentId.value = 'different'
   await nextTick()
   await expect.element(value.screen.getByRole('alert')).toHaveTextContent('Unable to load available inspections')
-  await value.screen.getByRole('combobox').fill('2026')
+  const failedUrl = state.get.mock.lastCall![0]
+  await value.screen.getByRole('button', { name: 'Retry search' }).click()
+  await vi.waitFor(() => expect(state.get.mock.lastCall![0]).toBe(failedUrl))
+  await value.screen.getByRole('button', { name: 'Show options' }).click()
   await expect.element(value.screen.getByRole('option', { name: value.sources[0].number })).toBeVisible()
   await expect.element(value.screen.getByRole('alert')).not.toBeInTheDocument()
 })
@@ -106,7 +109,13 @@ it('shows a public conflict but sanitizes unexpected preview failures', async ()
     await value.select()
     await expect.element(value.screen.getByRole('alert')).toHaveTextContent(
       failure instanceof ApiError ? 'Source consumed' : 'Unable to read this inspection')
-    await expect.element(value.screen.getByRole('combobox')).toHaveValue('')
+    await expect.element(value.screen.getByRole('combobox')).toHaveValue(failure instanceof ApiError ? '' : value.sources[0].number)
+    if (!(failure instanceof ApiError)) {
+      state.get.mockResolvedValueOnce(value.sources[0]).mockResolvedValueOnce({ display: 'Inspection bench' })
+      await value.screen.getByRole('button', { name: 'Retry preview' }).click()
+      await expect.element(value.screen.getByRole('status')).toHaveTextContent('Passed')
+      await expect.element(value.screen.getByRole('alert')).not.toBeInTheDocument()
+    }
   }
 })
 

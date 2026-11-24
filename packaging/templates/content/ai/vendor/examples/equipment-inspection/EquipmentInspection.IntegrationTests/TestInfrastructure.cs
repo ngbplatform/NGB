@@ -5,6 +5,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Containers;
+using DotNet.Testcontainers.Networks;
 using Npgsql;
 using Testcontainers.PostgreSql;
 
@@ -15,20 +16,41 @@ internal sealed class TestInfrastructure : IAsyncDisposable
     private static readonly object Gate = new();
     private static Task<TestInfrastructure>? _instance;
 
-    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine").Build();
+    private readonly INetwork _network = new NetworkBuilder().Build();
+    private readonly PostgreSqlContainer _postgres;
     private readonly string _password = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
     private readonly IContainer _keycloak;
     private readonly HttpClient _client = new() { Timeout = TimeSpan.FromSeconds(30) };
 
     private TestInfrastructure()
     {
-        _keycloak = new ContainerBuilder("quay.io/keycloak/keycloak:26.5.6")
+        _postgres = new PostgreSqlBuilder("postgres:16-alpine")
+            .WithNetwork(_network)
+            .WithNetworkAliases("database")
+            .Build();
+        _keycloak = IdentityBuilder().Build();
+    }
+
+    private ContainerBuilder IdentityBuilder()
+    {
+        return new ContainerBuilder("quay.io/keycloak/keycloak:26.5.6")
             .WithPortBinding(8080, true)
             .WithEnvironment("KC_BOOTSTRAP_ADMIN_USERNAME", "fixture-admin")
             .WithEnvironment("KC_BOOTSTRAP_ADMIN_PASSWORD", _password)
             .WithCommand("start-dev", "--hostname-strict=false")
             .WithWaitStrategy(Wait.ForUnixContainer().UntilHttpRequestIsSucceeded(request => request
-                .ForPort(8080).ForPath("/realms/master/.well-known/openid-configuration")))
+                .ForPort(8080).ForPath("/realms/master/.well-known/openid-configuration")));
+    }
+
+    public IContainer CreateIdentityServer(TestDatabase store)
+    {
+        var connection = new NpgsqlConnectionStringBuilder(store.ConnectionString);
+        return IdentityBuilder()
+            .WithNetwork(_network)
+            .WithEnvironment("KC_DB", "postgres")
+            .WithEnvironment("KC_DB_URL", "jdbc:postgresql://database:5432/" + connection.Database)
+            .WithEnvironment("KC_DB_USERNAME", connection.Username!)
+            .WithEnvironment("KC_DB_PASSWORD", connection.Password!)
             .Build();
     }
 
@@ -93,20 +115,20 @@ internal sealed class TestInfrastructure : IAsyncDisposable
         }
     }
 
-    public async Task CreateRealmAsync(object realm)
+    public async Task CreateRealmAsync(object realm, string origin)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Post, "admin/realms")
+        using var request = new HttpRequestMessage(HttpMethod.Post, origin + "/admin/realms")
         {
             Content = JsonContent.Create(realm)
         };
-        using var response = await SendAdministrationAsync(request);
+        using var response = await SendAdministrationAsync(request, origin);
         response.EnsureSuccessStatusCode();
     }
 
-    public async Task DeleteRealmAsync(string realm)
+    public async Task DeleteRealmAsync(string realm, string origin)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Delete, "admin/realms/" + Uri.EscapeDataString(realm));
-        using var response = await SendAdministrationAsync(request);
+        using var request = new HttpRequestMessage(HttpMethod.Delete, origin + "/admin/realms/" + Uri.EscapeDataString(realm));
+        using var response = await SendAdministrationAsync(request, origin);
         if (response.StatusCode != HttpStatusCode.NotFound)
             response.EnsureSuccessStatusCode();
     }
@@ -120,7 +142,14 @@ internal sealed class TestInfrastructure : IAsyncDisposable
         }
         finally
         {
-            await _postgres.DisposeAsync();
+            try
+            {
+                await _postgres.DisposeAsync();
+            }
+            finally
+            {
+                await _network.DisposeAsync();
+            }
         }
     }
 
@@ -129,8 +158,8 @@ internal sealed class TestInfrastructure : IAsyncDisposable
         var infrastructure = new TestInfrastructure();
         try
         {
+            await infrastructure._network.CreateAsync();
             await Task.WhenAll(infrastructure._postgres.StartAsync(), infrastructure._keycloak.StartAsync());
-            infrastructure._client.BaseAddress = new Uri(infrastructure.IdentityOrigin + "/");
             return infrastructure;
         }
         catch
@@ -140,7 +169,7 @@ internal sealed class TestInfrastructure : IAsyncDisposable
         }
     }
 
-    private async Task<HttpResponseMessage> SendAdministrationAsync(HttpRequestMessage request)
+    private async Task<HttpResponseMessage> SendAdministrationAsync(HttpRequestMessage request, string origin)
     {
         using var credentials = new FormUrlEncodedContent(new Dictionary<string, string>
         {
@@ -149,7 +178,7 @@ internal sealed class TestInfrastructure : IAsyncDisposable
             ["username"] = "fixture-admin",
             ["password"] = _password
         });
-        using var authentication = await _client.PostAsync("realms/master/protocol/openid-connect/token", credentials);
+        using var authentication = await _client.PostAsync(origin + "/realms/master/protocol/openid-connect/token", credentials);
         authentication.EnsureSuccessStatusCode();
         var token = await authentication.Content.ReadFromJsonAsync<JsonElement>();
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token.GetProperty("access_token").GetString());

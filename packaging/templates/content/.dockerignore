@@ -9,3 +9,4 @@
 .ngb/upgrades
 .ngb/operation.lock
 /backups/
+/backup/

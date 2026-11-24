@@ -9,9 +9,21 @@ const job = 'job:example.dispatch'
 const beforeRefusal = { posted: ['first', 'second'], movements: 2 }
 const refusal = { reason: 'dependency', expectedReason: 'dependency', beforeRefusal, afterRefusal: beforeRefusal }
 const ids = ['a', 'b', 'c']
+const dates = ['2026-03-31', '2026-04-01', '2026-04-02']
 
 function check(kind, changes = {}, options = {}) {
   const samples = {
+    'report-export': { target: report, key: 'totals', downloadStatus: 200,
+      contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      expectedCells: [12], screenCells: [12], worksheetCells: [12] },
+    'state-invariant': { target, key: 'terminal', operation: 'confirm', persistedControlId: 'open',
+      controlStatus: 200, refusalStatus: 409, ...refusal },
+    'dated-withdrawal': { target, key: 'authorization', sourceId: 'first', consumerId: 'second',
+      sourceAt: '2026-04-01', consumerAt: '2026-04-02', replacementAt: '2026-04-03', persistedControlId: 'corrected',
+      controlStatus: 200, refusalStatus: 409, ...refusal,
+      beforeRefusal: { source: 'Posted', consumer: 'Posted', balance: 10 }, afterRefusal: { source: 'Posted', consumer: 'Posted', balance: 10 } },
+    'business-day-cutoff': { target: report, key: 'position', recordId: 'dated', businessDate: '2026-04-01',
+      opening: 0, closing: 12, zones: ['America/New_York', 'Pacific/Kiritimati'].map(zone => ({ zone, configuredZone: zone, dates, values: [0, 12, 12] })) },
     'effective-prerequisite': { target, key: 'funding', persistedControlId: 'funded-control', attemptAt: '2026-04-01', prerequisiteAt: '2026-04-02',
       controlAt: '2026-04-02', controlStatus: 200, refusalStatus: 409, ...refusal },
     'interval-overlap': { target, key: 'reservation', boundary: 'exclusive-end', priorStart: '2026-04-01', priorEnd: '2026-04-05',
@@ -73,6 +85,7 @@ test('cutoff checks are bound to each report and registered measure including cu
   reconcileHistoricalChecks(plan, [{ reportCode: 'example.position' }])
   reconcileHistoricalChecks({ ...plan, cases: [{ target: 'report:other', scenario: 'report' }] }, [{ reportCode: 'example.current' }])
   assert.throws(() => requireBusinessCheck(plan, 'historical-cutoff', report, 'unbound'))
+  assert.throws(() => reconcileHistoricalChecks(plan, [{ reportCode: 'example.position', capabilities: { allowsXlsxExport: true } }]), /report-export/)
 })
 
 test('passing test output alone contributes its own observations', () => {
@@ -83,19 +96,31 @@ other output
 <Output><StdOut>NGB-CHECK {"ignored":true}</StdOut></Output></UnitTestResult><Other/></Results>
 <Output><StdOut>NGB-CHECK {"outside":true}</StdOut></Output></TestRun>`
   assert.deepEqual(integrationObservations(xml), [{ test: 'Example.Read', proof: { kind: 'source-membership' } }])
+  const passed = new Set()
+  integrationObservations(xml, passed)
+  assert.deepEqual([...passed], ['Example.Read'])
   assert.deepEqual(integrationObservations('<TestRun/>'), [])
   assert.throws(() => integrationObservations(xml.replace('{"kind":"source-membership"}', 'not json')))
 })
 
 test('each check rejects the observed defect and incomplete or unrelated evidence', () => {
   const invalid = {
+    'report-export': [{ downloadStatus: 403 }, { contentType: 'text/plain' }, { expectedCells: [] },
+      { screenCells: [13] }, { worksheetCells: [0] }],
+    'state-invariant': [{ operation: '' }, { persistedControlId: '' }, { refusalStatus: 200 }],
+    'dated-withdrawal': [{ sourceId: 'second' }, { consumerId: '' }, { replacementAt: '2026-04-01' }, { sourceAt: '2026-04-03' },
+      { beforeRefusal, afterRefusal: beforeRefusal }, { persistedControlId: '' }],
+    'business-day-cutoff': [{ businessDate: '1 Apr' }, { businessDate: '2026-02-31' }, { opening: null }, { closing: null }, { recordId: '' }, { zones: [] }, { closing: 0 },
+      { zones: ['UTC', 'Europe/Paris'].map(zone => ({ zone, configuredZone: zone, dates, values: [0, 12, 12] })) },
+      { zones: Array(2).fill({ zone: 'UTC', configuredZone: 'Europe/Paris', values: [0, 12, 12] }) },
+      { zones: Array(2).fill({ zone: 'Pacific/Kiritimati', configuredZone: 'Pacific/Kiritimati', dates, values: [0, 0, 12] }) }],
     'effective-prerequisite': [{ attemptAt: '2026-04-02' }, { controlAt: '2026-04-01' }, { prerequisiteAt: 'invalid' },
       { controlStatus: 403 }, { refusalStatus: 200 }, { afterRefusal: {} }],
     'interval-overlap': [{ priorEnd: null }, { attemptStart: '2026-04-08' }, { closedRecordId: '' },
       { controlStart: '2026-04-03' }, { persistedControlId: 'first' }, { afterRefusal: {} }],
     'snapshot-stability': [{ observed: 7 }, { consumedAt: '2026-04-02' }, { changed: 'A' },
       { freshExpected: 5 }, { freshObserved: 5 }, { consumerId: '' }],
-    'restore-rehearsal': [{ restoredInstance: 'source' }, { backupBytes: 0 }, { backupSha256: 'x' },
+    'restore-rehearsal': [{ restoredInstance: 'source' }, { backupBytes: 0 }, { backupSha256: 'x' }, { backupSha256: null },
       { readStatus: 404 }, { afterRestore: { state: 'draft' } }],
     'history-conflict': [{ newerIds: ['b'] }, { newerIds: ['a', 'b'] }, { newerIds: ['b', 'b'] },
       { pageLimit: 0 }, { reason: 'unrelated' }, { refusalStatus: 200 }],
@@ -136,6 +161,25 @@ test('each check rejects the observed defect and incomplete or unrelated evidenc
   assert.throws(() => verifyBusinessObservations(plan, []), /Missing integration evidence/)
   assert.throws(() => verifyBusinessObservations(plan, [...observations, ...observations]), /duplicate/)
   assert.throws(() => verifyBusinessObservations(plan, [{ ...observations[0], test: 'Other' }]), /incorrectly bound/)
+})
+
+test('a recovery claim includes fresh login and downloaded bytes for every declared store', () => {
+  const { plan, observations } = check('restore-rehearsal', {}, { stores: ['database', 'identity', 'attachments'] })
+  const proof = observations[0].proof
+  assert.throws(() => verifyBusinessObservations(plan, observations), /restored identity/)
+  proof.restoredLogin = { status: 200, subject: 'restored-user', originalSubject: 'restored-user' }
+  assert.throws(() => verifyBusinessObservations(plan, observations), /restored attachment/)
+  proof.restoredAttachment = { status: 200, id: 'file', bytes: 12, sha256: 'a'.repeat(64), originalSha256: 'b'.repeat(64) }
+  assert.throws(() => verifyBusinessObservations(plan, observations), /downloaded contents/)
+  proof.restoredAttachment.sha256 = proof.restoredAttachment.originalSha256
+  verifyBusinessObservations(plan, observations)
+  for (const stores of [[], ['database', 'unknown'], ['database', 'database']]) {
+    plan.businessChecks[0].stores = stores
+    assert.throws(() => validateBusinessChecks(plan))
+  }
+  const dated = check('dated-withdrawal')
+  delete dated.observations[0].proof.replacementAt
+  verifyBusinessObservations(dated.plan, dated.observations)
 })
 
 test('worker inventory rejects missing jobs and allows explicitly single-operation jobs', () => {

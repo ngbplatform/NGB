@@ -61,11 +61,13 @@ internal static class InspectionRequests
             $"HTTP {(int)response.StatusCode}: {await response.Content.ReadAsStringAsync()}");
     }
 
-    internal static async Task AssertErrorAsync(HttpResponseMessage response, HttpStatusCode status, string code)
+    internal static async Task<string> AssertErrorAsync(HttpResponseMessage response, HttpStatusCode status, string code)
     {
         Assert.Equal(status, response.StatusCode);
         var error = await response.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal(code, error.GetProperty("error").GetProperty("code").GetString());
+        var reason = error.GetProperty("error").GetProperty("code").GetString();
+        Assert.Equal(code, reason);
+        return reason!;
     }
 
     internal static async Task AssertEquivalentJsonAsync(HttpResponseMessage expected, HttpResponseMessage actual)

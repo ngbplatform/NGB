@@ -9,6 +9,8 @@ Do not use it to modify platform internals to simulate a missing extension point
 
 For generation from business requirements, read
 [architecture, navigation, demo and acceptance](../../../ai/vendor/references/application-generation.md).
+Extract and capture the source obligations before planning the implementation.
+Bind each historical fact, dependent cancellation and final state to an observable outcome.
 Make platform implementation choices yourself; keep the business specification
 independent of NGB vocabulary. Do not remove all built-in menu contributors.
 Keep the [complete local stack](../../../ai/vendor/references/application.md#default-local-deployment)

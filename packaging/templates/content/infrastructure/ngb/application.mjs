@@ -65,7 +65,7 @@ export async function applicationFiles(root) {
   async function visit(directory, depth = 0) {
     assert.ok(depth <= 24, 'Application directory nesting exceeds its limit.')
     for (const entry of await readdir(directory, { withFileTypes: true })) {
-      if (depth === 0 && entry.name === 'backups' && entry.isDirectory()) continue
+      if (depth === 0 && ['backup', 'backups'].includes(entry.name) && entry.isDirectory()) continue
       if (ignoredDirectories.has(entry.name) || /^\.env(?:\.|$)/.test(entry.name)) continue
       count += 1
       assert.ok(count <= 8192, 'Application directory exceeds its entry limit.')

@@ -62,6 +62,11 @@ this execution and diagnostic change.
 
 ## Reliability regression coverage
 
+Run `node quality/ai-devkit/check-dated-workflows.mjs` to exercise the neutral
+work-calendar fixture in a disposable PostgreSQL container. Its independent SQL
+assertions live in `quality/ai-devkit/regressions`, outside the generated Kit.
+The same assertions run against the reference and the deliberately faulty implementations.
+
 The independent `equipment-inspection` application consumes exact candidate NuGet
 packages. Its tests complement the platform suites; they do not import platform
 test fixtures or reference projects from the NGB checkout.
@@ -249,3 +254,11 @@ After the final source/package verification, report the assessed candidate and
 passed, failed and unexecuted gates explicitly. Publication and registry smoke
 require separate release authorization. Do not infer release readiness from a
 single passing starter, high coverage or completed agent process.
+
+For a selective fresh generation, supply the client with the public
+[dated-workflows brief](regressions/dated-workflows-brief.md) and the applicable
+shared Kit instructions. Keep the reference implementation and independent
+assertions outside its workspace. Review its output, run its own smoke tests,
+then execute `node quality/ai-devkit/check-dated-workflows.mjs --candidate /path/to/migration.sql`.
+The command creates a separate PostgreSQL container. Record the brief,
+guidance, client, attempt and migration hashes and all failures.

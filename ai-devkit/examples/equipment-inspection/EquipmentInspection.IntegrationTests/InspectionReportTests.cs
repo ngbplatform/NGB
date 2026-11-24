@@ -454,6 +454,19 @@ public sealed class InspectionReportTests(ITestOutputHelper output)
         Assert.Contains(rows, row => row.Length == 2
             && row[0].Contains("Total", StringComparison.OrdinalIgnoreCase) && row[1] == "3");
         Assert.DoesNotContain(rows, row => row.Contains("Rejected"));
+        var screen = await PostAsync<ReportExecutionResponseDto>(admin, ExecutePath, request);
+        var totalRow = Assert.Single(rows, row => row.Length == 2 && row[0].Contains("Total", StringComparison.OrdinalIgnoreCase));
+        output.WriteLine("NGB-CHECK " + JsonSerializer.Serialize(new
+        {
+            kind = "report-export",
+            target = "report:" + InspectionReports.Summary,
+            key = "filtered-count",
+            downloadStatus = (int)response.StatusCode,
+            contentType = response.Content.Headers.ContentType.MediaType,
+            expectedCells = new[] { 3m },
+            screenCells = new[] { Total(screen.Sheet.Rows) },
+            worksheetCells = new[] { decimal.Parse(totalRow[1], CultureInfo.InvariantCulture) }
+        }));
     }
 
     private static async Task<string[][]> ReadWorksheetAsync(HttpResponseMessage response)

@@ -7,6 +7,7 @@ import { createServer } from 'node:net'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { fileURLToPath } from 'node:url'
+import { build } from 'vite'
 
 export default async function setup() {
   const root = fileURLToPath(new URL('../../../', import.meta.url))
@@ -85,8 +86,12 @@ export default async function setup() {
       VITE_KEYCLOAK_REALM: issuer.pathname.split('/realms/')[1],
       VITE_KEYCLOAK_CLIENT_ID: settings.clientId,
     }
-    await writeFile(join(web, 'dist/runtime-config.js'), `window.__NGB_RUNTIME_CONFIG__ = ${JSON.stringify(configuration)}\n`)
-    const preview = launch(process.execPath, ['node_modules/vite/bin/vite.js', 'preview', '--host', '127.0.0.1',
+    const site = join(privateRoot, 'web')
+    await build({ root: web, logLevel: 'warn', build: { outDir: site, rollupOptions: {
+      input: [join(web, 'index.html'), join(web, 'tests/e2e/fixtures/quoted-service.html')],
+    } } })
+    await writeFile(join(site, 'runtime-config.js'), `window.__NGB_RUNTIME_CONFIG__ = ${JSON.stringify(configuration)}\n`)
+    const preview = launch(process.execPath, ['node_modules/vite/bin/vite.js', 'preview', '--outDir', site, '--host', '127.0.0.1',
       '--port', String(port), '--strictPort'], { NGB_EXAMPLE_API: settings.api }, 'web')
     let available = false
     for (let attempt = 0; attempt < 100; attempt += 1) {

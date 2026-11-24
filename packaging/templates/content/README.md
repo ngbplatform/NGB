@@ -50,6 +50,12 @@ The complete test profile checks the full compiled backend source inventory at
 functions and statements. Missing tests, skipped tests and missing required
 evidence fail the profile. Reports and logs are under `.ngb/reports/<run-id>/`.
 
+Before implementation, extract individual source obligations from the supplied
+brief into `ai/business-obligations.json` and run `node infrastructure/ngb.mjs ai capture --apply`.
+Version the brief, obligations and resulting lock together. Keep a reviewed copy
+of the fingerprint outside the generator when comparing independent implementations.
+See `ai/vendor/references/server-acceptance.md` for the format and migration steps.
+
 Maintain `ai/acceptance.json` as documents and roles are added. The E2E gate compares
 it with the running application's document metadata and active roles, provisions
 one isolated user per role, and requires current-run Playwright UI evidence for
@@ -362,6 +368,13 @@ object storage. Stop API and worker writers. Run the target Migrator against the
 same state, then start the matching API, worker, Watchdog and frontend. On migration failure,
 keep target hosts stopped, inspect the error and follow the migration guide's
 retry/recovery steps. Do not downgrade a migrated database in place.
+
+Use a protected backup destination. For a local rehearsal, create the ignored
+project-root directory with `mkdir -p -m 700 backups` before writing dumps.
+Restore the same backup set into separate services, obtain a new login, compare
+a known business record and download a known attachment. Compare the downloaded
+bytes with the original checksum. Record the release used as the migration
+baseline and each store actually restored.
 
 ```sh
 node infrastructure/ngb.mjs deploy --backup-confirmed

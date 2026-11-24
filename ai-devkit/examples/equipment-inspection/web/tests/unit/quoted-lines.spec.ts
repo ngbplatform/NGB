@@ -130,16 +130,17 @@ it('keeps asynchronous results attached to row identity across reordering and re
   expect(state.rows.value.map(row => row.id)).toEqual(['two'])
 })
 
-it('shows missing values and invalid amounts, and retries through the item control', async () => {
+it('keeps the selected item and date when retrying a failed quote', async () => {
   const state = await fixture([line('one')])
   state.quote.mockRejectedValueOnce(new Error('No approved value for this date.'))
   await state.select('Inspection')
-  await expect.element(state.screen.getByRole('status')).toHaveTextContent('No approved value')
+  await expect.element(state.screen.getByRole('status')).toHaveTextContent('Price unavailable')
   expect(state.rows.value[0].totalMinor).toBeNull()
   state.quote.mockResolvedValueOnce({ unitPriceMinor: 0, pricingDate: '2026-11-01' })
-  await state.select('Service')
+  await state.screen.getByRole('button', { name: 'Retry price' }).click()
+  expect(state.quote.mock.calls[1].slice(0, 2)).toEqual(['inspection', '2026-11-01'])
   await expect.element(state.screen.getByRole('status')).toHaveTextContent('cannot be represented')
-  await state.select('Inspection')
+  await state.screen.getByRole('button', { name: 'Retry price' }).click()
   await expect.poll(() => state.rows.value[0].totalMinor).toBe(1250)
   await state.screen.getByRole('spinbutton', { name: 'Quantity' }).fill('-1')
   await expect.element(state.screen.getByRole('status')).toHaveTextContent('positive whole quantity')

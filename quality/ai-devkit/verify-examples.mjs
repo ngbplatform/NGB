@@ -59,6 +59,7 @@ try {
   const cli = verifyCliArchive(cliBytes, manifest.version)
   const payload = JSON.parse(cli.files.get('package/infrastructure/ngb/kit-payload.json'))
   assert.deepEqual(payload, await preparePayload(), 'Repack the candidate after changing example or guidance sources.')
+  await invoke('dated-workflows', [join(repository, 'quality/ai-devkit/check-dated-workflows.mjs')], stage, process.execPath)
   const inputs = exampleSources(payload)
   evidence.sources = inputs
   evidence.capabilityInputsSha256 = inspectCapabilities(payload).inputsSha256

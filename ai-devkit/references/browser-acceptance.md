@@ -279,3 +279,29 @@ for delayed success and failure responses before ending race tests.
   permission, first load the list successfully, then verify the denied direct
   POST, list control and direct new-entry route. A fully unauthorized actor
   should be tested separately where the role model calls for one.
+
+For each asynchronous editor include `current-retry` in its `async-race` case.
+Inject one temporary 503 for the current selection while the other requests use
+the live server. Assert the exact user-facing message, the selected input and
+the recovered value. Use `checks.currentRetry(failedResponse, message, retryButton,
+input, selectedValue, result, expectedText, expectedMessage)` to exercise the
+retry without editing the input. Supply the application's expected explanation
+in the test locale. A bare HTTP status is insufficient. A stale refusal must
+settle after the newer response without replacing its data, showing the old
+failure or raising an unhandled exception.
+
+For an asynchronously priced document also bind `persisted-retry:<type>` to its
+`async-race` case. Inside that outcome run `checks.currentRetry` and then
+`checks.saveRetriedDraft(type, id, saveButton, payloadPath, expectedNumber,
+reopenedControl, expectedDisplay)`. Pass a null ID for a new draft. Seed a
+different original amount. Use the exact selected label for a custom select,
+exercise Save, and compare the independently calculated amount in the fresh
+editor-state response and the reopened editor. A read-only preview has no save.
+When pricing is synchronous and another field loads asynchronously, document
+both mechanisms in the document's `synchronousPriceReason`.
+
+Register `dashboard-context` for the actual Dashboard destination and use
+`checks.dashboardContext(visibleHeaderText, expectedPeriodOrScope)` after loading.
+Assert the business period or scope specified for that page. Render the installed
+`NgbPageHeader` and its `secondary` slot. Stubs used for other tests must match
+the installed component's inputs and slots.

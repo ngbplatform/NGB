@@ -1,0 +1,5 @@
+{
+  "currentRelease": "equipment-inspection-reference-3.4.0",
+  "previousRelease": null,
+  "reason": "This reference is distributed as Kit source. The frozen schema exercises migration compatibility; it does not identify a previous standalone application release."
+}

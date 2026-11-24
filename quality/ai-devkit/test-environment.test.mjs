@@ -45,6 +45,8 @@ test('staging keeps container-readable sources and executable scripts while excl
     await writeFile(join(source, name, 'ignored'), 'Test output or cached data')
   }
   await mkdir(join(source, 'backups'))
+  await mkdir(join(source, 'backup'))
+  await writeFile(join(source, 'backup', 'marker'), 'Example backup')
   const dump = join(source, 'backups', 'database.dump')
   await writeFile(dump, '')
   await truncate(dump, 129 * 1024 * 1024)

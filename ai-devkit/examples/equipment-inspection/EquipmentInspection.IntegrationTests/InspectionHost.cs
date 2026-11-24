@@ -27,12 +27,13 @@ internal sealed class InspectionHost(
     bool notesEnabled = false,
     IReadOnlyDictionary<string, string>? configuration = null,
     int port = 0,
-    Func<string, Task>? prepareDatabase = null) : IAsyncDisposable
+    Func<string, Task>? prepareDatabase = null,
+    TestIdentity? activeIdentity = null) : IAsyncDisposable
 {
     public const string AdministratorRoleCode = ApplicationRoles.Administrator;
 
     private TestDatabase? _database;
-    private readonly TestIdentity _identity = new(browserOrigin);
+    private readonly TestIdentity _identity = activeIdentity ?? new(browserOrigin);
     private WebApplicationFactory<global::Program>? _app;
     private Uri? _origin;
 
@@ -56,7 +57,8 @@ internal sealed class InspectionHost(
         await Setup.Program.Main(["ConnectionStrings:DefaultConnection=" + connection]);
         await Setup.Program.Main(["ConnectionStrings:DefaultConnection=" + connection]);
 
-        await _identity.StartAsync();
+        if (activeIdentity is null)
+            await _identity.StartAsync();
         _app = new WebApplicationFactory<global::Program>().WithWebHostBuilder(builder =>
         {
             builder.UseEnvironment("Testing");
@@ -174,7 +176,8 @@ internal sealed class InspectionHost(
         {
             try
             {
-                await _identity.DisposeAsync();
+                if (activeIdentity is null)
+                    await _identity.DisposeAsync();
             }
             finally
             {

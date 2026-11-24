@@ -131,8 +131,13 @@ test('server eligibility excludes draft and consumed sources before real lookup 
   await expect(lookup).toHaveAttribute('aria-expanded', 'true')
   await lookup.press('ArrowDown')
   await expect(lookup).toHaveAttribute('aria-activedescendant', (await option.getAttribute('id'))!)
+  const previewUrl = `${origin}/api/inspection-sources/${available.id}?equipmentId=${equipment.id}`
+  await page.route(previewUrl, route => route.fulfill({ status: 503, contentType: 'application/json', body: '{}' }), { times: 1 })
+  const failure = page.waitForResponse(previewUrl)
   await lookup.press('Enter')
-  await proof.text(page.getByRole('status'), 'Confirmed safety check')
+  await proof.outcome('current-retry', async checks => checks.currentRetry(await failure, page.getByRole('alert'),
+    page.getByRole('button', { name: 'Retry preview' }), lookup, available.number, page.getByRole('status'),
+    'Confirmed safety check', 'Unable to read this inspection. Retry the preview.'))
   await page.getByRole('button', { name: 'Clear', exact: true }).click()
   await proof.text(page.getByRole('status'), 'Select an available inspection to preview its result.')
   await proof.finish('inspection-source-eligibility', 'ngb-admin')

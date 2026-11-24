@@ -32,6 +32,12 @@ or document persistence; those require the generated application's authorized
 server workflow and browser acceptance described in
 [interactive workflows](../../references/interactive-workflows.md).
 
+On a temporary pricing failure the editor preserves the selected item and date.
+The operator can retry the same request. The source picker also preserves its
+selection after a service failure and clears a source that the server rejects as
+ineligible. The Playwright suite exercises the current request failing once,
+followed by a successful retry against the API.
+
 `DerivedLinesEditor.vue` demonstrates complete invalidation of source-dependent
 headers and readonly charges, including a two-stage asynchronous calculation,
 replacement, clear, retry, document reload and readonly transitions. Its actual
@@ -100,6 +106,17 @@ records/audit, repeat execution, checksum rejection and recovery with the origin
 scripts. This is an application-schema upgrade on SDK 3.4.0. The separate Migrator
 process runs from its own build output, where all of its runtime dependencies are
 present; its copied DLL in a test project's output is not a standalone deployment.
+
+`DatedWorkflowTests` loads `TemporalFixtures/work-calendar.sql` into a private
+PostgreSQL database. The example uses daily closing balances, distinct funding
+and approval dates, permanent resource codes and terminal retirement. It captures
+the calendar, classification and rate when work begins. The tests change the zone
+before completion and the category before billing, then reconcile the original
+and subsequent charges. Use these policies when the brief calls for them.
+
+`BackupRestoreTests` restores application data, Keycloak's PostgreSQL data and
+attachment objects to separate stores. It logs in again, verifies the original
+subject, reopens the posted document and compares the downloaded attachment bytes.
 
 Copy this directory to a temporary directory outside your application before
 building. The installed `ai/vendor/` tree is immutable guidance. Use the exact
@@ -810,3 +827,9 @@ values and preserves direct-column filtering and access checks.
 rows, frozen inputs, cancellation and resource cleanup. These targeted examples
 do not establish all provider implementations, concurrency or performance.
 
+
+The browser suite builds its quoted-service fixture into a private test directory.
+It retries a failed price lookup, saves the calculated amount through the document
+API, and reopens the draft in the standard metadata editor. The release baseline
+declaration in `ai/application-upgrade.json` records the scope of the reference's
+migration fixture.

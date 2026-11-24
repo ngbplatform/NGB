@@ -12,7 +12,7 @@ import { layerViolations, readTestXml } from './project-data.mjs'
 import { integrationObservations, verifyBusinessObservations } from './business-checks.mjs'
 import { browserTestCounts, frontendCoverage, frontendTestCounts, uniqueCoverageReport } from './evidence.mjs'
 import { applicationFiles, managedPackageFiles } from './application.mjs'
-import { verifyPresentationInventory, verifyRequirementTrace } from './requirement-trace.mjs'
+import { verifyApplicationUpgrade, verifyPresentationInventory, verifyRequirementTrace } from './requirement-trace.mjs'
 import { assemblyMetadata, resolvedProject } from './resolved-data.mjs'
 import { classifyCoverageExclusion, evaluateCoverage, mergeCoverage, parseCobertura } from './coverage.mjs'
 import { startTestEnvironment } from './environment.mjs'
@@ -89,6 +89,7 @@ export async function executeProfile(root, options) {
   const backendAssemblies = new Set()
   const backendReports = []
   const businessObservations = []
+  const upgradeObservations = []
   const passedIntegrationTests = new Set()
   const abort = new AbortController()
   const deadline = setTimeout(() => abort.abort(), 3600000)
@@ -101,12 +102,14 @@ export async function executeProfile(root, options) {
     checks.push(processCheck(id, result))
     return result.state === 'passed'
   }
-  const inspectEvidence = async (id, path, inspect) => {
+  const inspectEvidence = async (id, path, inspect, describe) => {
     try {
       const text = await readAsset(root, path, 8 * 1024 * 1024)
       assert.ok(text, 'The current run did not produce its required test report.')
-      checks.push({ id, required: true, state: 'passed', message: 'Verified current-run discovery and coverage evidence.',
-        evidence: await inspect(text), reportSha256: digest(text) })
+      const evidence = await inspect(text)
+      checks.push({ id, required: true, state: 'passed',
+        message: describe ? describe(evidence) : 'Verified current-run discovery and coverage evidence.',
+        evidence, reportSha256: digest(text) })
     } catch (error) {
       checks.push({ id, required: true, state: 'failed', message: error.message })
     }
@@ -193,7 +196,8 @@ export async function executeProfile(root, options) {
         thresholds: { lines: 100, branches: 100, methods: 100 } })
       await writeFile(join(output, 'backend-coverage.json'), `${JSON.stringify({ reports: identities, ...evaluation }, null, 2)}\n`, { mode: 0o600 })
       checks.push({ id: 'test.backend.coverage', required: true, state: evaluation.passed ? 'passed' : 'failed',
-        message: 'Full backend source inventory requires 100% per-file lines, branches and methods.',
+        message: `Backend coverage: ${evaluation.sourceFiles.required} required files, ${evaluation.sourceFiles.excluded} excluded, `
+          + `${evaluation.sourceFiles.presentInReport} measured. Required coverage is 100% per file for lines, branches and methods.`,
         evidence: evaluation, reports: identities })
     } catch (error) {
       checks.push({ id: 'test.backend.coverage', required: true, state: 'failed', message: error.message })
@@ -313,7 +317,10 @@ export async function executeProfile(root, options) {
               if (passed) {
                 await inspectEvidence(`${id}.discovery`, `${relativeOutput}/${id}/${id}.trx`, text => {
                   const counts = testCounts(text)
-                  if (suite === 'integration') businessObservations.push(...integrationObservations(text, passedIntegrationTests))
+                  if (suite === 'integration') {
+                    businessObservations.push(...integrationObservations(text, passedIntegrationTests))
+                    upgradeObservations.push(...integrationObservations(text, undefined, 'NGB-UPGRADE '))
+                  }
                   return counts
                 })
                 try {
@@ -333,10 +340,19 @@ export async function executeProfile(root, options) {
             if (suite === 'integration') {
               await inspectEvidence('test.integration.business-checks', 'ai/acceptance.json', async text => {
                 const plan = acceptancePlan(JSON.parse(text))
-                await verifyRequirementTrace(root, plan, passedIntegrationTests)
+                await verifyRequirementTrace(root, plan, passedIntegrationTests, businessObservations)
                 const bindings = plan.schemaVersion === 1 ? { surfaces: [], businessChecks: [] } : plan
                 return verifyBusinessObservations(bindings, businessObservations, config.projects.some(project => project.role === 'worker'))
               })
+              await inspectEvidence('test.integration.application-upgrade', 'ai/acceptance.json', async text => {
+                if (acceptancePlan(JSON.parse(text)).schemaVersion === 1 && !upgradeObservations.length
+                  && await readAsset(root, 'ai/application-upgrade.json') === null) {
+                  return { status: 'not-declared', reason: 'Legacy acceptance plan without an application release baseline.' }
+                }
+                return verifyApplicationUpgrade(root, upgradeObservations)
+              }, result => result.status === 'verified'
+                ? `Verified the upgrade from ${result.previousRelease} to ${result.currentRelease}.`
+                : result.reason)
             }
             if (suite === 'unit') {
               await run('test.frontend', 'npm', ['run', 'test', '--', '--run', '--coverage', '--reporter=json',
@@ -368,7 +384,7 @@ export async function executeProfile(root, options) {
           for (const [index] of config.tests[suite].entries()) {
             required.push(`test.${suite}.${index}`, `test.${suite}.${index}.discovery`, `test.${suite}.${index}.coverage-report`)
           }
-          if (suite === 'integration') required.push('test.integration.business-checks')
+          if (suite === 'integration') required.push('test.integration.business-checks', 'test.integration.application-upgrade')
           if (suite === 'unit') required.push('test.frontend', 'test.frontend.discovery', 'test.frontend.coverage')
         }
       }

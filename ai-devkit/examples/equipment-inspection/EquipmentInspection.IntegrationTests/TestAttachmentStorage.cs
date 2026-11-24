@@ -1,4 +1,6 @@
 using System.Security.Cryptography;
+using Minio;
+using Minio.DataModel.Args;
 using Testcontainers.Minio;
 
 namespace EquipmentInspection.IntegrationTests;
@@ -76,6 +78,42 @@ internal sealed class TestAttachmentStorage : IAsyncDisposable
         var result = await _container.ExecAsync(["sh", "-eu", "-c", command]);
         if (result.ExitCode != 0)
             throw new InvalidOperationException("Could not change disposable storage access.");
+    }
+
+    internal sealed record StoredObject(string Key, string ContentType, byte[] Bytes);
+
+    public async Task<IReadOnlyList<StoredObject>> BackupAsync()
+    {
+        using var client = OpenStorage();
+        var objects = new List<StoredObject>();
+        var list = new ListObjectsArgs().WithBucket(Bucket).WithRecursive(true);
+        await foreach (var item in client.ListObjectsEnumAsync(list))
+        {
+            var metadata = await client.StatObjectAsync(new StatObjectArgs().WithBucket(Bucket).WithObject(item.Key));
+            using var content = new MemoryStream();
+            await client.GetObjectAsync(new GetObjectArgs().WithBucket(Bucket).WithObject(item.Key)
+                .WithCallbackStream(stream => stream.CopyTo(content)));
+            objects.Add(new StoredObject(item.Key, metadata.ContentType, content.ToArray()));
+        }
+
+        return objects;
+    }
+
+    public async Task RestoreAsync(IReadOnlyList<StoredObject> objects)
+    {
+        using var client = OpenStorage();
+        foreach (var item in objects)
+        {
+            using var stream = new MemoryStream(item.Bytes);
+            await client.PutObjectAsync(new PutObjectArgs().WithBucket(Bucket).WithObject(item.Key)
+                .WithContentType(item.ContentType).WithObjectSize(stream.Length).WithStreamData(stream));
+        }
+    }
+
+    private IMinioClient OpenStorage()
+    {
+        var uri = new Uri(_container.GetConnectionString());
+        return new MinioClient().WithEndpoint(uri.Host, uri.Port).WithCredentials(_accessKey, _secretKey).Build();
     }
 
     public ValueTask DisposeAsync() => _container.DisposeAsync();

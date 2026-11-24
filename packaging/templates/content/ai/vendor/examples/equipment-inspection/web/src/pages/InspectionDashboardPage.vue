@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { onBeforeUnmount, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   ApiError, encodeReportRouteContextParam, formatDateOnlyValue, httpGet, NgbBadge, NgbDashboardAsOfToolbar,
@@ -19,18 +19,23 @@ const router = useRouter()
 const snapshot = ref<Snapshot | null>(null)
 const loading = ref(false)
 const error = ref('')
+const selectedDay = ref<string | null>(null)
 let pending: AbortController | null = null
 
-async function refresh(day: string | null = snapshot.value?.asOf ?? null) {
+async function refresh(day: string | null = selectedDay.value) {
   pending?.abort()
   const request = new AbortController()
+  selectedDay.value = day
   pending = request
   loading.value = true
   error.value = ''
   try {
     const query = day ? '?' + new URLSearchParams({ asOf: day }) : ''
     const result = await httpGet<Snapshot>('/api/inspection-dashboard' + query, null, { signal: request.signal })
-    if (pending === request) snapshot.value = result
+    if (pending === request) {
+      snapshot.value = result
+      selectedDay.value = result.asOf
+    }
   } catch (cause) {
     if (pending === request) {
       snapshot.value = null
@@ -43,18 +48,17 @@ async function refresh(day: string | null = snapshot.value?.asOf ?? null) {
   }
 }
 
-const actionCards = computed(() => snapshot.value ? [
-  { title: 'Inspections flagged for follow-up', result: 'Follow-up', count: snapshot.value.followUp,
+const actionCards = (current: Snapshot) => [
+  { title: 'Inspections flagged for follow-up', result: 'Follow-up', count: current.followUp,
     status: 'Review', tone: 'warn' as const },
-  { title: 'Rejected inspections', result: 'Rejected', count: snapshot.value.rejected,
+  { title: 'Rejected inspections', result: 'Rejected', count: current.rejected,
     status: 'Requires action', tone: 'danger' as const },
-] : [])
+]
 
-function openSummary(result?: string) {
-  if (!snapshot.value) return
+function openSummary(current: Snapshot, result?: string) {
   const reportCode = 'example.inspection-summary'
   const request = {
-    parameters: snapshot.value.parameters,
+    parameters: current.parameters,
     filters: result ? { result: { value: result } } : undefined,
   }
   const ctx = encodeReportRouteContextParam({ reportCode, request })
@@ -78,7 +82,7 @@ onBeforeUnmount(() => {
         </p>
       </template>
       <template #actions>
-        <NgbDashboardAsOfToolbar :model-value="snapshot?.asOf" :loading="loading"
+        <NgbDashboardAsOfToolbar :model-value="selectedDay" :loading="loading"
           @update:model-value="refresh" @refresh="refresh()" />
       </template>
     </NgbPageHeader>
@@ -90,10 +94,10 @@ onBeforeUnmount(() => {
         <section aria-label="Requires attention">
           <h2 class="mb-3 text-lg font-semibold">Requires attention</h2>
           <div class="grid gap-4 md:grid-cols-2">
-            <button v-for="card in actionCards" :key="card.result" type="button"
+            <button v-for="card in actionCards(snapshot)" :key="card.result" type="button"
               class="ngb-focus rounded border border-ngb-border border-l-4 bg-ngb-card p-5 text-left shadow-sm hover:bg-ngb-bg"
               :class="card.count === 0 ? 'border-l-ngb-success' : card.tone === 'danger' ? 'border-l-ngb-danger' : 'border-l-ngb-warn'"
-              @click="openSummary(card.result)">
+              @click="openSummary(snapshot, card.result)">
               <span class="flex items-center justify-between gap-3">
                 <NgbBadge :tone="card.count ? card.tone : 'success'">{{ card.count ? card.status : 'Clear' }}</NgbBadge>
                 <NgbIcon name="arrow-right" />
@@ -108,12 +112,12 @@ onBeforeUnmount(() => {
           <h2 class="mb-3 text-lg font-semibold">Monthly activity</h2>
           <div class="grid gap-4 sm:grid-cols-2">
             <button type="button" class="ngb-focus rounded border border-ngb-border bg-ngb-card p-4 text-left hover:bg-ngb-bg"
-              @click="openSummary()">
+              @click="openSummary(snapshot)">
               <span class="block text-sm text-ngb-muted">Completed inspections</span>
               <strong class="mt-2 block text-2xl tabular-nums">{{ snapshot.total }}</strong>
             </button>
             <button type="button" class="ngb-focus rounded border border-ngb-border bg-ngb-card p-4 text-left hover:bg-ngb-bg"
-              @click="openSummary('Passed')">
+              @click="openSummary(snapshot, 'Passed')">
               <span class="block text-sm text-ngb-muted">Marked as passed</span>
               <strong class="mt-2 block text-2xl tabular-nums">{{ snapshot.passed }}</strong>
             </button>

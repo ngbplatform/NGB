@@ -251,10 +251,10 @@ public sealed class AttachmentsHttpTests
         return new(kind, EquipmentDefinitions.InspectionCode, document.Id);
     }
 
-    private static Task<AttachmentUploadDto> RequestUploadAsync(HttpClient client, BusinessObjectRef target, int size, string name = "inspection.txt")
+    internal static Task<AttachmentUploadDto> RequestUploadAsync(HttpClient client, BusinessObjectRef target, int size, string name = "inspection.txt")
         => PostAsync<AttachmentUploadDto>(client, "/api/attachments/uploads", new CreateAttachmentUploadRequest(target, name, "text/plain", size));
 
-    private static async Task UploadAsync(AttachmentUploadDto upload, byte[] bytes, string? contentType = null)
+    internal static async Task UploadAsync(AttachmentUploadDto upload, byte[] bytes, string? contentType = null)
     {
         using var client = new HttpClient();
         using var content = new ByteArrayContent(bytes);

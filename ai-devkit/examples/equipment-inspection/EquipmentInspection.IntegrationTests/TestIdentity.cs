@@ -33,7 +33,9 @@ internal sealed class TestIdentity : IAsyncDisposable
 
     public string Issuer => $"{IdentityOrigin}/realms/{_realm}";
 
-    private string IdentityOrigin => _infrastructure?.IdentityOrigin
+    public string? ServerOrigin { get; set; }
+
+    private string IdentityOrigin => ServerOrigin ?? _infrastructure?.IdentityOrigin
         ?? throw new InvalidOperationException("Start the test identity first.");
 
     public TestIdentity(string? browserOrigin = null)
@@ -110,7 +112,7 @@ internal sealed class TestIdentity : IAsyncDisposable
     public async Task StartAsync()
     {
         _infrastructure = await TestInfrastructure.GetAsync();
-        await _infrastructure.CreateRealmAsync(_realmDefinition);
+        await _infrastructure.CreateRealmAsync(_realmDefinition, IdentityOrigin);
         _created = true;
     }
 
@@ -200,7 +202,7 @@ internal sealed class TestIdentity : IAsyncDisposable
     {
         if (_created)
         {
-            await _infrastructure!.DeleteRealmAsync(_realm);
+            await _infrastructure!.DeleteRealmAsync(_realm, IdentityOrigin);
             _created = false;
         }
     }

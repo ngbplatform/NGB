@@ -7,7 +7,9 @@ const items = ref<LookupItem[]>([])
 const selected = ref<LookupItem | null>(null)
 const result = ref('')
 const equipmentName = ref('')
-const message = ref('')
+const searchError = ref('')
+const previewError = ref('')
+const lastQuery = ref('')
 let search: AbortController | null = null
 let preview: AbortController | null = null
 
@@ -18,14 +20,15 @@ async function load(query = '') {
   const request = new AbortController()
   search = request
   items.value = []
-  message.value = ''
+  lastQuery.value = query
+  searchError.value = ''
   try {
     const parameters = new URLSearchParams({ equipmentId: props.equipmentId, query, limit: '20' })
     const sources = await httpGet<Source[]>(`/api/inspection-sources?${parameters}`, null, { signal: request.signal })
     if (search !== request) return
     items.value = sources.map(source => ({ id: source.id, label: source.number }))
   } catch {
-    if (search === request) message.value = 'Unable to load available inspections. Retry the search.'
+    if (search === request) searchError.value = 'Unable to load available inspections. Retry the search.'
   }
 }
 
@@ -35,7 +38,7 @@ async function choose(value: LookupItem | null) {
   selected.value = value
   result.value = ''
   equipmentName.value = ''
-  message.value = ''
+  previewError.value = ''
   if (!value) return
   const request = new AbortController()
   preview = request
@@ -51,9 +54,12 @@ async function choose(value: LookupItem | null) {
     result.value = source.result
   } catch (error) {
     if (preview === request) {
-      selected.value = null
-      message.value = error instanceof ApiError && error.status === 409
-        ? error.message : 'Unable to read this inspection. Select another source.'
+      if (error instanceof ApiError && error.status === 409) {
+        selected.value = null
+        previewError.value = error.message
+      } else {
+        previewError.value = 'Unable to read this inspection. Retry the preview.'
+      }
     }
   }
 }
@@ -82,7 +88,14 @@ onBeforeUnmount(() => {
       @query="load"
       @update:model-value="choose"
     />
-    <p v-if="message" role="alert">{{ message }}</p>
+    <div v-if="searchError">
+      <p role="alert">{{ searchError }}</p>
+      <button type="button" class="ngb-focus underline" @click="load(lastQuery)">Retry search</button>
+    </div>
+    <div v-if="previewError">
+      <p role="alert">{{ previewError }}</p>
+      <button v-if="selected" type="button" class="ngb-focus underline" @click="choose(selected)">Retry preview</button>
+    </div>
     <p data-testid="source-equipment">Equipment: {{ equipmentName || '—' }}</p>
     <p role="status">{{ result || 'Select an available inspection to preview its result.' }}</p>
   </section>

@@ -31,6 +31,7 @@ watch(() => props.modelValue, rows => {
 })
 const pending = new Map<string, AbortController>()
 const messages = reactive<Record<string, string>>({})
+const failedQuotes = reactive(new Set<string>())
 const columns = [
   { key: 'item', label: 'Item' },
   { key: 'quantity', label: 'Quantity' },
@@ -52,6 +53,7 @@ function invalidate(id: string): void {
   pending.get(id)?.abort()
   pending.delete(id)
   delete messages[id]
+  failedQuotes.delete(id)
 }
 
 async function refresh(id: string, item: string): Promise<void> {
@@ -71,13 +73,16 @@ async function refresh(id: string, item: string): Promise<void> {
     if (pending.get(id) !== request || !row || row.item !== item || props.businessDate !== date || props.readonly) return
     if (!Number.isSafeInteger(result.unitPriceMinor) || result.unitPriceMinor <= 0
       || !Number.isSafeInteger(result.unitPriceMinor * row.quantity)) {
-      throw new Error('The price cannot be represented in minor currency units.')
+      failedQuotes.add(id)
+      messages[id] = 'The price cannot be represented in minor currency units.'
+      return
     }
     replace(id, { ...result, totalMinor: result.unitPriceMinor * row.quantity })
     delete messages[id]
-  } catch (error) {
+  } catch {
     if (pending.get(id) === request) {
-      messages[id] = error instanceof Error ? error.message : 'Price unavailable. Select the item again to retry.'
+      failedQuotes.add(id)
+      messages[id] = 'Price unavailable. Retry the calculation.'
     }
   } finally {
     if (pending.get(id) === request) pending.delete(id)
@@ -91,7 +96,7 @@ function quantity(row: QuotedLine, value: string | number): void {
     messages[row.id] = 'Enter a positive whole quantity within the supported amount range.'
     return
   }
-  delete messages[row.id]
+  if (!pending.has(row.id) && !failedQuotes.has(row.id)) delete messages[row.id]
   replace(row.id, { quantity: count, totalMinor: row.unitPriceMinor === null ? null : row.unitPriceMinor * count })
 }
 
@@ -124,17 +129,17 @@ watch(() => props.businessDate, () => {
   }
 })
 watch(() => props.modelValue.map(row => row.id), ids => {
-  for (const id of pending.keys()) {
+  for (const id of Object.keys(messages)) {
     if (!ids.includes(id)) invalidate(id)
   }
 })
 watch(() => props.readonly, readonly => {
   if (readonly) {
-    for (const id of pending.keys()) invalidate(id)
+    for (const id of Object.keys(messages)) invalidate(id)
   }
 })
 watch(() => props.documentKey, () => {
-  for (const id of pending.keys()) invalidate(id)
+  for (const id of Object.keys(messages)) invalidate(id)
 })
 onBeforeUnmount(() => {
   for (const id of pending.keys()) invalidate(id)
@@ -164,6 +169,8 @@ onBeforeUnmount(() => {
           @update:model-value="value => refresh(row.id, String(value ?? ''))"
         />
         <span v-if="messages[row.id]" role="status">{{ messages[row.id] }}</span>
+        <button v-if="failedQuotes.has(row.id) && !readonly" type="button" class="ngb-focus underline"
+          @click="refresh(row.id, row.item)">Retry price</button>
       </div>
       <NgbInput
         v-else-if="column.key === 'quantity'"

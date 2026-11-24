@@ -1,15 +1,43 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using NGB.Contracts.Common;
 using NGB.Contracts.Services;
 using Xunit;
+using Xunit.Abstractions;
 using static EquipmentInspection.IntegrationTests.InspectionRequests;
 
 namespace EquipmentInspection.IntegrationTests;
 
-public sealed class EquipmentCatalogTests
+public sealed class EquipmentCatalogTests(ITestOutputHelper output)
 {
     private const string CatalogPath = "/api/catalogs/example.equipment";
+
+    [Fact]
+    public async Task A_required_name_rejects_a_blank_write_and_preserves_the_persisted_record()
+    {
+        await using var host = new InspectionHost();
+        await host.StartAsync();
+        using var admin = await host.CreateClientAsync("administrator");
+        var item = await PostAsync<CatalogItemDto>(admin, CatalogPath, Payload(("display", "Meter")));
+        var path = $"{CatalogPath}/{item.Id}";
+        using var control = await admin.PutAsJsonAsync(path, Payload(("display", "Calibrated meter")));
+        await EnsureSuccessAsync(control);
+        var before = (await admin.GetFromJsonAsync<CatalogItemDto>(path, Json))!;
+        Assert.Equal("Calibrated meter", before.Display);
+        using var refused = await admin.PutAsJsonAsync(path, Payload(("display", "  ")));
+        const string expectedReason = "ngb.validation.invalid_argument";
+        var reason = await AssertErrorAsync(refused, HttpStatusCode.BadRequest, expectedReason);
+        var after = (await admin.GetFromJsonAsync<CatalogItemDto>(path, Json))!;
+        Assert.Equal(before.Display, after.Display);
+        output.WriteLine("NGB-CHECK " + JsonSerializer.Serialize(new
+        {
+            kind = "state-invariant", target = "catalog:example.equipment", key = "required-name",
+            operation = "update", persistedControlId = before.Id, controlStatus = (int)control.StatusCode,
+            refusalStatus = (int)refused.StatusCode, expectedReason, reason,
+            beforeRefusal = new { before.Id, before.Display }, afterRefusal = new { after.Id, after.Display }
+        }));
+    }
 
     [Fact]
     public async Task Point_batch_reads_and_updates_preserve_unrelated_equipment()

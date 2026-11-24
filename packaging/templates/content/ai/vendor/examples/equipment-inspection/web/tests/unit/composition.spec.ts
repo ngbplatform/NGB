@@ -17,6 +17,7 @@ const state = vi.hoisted(() => ({
   editorProps: null as any,
 }))
 
+vi.mock('../../src/pages/InspectionDashboardPage.vue', () => ({ default: defineComponent({}) }))
 vi.mock('@ngbplatform/ui/lazy', () => ({
   loadNgbAccountingPeriodClosingPage: vi.fn(),
   loadNgbGeneralJournalEntryEditPage: vi.fn(), loadNgbGeneralJournalEntryListPage: vi.fn(),
@@ -215,6 +216,8 @@ it('guards list and direct editor routes with the public authentication guard', 
     '/reports/:reportCode', '/accounting/general-journal-entries', '/accounting/general-journal-entries/new',
     '/accounting/general-journal-entries/:id', '/admin/accounting/period-closing', '/work-center', '/settings/notifications', '/:pathMatch(.*)*',
   ])
+  const dashboard = state.createRouter.mock.lastCall![0].routes.find((route: { path: string }) => route.path === '/dashboard')
+  expect((await dashboard.component()).default).toBeDefined()
   expect(state.guard.mock.calls[0][0]().userName).toBe('Example operator')
   expect(state.beforeEach).toHaveBeenCalledOnce()
 })

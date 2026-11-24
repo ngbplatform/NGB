@@ -1,21 +1,142 @@
 import assert from 'node:assert/strict'
 import { isDashboardMenuItem } from './acceptance-outcomes.mjs'
 import { readAsset } from './file-data.mjs'
-import { objectKeys } from './kit-contracts.mjs'
+import { digest, objectKeys } from './kit-contracts.mjs'
+import { applyAssets } from './kit-files.mjs'
 
 const binding = check => JSON.stringify([check.kind, check.target, check.key])
+const obligationPath = 'ai/business-obligations.json'
+const baselinePath = 'ai/business-obligations.lock.json'
+const tracePath = 'ai/requirement-trace.json'
+const writeChecks = new Set(['source-membership', 'withdrawal-cycle', 'effective-prerequisite', 'dated-withdrawal',
+  'state-invariant', 'history-conflict', 'interval-overlap', 'snapshot-stability'])
+
+async function readObligations(root) {
+  const original = await readAsset(root, obligationPath)
+  assert.ok(original, 'Capture ai/business-obligations.json from the brief before generating the plan. See server-acceptance.md.')
+  const obligations = JSON.parse(original)
+  assert.ok(Array.isArray(obligations) && obligations.length, 'Capture the individual obligations from the original brief.')
+  const sources = new Map()
+  const ids = new Set()
+  for (const item of obligations) {
+    objectKeys(item, ['id', 'source', 'quote', 'effect', 'proofs'])
+    assert.ok(typeof item.id === 'string' && item.id.trim() && !ids.has(item.id), 'Use a distinct obligation ID.')
+    ids.add(item.id)
+    assert.match(item.source, /\.(?:md|txt)$/i)
+    if (!sources.has(item.source)) sources.set(item.source, await readAsset(root, item.source))
+    assert.ok(typeof item.quote === 'string' && item.quote.trim() && sources.get(item.source)?.includes(item.quote),
+      'Cannot find the cited requirement in the original brief: ' + item.id)
+    assert.ok(Array.isArray(item.proofs) && item.proofs.length, 'Specify observable proof for ' + item.id)
+    assert.ok(['write', 'read', 'presentation', 'recovery', 'operations'].includes(item.effect),
+      'Classify the required effect from the source brief: ' + item.id)
+    for (const proof of item.proofs) {
+      if (proof.scenario) objectKeys(proof, ['scenario', 'target', 'outcome'])
+      else if (proof.integrationTest) objectKeys(proof, ['integrationTest'])
+      else objectKeys(proof, ['kind', 'target', 'key'], ['stores', 'expect'])
+      for (const field of ['scenario', 'target', 'outcome', 'integrationTest', 'kind', 'key']) {
+        if (field in proof) assert.ok(typeof proof[field] === 'string' && proof[field].trim(), 'Missing proof ' + field + ' for ' + item.id)
+      }
+      if ('stores' in proof) {
+        assert.ok(proof.kind === 'restore-rehearsal' && Array.isArray(proof.stores) && proof.stores.includes('database')
+          && proof.stores.every(store => ['database', 'identity', 'attachments'].includes(store))
+          && new Set(proof.stores).size === proof.stores.length, 'Specify the distinct stores required for recovery.')
+      }
+      if ('expect' in proof) {
+        assert.ok(proof.expect && typeof proof.expect === 'object' && !Array.isArray(proof.expect) && Object.keys(proof.expect).length,
+          'Specify concrete observations from the brief.')
+      }
+    }
+    if (item.effect === 'write') {
+      assert.ok(item.proofs.some(proof => writeChecks.has(proof.kind) || (proof.scenario && proof.target.startsWith('document:')
+        && (proof.outcome === 'persisted-retry:' + proof.target.slice('document:'.length)
+          || (proof.outcome.startsWith('command:' + proof.target.slice('document:'.length) + '/') && proof.outcome.split('/').at(-1))))), 'A write obligation needs a verified mutation and persisted readback: ' + item.id)
+    }
+    if (item.effect === 'recovery') {
+      assert.ok(item.proofs.some(proof => proof.kind === 'restore-rehearsal' && proof.stores),
+        'Bind the declared storage scope to a restore rehearsal: ' + item.id)
+    }
+  }
+  const fingerprints = {
+    obligationsSha256: digest(original),
+    sources: Object.fromEntries([...sources].map(([path, value]) => [path, digest(value)])),
+  }
+  const baseline = { ...fingerprints, baselineSha256: digest(JSON.stringify(fingerprints)) }
+  if (process.env.NGB_OBLIGATIONS_SHA256) {
+    assert.equal(baseline.baselineSha256, process.env.NGB_OBLIGATIONS_SHA256, 'The reviewed brief or business obligations changed.')
+  }
+  return { obligations, baseline, snapshot: { ...Object.fromEntries(sources), [obligationPath]: original } }
+}
+
+export async function captureObligations(root, apply) {
+  const { baseline, snapshot } = await readObligations(root)
+  const current = await readAsset(root, baselinePath)
+  const incoming = JSON.stringify(baseline, null, 2) + '\n'
+  if (apply && current !== incoming) {
+    await applyAssets(root, { ...snapshot, [baselinePath]: current }, { [baselinePath]: incoming }, digest(incoming))
+  }
+  return baseline
+}
+
+// A frozen schema can exercise migrations without establishing that an earlier
+// application release exists. Only report a release upgrade against its named artifact.
+export async function verifyApplicationUpgrade(root, observations) {
+  const raw = await readAsset(root, 'ai/application-upgrade.json')
+  assert.ok(raw, 'Declare the application release baseline in ai/application-upgrade.json.')
+  const entry = JSON.parse(raw)
+  const identity = value => typeof value === 'string' && value.trim().length > 0
+  assert.ok(identity(entry.currentRelease), 'Identify the application release being tested.')
+  if (entry.previousRelease === null) {
+    objectKeys(entry, ['currentRelease', 'previousRelease', 'reason'])
+    assert.ok(identity(entry.reason), 'Explain why a supported previous application release is unavailable.')
+    assert.equal(observations.length, 0, 'Release upgrade observations conflict with the unavailable baseline.')
+    return { status: 'unavailable', ...entry }
+  }
+
+  objectKeys(entry, ['currentRelease', 'previousRelease', 'sourceManifest', 'sourceManifestSha256', 'test'])
+  assert.ok(identity(entry.previousRelease) && entry.previousRelease !== entry.currentRelease,
+    'Identify distinct source and target application releases.')
+  assert.ok(identity(entry.test), 'Bind the release upgrade to its integration test.')
+  assert.match(entry.sourceManifestSha256, /^[a-f0-9]{64}$/)
+  const manifest = await readAsset(root, entry.sourceManifest)
+  assert.ok(manifest && digest(manifest) === entry.sourceManifestSha256, 'Previous application release manifest differs from its pinned digest.')
+  assert.equal(observations.length, 1, 'Require one release upgrade observation from this integration run.')
+  const [{ test, proof }] = observations
+  assert.equal(test, entry.test, 'The release upgrade observation belongs to a different test.')
+  for (const key of ['previousRelease', 'currentRelease', 'sourceManifestSha256']) {
+    assert.equal(proof[key], entry[key], 'The observed release upgrade differs from its declaration: ' + key)
+  }
+  for (const status of [proof.seedStatus, proof.readStatus]) {
+    assert.ok(Number.isInteger(status) && status >= 200 && status < 300, 'Seed the prior application and reopen its record after the upgrade.')
+  }
+  assert.ok(identity(proof.recordId) && proof.recordId === proof.reopenedId, 'Reopen the same business record.')
+  assert.ok(proof.before && typeof proof.before === 'object' && !Array.isArray(proof.before) && Object.keys(proof.before).length,
+    'Capture persisted business values before the upgrade.')
+  assert.deepEqual(proof.after, proof.before, 'The application upgrade changed the preserved business state.')
+  return { status: 'verified', ...entry, recordId: proof.recordId }
+}
 
 // Capture the source-to-proof inventory before implementation. An independent
 // requirement binding survives removing a rule and its test from the plan.
-export async function verifyRequirementTrace(root, plan, passedTests) {
-  if (plan.schemaVersion === 1) return
-  const raw = await readAsset(root, 'ai/requirement-trace.json')
+export async function verifyRequirementTrace(root, plan, passedTests, observations) {
+  if (plan.schemaVersion === 1) {
+    const inputs = await Promise.all([obligationPath, baselinePath, tracePath].map(path => readAsset(root, path)))
+    assert.ok(!plan.documents?.length && !process.env.NGB_OBLIGATIONS_SHA256 && inputs.every(input => input === null),
+      'Use schema 2 for application documents or business obligations. Only the empty starter uses schema 1.')
+    return
+  }
+  const raw = await readAsset(root, tracePath)
   assert.ok(raw, 'Map the original business brief to executable evidence in ai/requirement-trace.json.')
   const trace = JSON.parse(raw)
   objectKeys(trace, ['requirements', 'documentRules'])
   assert.ok(Array.isArray(trace.requirements), 'List the original requirements.')
   assert.deepEqual(trace.requirements.map(row => row.id).sort(), plan.requirements.map(row => row.id).sort(),
     'Reconcile the source requirements with ai/acceptance.json.')
+  const { obligations, baseline } = await readObligations(root)
+  const captured = await readAsset(root, baselinePath)
+  assert.ok(captured, 'Run ai capture --apply on the reviewed obligations before implementation.')
+  assert.deepEqual(JSON.parse(captured), baseline, 'The source brief or obligations differ from the reviewed baseline.')
+  assert.deepEqual(obligations.map(item => item.id).sort(), trace.requirements.map(row => row.id).sort(),
+    'Retain each original business obligation in the trace and acceptance plan.')
   const sources = new Map()
   const checked = new Set()
   const declared = new Map(plan.businessChecks.map(check => [binding(check), check]))
@@ -27,6 +148,28 @@ export async function verifyRequirementTrace(root, plan, passedTests) {
       `Cannot find the cited requirement in ${row.source}: ${row.id}`)
     assert.ok(Array.isArray(row.checks), 'List the required server observations.')
     const requirement = plan.requirements.find(item => item.id === row.id)
+    const obligation = obligations.find(item => item.id === row.id)
+    assert.ok(row.source === obligation.source && row.quote === obligation.quote, 'Keep the original obligation and its exact source excerpt: ' + row.id)
+    for (const proof of obligation.proofs) {
+      if (proof.scenario) {
+        assert.ok(plan.cases.some(entry => requirement.cases.includes(entry.id) && entry.target === proof.target
+          && entry.scenario === proof.scenario && entry.outcomes.includes(proof.outcome)), 'Missing required browser outcome for ' + row.id)
+      } else if (proof.integrationTest) {
+        assert.ok(row.integrationTests?.includes(proof.integrationTest), 'Missing required integration test for ' + row.id)
+      } else {
+        assert.ok(row.checks.some(check => binding(check) === binding(proof)), 'Missing required server proof for ' + row.id + ': ' + binding(proof))
+        if (proof.stores) {
+          assert.deepEqual([...(declared.get(binding(proof))?.stores ?? [])].sort(), [...proof.stores].sort(),
+            'Rehearse the complete recovery scope from the original brief.')
+        }
+        if (proof.expect && observations) {
+          const actual = observations.find(item => binding(item.proof) === binding(proof))
+          for (const [field, expected] of Object.entries(proof.expect)) {
+            assert.deepEqual(actual?.proof[field], expected, 'Unexpected observed ' + field + ' for ' + row.id)
+          }
+        }
+      }
+    }
     const tests = row.integrationTests ?? []
     assert.ok(Array.isArray(tests) && tests.every(name => typeof name === 'string' && name.trim())
       && tests.length === new Set(tests).size, 'Bind distinct integration test names.')
@@ -94,6 +237,8 @@ export function verifyPresentationInventory(plan, inventory, icons) {
       }
       assert.ok(plan.cases.some(entry => entry.target === 'navigation:' + item.code
         && entry.outcomes.includes('business-calendar')), 'Verify the dashboard business date across client time zones.')
+      assert.ok(plan.cases.some(entry => entry.target === 'navigation:' + item.code
+        && entry.outcomes.includes('dashboard-context')), 'Verify the visible period or scope in the dashboard header.')
     }
   }
   for (const report of inventory.reports) {

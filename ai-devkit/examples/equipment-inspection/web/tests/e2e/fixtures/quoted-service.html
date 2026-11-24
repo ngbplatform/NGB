@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Service quote</title>
+    <script src="/runtime-config.js"></script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module">
+      import { createApp } from 'vue'
+      import { createPinia } from 'pinia'
+      import { useAuthStore } from '@ngbplatform/ui'
+      import '@ngbplatform/ui/styles'
+      import Form from './QuotedServiceForm.vue'
+
+      async function start() {
+        const pinia = createPinia()
+        const auth = useAuthStore(pinia)
+        await auth.initialize()
+        if (auth.authenticated) {
+          createApp(Form).use(pinia).mount('#app')
+        } else {
+          await auth.login(location.pathname + location.search)
+        }
+      }
+
+      void start()
+    </script>
+  </body>
+</html>

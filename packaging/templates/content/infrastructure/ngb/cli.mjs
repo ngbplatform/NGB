@@ -7,6 +7,7 @@ import { validateApplication } from './validation.mjs'
 import { delegateUpgrade, needsDelegation, validateDelegation } from './delegation.mjs'
 import { recoverTransaction } from './transaction.mjs'
 import { recoverTestEnvironment } from './environment.mjs'
+import { captureObligations } from './requirement-trace.mjs'
 
 const help = `NGB application commands:
 
@@ -20,6 +21,7 @@ Inside a generated application:
   node infrastructure/ngb.mjs upgrade --to ${toolVersion} --apply
   node infrastructure/ngb.mjs deploy --backup-confirmed
   node infrastructure/ngb.mjs ai status --format json
+  node infrastructure/ngb.mjs ai capture --apply
   node infrastructure/ngb.mjs ai sync
   node infrastructure/ngb.mjs ai sync --apply --resolutions reviewed-resolutions.json
   node infrastructure/ngb.mjs recover
@@ -101,6 +103,11 @@ export async function runCli(args, defaults = {}) {
       emitReport(report('recover', [{ id: 'transaction.recovery', required: true, state: 'passed',
         message: recovery.state === 'not-needed' ? 'No interrupted transaction.'
           : `${options.apply ? 'Completed' : 'Preview'}: ${recovery.action} transaction ${recovery.id}.` }], { recovery }), options.format)
+    }
+    else if (options.command === 'ai' && options.name === 'capture') {
+      const baseline = await captureObligations(root, options.apply)
+      emitReport(report('ai capture', [{ id: 'requirements.baseline', required: true, state: 'passed',
+        message: `${options.apply ? 'Recorded' : 'Preview'} business obligations ${baseline.baselineSha256}.` }], { baseline }), options.format)
     }
     else if (options.command === 'ai') emitReport(await runKit(root, options), options.format)
     else if (options.command === 'doctor') emitReport(await doctor(root), options.format)

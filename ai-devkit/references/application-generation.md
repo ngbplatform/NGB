@@ -215,3 +215,10 @@ effective-dated value changes, rather than extrapolating from a single race test
 Complete the [executed browser acceptance matrix](browser-acceptance.md) before declaring generation complete.
 The E2E CLI gate must reconcile runtime documents, catalogs, reports, menu destinations and roles with current-run Playwright
 UI evidence. Passing test counts or a prose checklist alone are insufficient.
+
+Capture the business obligations before authoring implementation or generating
+the two acceptance mappings. Record the exact historical group, duration, amount
+and rejected state transition when the brief supplies them. In the delivery
+report, link the current run's `backend-coverage.json` and use its `sourceFiles`
+and `overall` counts. Identify the baseline version and stores used in a restore
+drill and any unverified deployment steps.

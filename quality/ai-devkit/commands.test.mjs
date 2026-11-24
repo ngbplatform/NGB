@@ -8,6 +8,10 @@ test('inspection commands cannot acquire execution or mutation flags', () => {
     assert.throws(() => argumentsFor([command, '--apply']))
   }
   assert.equal(argumentsFor(['ai', 'status', '--format', 'text']).name, 'status')
+  assert.equal(argumentsFor(['ai', 'capture', '--format', 'json']).name, 'capture')
+  assert.equal(argumentsFor(['ai', 'capture', '--apply']).apply, true)
+  assert.throws(() => argumentsFor(['ai', 'capture', '--to', '3.4.0']))
+  assert.throws(() => argumentsFor(['ai', 'capture', '--apply', '--resolutions', 'choices.json']))
   for (const args of [['ai', 'unknown'], ['ai', 'status', '--apply'], ['ai', 'status', '--to', '3.4.0'],
     ['ai', 'status', '--resolutions', 'review.json'], ['ai', 'sync', '--to', 'latest'],
     ['validate', '--format', 'yaml'], ['validate', '--profile', 'unit'],

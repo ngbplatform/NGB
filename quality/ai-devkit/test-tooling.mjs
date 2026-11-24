@@ -27,7 +27,7 @@ const authoringModules = ['ai-devkit/guidance.mjs', 'ai-devkit/capabilities.mjs'
   'quality/ai-devkit/evaluation-oracles/permission-correction.mjs',
   'quality/ai-devkit/evaluation-oracles/customized-kit-upgrade.mjs']
 const processModules = ['application', 'cli', 'file-data', 'kit-files', 'kit', 'process', 'profiles', 'validation',
-  'acceptance', 'environment', 'acquisition', 'delegation', 'transaction', 'upgrade-assets', 'coverage', 'load', 'performance-runner', 'resources']
+  'acceptance', 'requirement-trace', 'environment', 'acquisition', 'delegation', 'transaction', 'upgrade-assets', 'coverage', 'load', 'performance-runner', 'resources']
   .map(name => `${modules}/${name}.mjs`)
 const discovered = (await readdir(join(root, modules))).filter(name => name.endsWith('.mjs')).map(name => `${modules}/${name}`)
 assert.deepEqual(discovered.sort(), [...measured, ...processModules].sort(),

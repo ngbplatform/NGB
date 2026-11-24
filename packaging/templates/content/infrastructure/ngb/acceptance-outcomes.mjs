@@ -17,7 +17,7 @@ export const scenarioOutcomes = {
   'source-change-clear': ['replacement-header', 'replacement-lines', 'cleared-header', 'cleared-lines', 'cleared-totals'],
   'lookup-eligibility': ['eligible', 'ineligible', 'reopened-selection'],
   pricing: ['preview', 'date-change', 'posted', 'snapshot'],
-  'async-race': ['late-source', 'late-dependent', 'late-failure'],
+  'async-race': ['late-source', 'late-dependent', 'late-failure', 'current-retry'],
   search: ['opened-target'],
   'search-denial': ['denied-result', 'permitted-result'],
   report: ['figures', 'drill-down', 'source-target', 'short-description'],
@@ -198,13 +198,18 @@ export function verifyOutcomeProof(entry, proof) {
   assert.deepEqual([...proof.outcomes].sort(), [...entry.outcomes].sort(),
     `Browser did not verify every expected outcome: ${entry.id}`)
   for (const name of entry.outcomes) {
-    const check = /^(?:report-reference|dashboard-layout|reference|flow-amount|registers?|commands?):/.test(name) ? name : requiredChecks[name]
+    const check = /^(?:persisted-retry|report-reference|dashboard-layout|reference|flow-amount|registers?|commands?):/.test(name) ? name : requiredChecks[name]
+    if (name.startsWith('persisted-retry:')) {
+      assert.ok(proof.evidence?.[name]?.includes('current-retry'), 'Verify the failed calculation and retry before its persisted readback.')
+    }
     if (check) assert.ok(Array.isArray(proof.evidence?.[name]) && proof.evidence[name].includes(check),
       `Use the ${check} check for ${entry.id}/${name} and verify its expected business value.`)
   }
 }
 
 const requiredChecks = {
+  'current-retry': 'current-retry',
+  'dashboard-context': 'dashboard-context',
   'journal-draft': 'journal-draft',
   'journal-create-access': 'journal-create-access',
   'business-calendar': 'business-calendar',

@@ -136,6 +136,139 @@ in both observed arrays. Assert resolution behavior wherever the brief defines i
 
 ## Trace the original brief
 
+### Capture the obligations before implementing
+
+Read the original brief independently of the acceptance-plan generator. Split compound
+requirements when their rules can fail independently. Identify the operation, business
+key, effective date, prerequisite, consumer and permitted correction. Include creation,
+edits and changes of state. For an interval, specify endpoint inclusion and check both
+open and completed intervals. When the end must follow the start, try closing at
+the start and verify that the refused operation accrues no charge. For a required
+nonblank value, try spaces, tabs and line breaks, then read the saved value.
+Record a valid neighboring example for every prohibited operation. Derive any
+expected amounts, groups and dates directly from the brief.
+
+Store these project-owned inputs in `ai/business-obligations.json`. For example:
+
+```json
+[
+  {
+    "id": "approved-before-release",
+    "source": "requirements.md",
+    "quote": "A release requires an effective approval.",
+    "effect": "write",
+    "proofs": [
+      { "kind": "effective-prerequisite", "target": "document:example.release", "key": "approval",
+        "expect": { "refusalStatus": 409 } }
+    ]
+  }
+]
+```
+
+`node infrastructure/ngb.mjs ai capture` previews the fingerprint. Add `--apply`
+to record the reviewed input and the complete source-file digests. Commit the two
+obligation files with the brief. For CI or model comparison, keep the reviewed
+`baselineSha256` independently and provide it as `NGB_OBLIGATIONS_SHA256`.
+Once an application declares documents, obligations or a requirement trace, its
+acceptance plan must use schema 2, including for the integration-only profile.
+When migrating a schema 2 plan, extract these inputs from the original requirements,
+then reconcile the existing tests. Recapture differences only as a reviewed change
+of requirements or acceptance criteria. Keep capture out of test/plan generators.
+
+Each obligation binds one or more checks by kind, target and key. Optional `expect`
+fields compare precomputed values with the current integration test's observed
+properties. A named behavioral integration test can use `{"integrationTest":"..."}`.
+A UI obligation uses `{"scenario":"navigation","target":"navigation:example.home","outcome":"dashboard-home"}`.
+Write, identity, financial and final-state rules need a write and a fresh read of
+persisted effects. A label or search check covers only its own presentation rule.
+Classify each obligation as `write`, `read`, `presentation`, `recovery` or
+`operations`. A write requires a structured server mutation check or the matching
+document `command:<type>/<code>` browser proof, which executes the command and
+reopens the changed field. Recovery requires the explicit stores from the brief.
+
+### Exercise the business timeline
+
+Trace each business mutation and each prerequisite to the text that authorizes
+it. A projection of charges or usage does not by itself authorize a posting to
+another ledger or require advance funding. For independent workflows include
+an allowed transaction with no records in the other workflow and compare both
+sets of balances before and after. Record any material ambiguity before
+implementation.
+
+For each report advertising XLSX export, bind a `report-export` check. Execute
+the report and download its workbook with the same parameters and filters. Read
+the worksheet cells and compare both results with independently seeded expected
+values. Emit `downloadStatus`, `contentType`, `expectedCells`, `screenCells`
+and `worksheetCells`; use names, dates, details or totals appropriate to the report.
+
+* Bind `state-invariant` to the actual catalog or document operation. Exercise blank
+  required input, attempts to change or reuse a stable identifier, or a transition
+  from a terminal state, where specified. Try the normal action again after the
+  alleged reactivation. Distinguish correction of a mistaken original entry from a
+  new business operation. Read both the accepted control and the state after refusal.
+  Emit `operation`, `persistedControlId`, both HTTP statuses, the expected and actual
+  business reason, and `beforeRefusal` / `afterRefusal`.
+* Give each right and each source of funds its own `effective-prerequisite` key.
+  Check availability as of the consuming operation, including when a later posting
+  has already settled the balance. For `dated-withdrawal`, recalculate all dependent
+  confirmations at their dates under the proposed withdrawal. A later replacement
+  cannot fund an earlier commitment. Exercise the authorized correction order and,
+  where substitution is allowed, an already effective replacement. Emit `sourceId`,
+  `consumerId`, `sourceAt`, `consumerAt`, `replacementAt` for substitution,
+  `persistedControlId`, both statuses, refusal reasons and before/after snapshots with
+  `source`, `consumer` and `balance`. Serialize competing writes on the same key.
+  For ID-based reversals specify which arguments are omitted and which effective
+  date comes from the original event. Run both the refused and the permitted
+  reversal through that same interface and read the resulting dated balances.
+  Execute a first successful business write against the real provider before
+  evaluating its refusal cases. Creating a stored function may defer query
+  planning until invocation. Qualify columns and distinguish routine variables
+  from query aliases; check the application's expected refusal reason.
+* For resources with exclusive use, exercise every supported write that can create
+  an overlap. Extend an earlier period into a later confirmed one through the
+  normal correction interface and verify the original end and charges after
+  refusal. Include a permitted booking that starts exactly at the preceding
+  end when the business rule uses half-open intervals.
+* Give each snapshot fact and consumption interval its own key. Vary classification
+  and the business calendar while an operation is open, after completion before
+  settlement, and after settlement. Test a pair of identical instants spanning local
+  midnight. Preserve agreed business dates or the agreed zone for the full interval.
+  A fresh operation uses the new configuration. Check the amount in the original
+  group and the absence of that amount in the new group.
+* Bind `business-day-cutoff` where configurable zones and date-only facts feed
+  end-of-day reports. Preserve calendar dates as dates. For instants use consecutive
+  local midnight boundaries in the business zone, accounting for DST. Run the same
+  dated event in two configured zones, including a zone such as Pacific/Kiritimati
+  that maps noon UTC to the next date. Emit `recordId`, `businessDate`, `opening`,
+  `closing` and a `zones` array of `{zone, configuredZone, dates, values}` with measured
+  positions on the previous, selected and following calendar dates.
+* For `restore-rehearsal` declare `stores` in both the obligation proof and the
+  business check when more than the application database is in scope. For example
+  `["database","identity","attachments"]` requires a fresh login through the
+  restored identity provider (`restoredLogin.status/subject/originalSubject`) and
+  a download through the restored application (`restoredAttachment.status/id/bytes/sha256/originalSha256`).
+  Seed before backup, isolate the restored instances, use the same business identity
+  and compare bytes. Exercise upgrade from the declared earlier release if available;
+  record the missing baseline explicitly when it is unavailable.
+
+### Report the application upgrade baseline
+
+For schema 2 integration acceptance, create `ai/application-upgrade.json`.
+Set `currentRelease` to the tested application's release identifier. When there
+is no supported previous application release, set `previousRelease` to null
+and give a nonempty `reason`. The machine report records `unavailable`.
+A frozen database schema can separately establish migration compatibility.
+
+When a previous release exists, declare `previousRelease`, the project-relative
+`sourceManifest`, its `sourceManifestSha256`, and the fully qualified integration
+`test`. Seed the previous release using its published artifacts, upgrade the
+existing data, and reopen the same record in the target application. From that
+passing test write one `NGB-UPGRADE ` JSON line with the observed release IDs,
+manifest digest, successful `seedStatus` and `readStatus`, matching `recordId`
+and `reopenedId` and the nonempty `before` and `after` business state. Record
+values that the upgrade must preserve. The integration report supplies the
+verified release pair and the reopened identity under `test.integration.application-upgrade`.
+
 Before implementation, retain the supplied brief (or its text transcription)
 in the project. Store an independent `ai/requirement-trace.json` alongside the
 schema 2 acceptance plan. List each requirement ID once, give its project-relative
