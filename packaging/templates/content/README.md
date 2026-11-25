@@ -100,35 +100,6 @@ The `start` command builds and starts a new Compose deployment. If containers al
 exist, use `docker compose start` to resume them, or the explicit `deploy` command
 below to rebuild and migrate.
 
-Before package publication, first [prepare local packages](https://docs.ngbplatform.com/architecture/external-app-upgrades#before-publication).
-Then run this command from the NGB checkout:
-
-```sh
-node ngb.mjs create MyApplication --local --start --email administrator@example.com
-```
-
-It creates a sibling application directory, installs the packed template in an
-isolated template cache and verifies the release manifest and package hashes.
-`--packages /path/to/candidate` selects another local set; `--output /path/to/MyApplication`
-selects a nonexistent destination. No Dockerfile edits are needed. The application
-owns package copies and has no references to NGB source projects.
-`--local` requires an existing `artifacts/release-candidate/release-manifest.json`;
-it does not package the platform or run release certification.
-If the package set is already prepared in another directory, use it directly:
-
-```sh
-node ngb.mjs create MyApplication --packages artifacts/release-candidate-next --start --email administrator@example.com
-```
-
-Replace `artifacts/release-candidate-next` with your existing candidate directory.
-One package set can create multiple independent applications without being repacked.
-
-Local package state is ignored by Git. `NuGet.Config` retains registry consumption;
-`NuGet.Local.Config` adds the local NGB feed while preserving other sources. For host
-development with local packages, restore with `--configfile NuGet.Local.Config` and
-run `npm cache add .ngb-packages/ui.tgz` from `web` before `npm ci`. The application
-command configures these automatically for Compose.
-
 The first identity has the trusted Keycloak role `ngb-admin`, so it can administer
 the application before a platform user exists. On **Users**, create/link the same
 email and assign the **Administrator** role. This enables personal Work Center
@@ -173,24 +144,13 @@ records. PostgreSQL stores the application, Keycloak realm, and Hangfire state.
 
 ## Develop on the host
 
-For published packages, run from the application directory:
+From the application directory, restore the backend packages from NuGet and the
+frontend packages from npm, then build both projects.
 
 ```sh
 dotnet restore NgbApplication.slnx --locked-mode --configfile NuGet.Config
 dotnet build NgbApplication.slnx --no-restore -c Release
 cd web
-npm ci --workspaces=false
-npm run build
-cd ..
-```
-
-For an app created with unpublished local packages, use this sequence instead:
-
-```sh
-dotnet restore NgbApplication.slnx --locked-mode --configfile NuGet.Local.Config
-dotnet build NgbApplication.slnx --no-restore -c Release
-cd web
-npm cache add .ngb-packages/ui.tgz
 npm ci --workspaces=false
 npm run build
 cd ..
@@ -331,15 +291,13 @@ node infrastructure/ngb.mjs upgrade --to TARGET_VERSION
 node infrastructure/ngb.mjs upgrade --to TARGET_VERSION --apply
 ```
 
-Before publication, select an approved sealed set with `--packages /path/to/candidate`.
 The currently registered transition is listed in the guide. The tool requires one
 root solution, `NgbPlatformVersion` in `Directory.Build.props`, a mapped
 `NuGet.Config`, and the `web` frontend. Other layouts require manual migration.
 Preview writes nothing inside the application; verified target CLI acquisition
 uses an external cache. Apply prepares matching SDK/UI, CLI/helper and Kit changes
 in a private temporary copy and validates builds before committing one transaction.
-It also manages ignored local packages, their configuration and `.gitignore`
-entries. Application code, tests and configuration require application review.
+Review application code, tests and configuration as part of the upgrade.
 Originals and recovery receipts are saved in `.ngb/transactions/<id>/`.
 Concurrent edits, mixed versions, conditional platform versions and unsupported
 transitions stop the upgrade. File backups are not database backups.
@@ -356,11 +314,15 @@ take over a live operation. Existing historical `.ngb/upgrades` records remain
 available. Keep the recovery directory until the upgrade has been reviewed.
 
 New apps carry the tool at `infrastructure/ngb.mjs`; it acquires the exact target
-CLI when a registered newer transition requires it. Existing 3.3.0 applications
-bootstrap through `npm exec --ignore-scripts --package=@ngbplatform/cli@3.4.0 -- ngb
-upgrade --app . --to 3.4.0` after publication. Future releases must register
-their transitions and document the required tool version. Read the migration guide
-for application-specific configuration and tests. Installing a template never
+CLI when a registered newer transition requires it. To preview the upgrade from
+3.3.0 to 3.4.0, run this command from the existing application's root.
+
+```sh
+npm exec --ignore-scripts --package=@ngbplatform/cli@3.4.0 -- ngb upgrade --app . --to 3.4.0
+```
+
+Review the plan, then run the command with `--apply`. The migration guide covers
+application-specific configuration and tests. Installing a template never
 rewrites an existing app.
 
 Before an upgrade, take consistent backups of PostgreSQL, Keycloak and

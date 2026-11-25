@@ -31,42 +31,19 @@ CRM covers:
 
 CRM does not include general ledger, inventory, invoicing, payroll, procurement, or any external CRM API integration.
 
-## Local Package Verification
+## Build CRM
 
-Before building against unpublished platform code, package the complete platform into the local
-feed. From the repository root on macOS/Linux or in WSL2, pack npm before NuGet
-because template lockfile generation needs the UI archive:
+From the repository root, restore the backend dependencies from NuGet.org and build the API.
 
 ```bash
-npm --prefix ui ci
-npm --prefix ui run pack:platform-ui -- --local-candidate
-bash packaging/nuget/pack-platform.sh
-```
-
-The script refreshes the feed and restores the solution. Then build CRM:
-
-```bash
+dotnet restore NGB.CRM.Api/NGB.CRM.Api.csproj --configfile NuGet.Registry.Config
 dotnet build NGB.CRM.Api/NGB.CRM.Api.csproj -c Release --no-restore
 ```
 
-After the packages are published, the same `PackageReference` entries can restore from NuGet.org.
-
-On Windows, use the [WSL2 package preparation instructions](../docs/start-here/run-locally.md#prepare-local-platform-packages).
-
 ## Docker Compose
 
-The local CRM web image requires `artifacts/npm/ngbplatform-ui-local.tgz` as well as the backend
-NuGet packages. On macOS/Linux, install the UI tooling and create the tarball:
-
-```bash
-npm --prefix ui ci
-npm --prefix ui run pack:platform-ui -- --local-candidate
-docker compose -f docker-compose.crm.yml --env-file .env.crm up -d --build
-```
-
-On Windows, run the package commands in WSL2 as described in the linked instructions.
-Prepare the HTTPS certificate described in the root README first.
-Repack after platform changes: these artifacts are ignored by Git and are not created by Compose.
+Follow the [CRM startup instructions](../docs/start-here/run-locally.md#start-crm)
+to build the backend and web images with NuGet.org and npm packages and start the demo.
 
 ## Migrations
 

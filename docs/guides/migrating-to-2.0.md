@@ -158,5 +158,5 @@ NGB_COVERAGE_BASE_REF=HEAD ./quality/coverage/run-document-actions-work-center-b
 NGB_COVERAGE_BASE_REF=HEAD ./quality/coverage/run-document-actions-work-center-frontend-coverage.sh
 ```
 
-For a custom vertical, add compile-time package-consumer tests that reference the packed 2.0.0
-artifacts rather than platform source projects.
+For a custom vertical, add compile-time package-consumer tests that restore the
+2.0.0 platform packages from NuGet.org.

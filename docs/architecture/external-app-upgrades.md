@@ -4,22 +4,19 @@ Use the official template to create an independent application, then update its
 NuGet/npm dependencies through supported upgrade transitions. This page covers
 application creation, extension boundaries and the upgrade contract.
 
-The examples target **3.4.0**, including the **3.3.0 → 3.4.0** upgrade transition
-and the [AI Development Kit](../guides/ai-development-kit.md). The historical
-3.2.0 → 3.3.0 procedure remains below. Registry commands require published target
-packages; use the local package procedure before publication. Local certification
-validates an exact source/package set. Publication and verification of the packages
-downloaded from registries are separate release operations.
+New applications include the [AI Development Kit](../guides/ai-development-kit.md).
+For existing applications, this guide covers the **3.3.0 → 3.4.0** upgrade and
+the earlier supported transitions.
 
 ## Create an application
 
 ### From published packages
 
-Run these commands in the directory that should contain your new application,
-after the target release is published. No NGB checkout is required:
+Run these commands in the directory that should contain your new application.
+The install command selects the latest stable template from NuGet.
 
 ```sh
-dotnet new install NGB.Platform.Templates@3.4.0
+dotnet new install NGB.Platform.Templates
 dotnet new ngb -n MyApplication
 cd MyApplication
 node infrastructure/configure.mjs administrator@example.com
@@ -33,63 +30,6 @@ from the application's `.env`. Check `docker compose ps -a`, `docker compose log
 migrator` and `http://localhost:5181/health` before using the app. The Migrator must
 exit with code 0. Keycloak is on port 5180 and the worker dashboard is at
 `http://localhost:5184/hangfire`.
-
-### Before publication
-
-Run from the NGB repository root on macOS/Linux or in WSL2, using .NET 10, Node
-24.19.x and Docker Compose. `--local` consumes an existing package set; it does not
-build packages. If you already prepared a candidate, reuse it for application
-creation; packaging and certification are not required for every new application.
-On a fresh checkout, prepare the package set first:
-
-```sh
-npm --prefix ui ci
-npm --prefix quality ci
-node ui/scripts/pack-platform-ui.mjs --local-candidate
-bash packaging/nuget/pack-platform.sh
-bash packaging/nuget/verify-platform-packages.sh
-node quality/external-consumer/release.mjs seal
-```
-
-Build the npm archive before NuGet. The pack command selects the pinned tools,
-refreshes Kit package identities after public-contract validation, generates
-consumer lockfiles and packages the template and CLI. Sealing creates
-`artifacts/release-candidate/release-manifest.json` and copies the package files.
-This prepares local development; it does not run certification or publish anything.
-
-Once the package set is prepared, create and start the app with:
-
-```sh
-node ngb.mjs create MyApplication --local --start --email administrator@example.com
-```
-
-The CLI initializes `.env` itself; do not run `configure.mjs` again in this app.
-After publication, replace `--local` with `--version 3.4.0`. Output defaults to a
-sibling of the NGB checkout. `--output` selects another nonexistent directory outside
-the checkout. Application names contain 2–64 letters/digits and start with a letter.
-
-`--local` selects `artifacts/release-candidate`. If your candidate has another name,
-pass the directory containing its `release-manifest.json` explicitly. For example,
-to consume an already prepared `artifacts/release-candidate-next`:
-
-```sh
-node ngb.mjs create MyApplication --packages artifacts/release-candidate-next --start --email administrator@example.com
-```
-
-Local mode verifies package hashes and copies the feed and npm archive into the
-application. Generated Dockerfiles need no edits. A sealed directory cannot be
-overwritten. When changing the packaged platform or template, repeat packaging,
-then seal into a new, nonexistent directory, for example:
-
-```sh
-node quality/external-consumer/release.mjs seal artifacts/release-candidate-updated
-node ngb.mjs create MyNextApplication --packages artifacts/release-candidate-updated --start --email administrator@example.com
-```
-
-Keep previous candidates for diagnosis. Each candidate identifies one source and
-package set; changing any tracked documentation also requires resealing before
-release certification. Initial package preparation still needs registry access for
-third-party dependencies. Local mode does not mean an offline installation.
 
 ### Starter contents and first login
 
@@ -193,11 +133,10 @@ do not register a direct jump from 3.1.0 to 3.4.0.
 
 ## Migrate 3.3.0 to 3.4.0
 
-Follow the [AI Kit upgrade procedure](../guides/ai-development-kit.md#updates-and-conflicts)
+Follow the [AI Kit upgrade procedure](../guides/ai-development-kit.md#upgrade-the-platform-and-kit-together)
 to acquire the exact npm CLI without a platform checkout, preview conflicts and
-apply coordinated SDK/UI/CLI/Kit changes. For an unpublished sealed candidate,
-use the repository entry point with `--packages /absolute/candidate` or its verified
-extracted CLI. Existing root instructions and application custom skills are preserved.
+apply coordinated SDK/UI/CLI/Kit changes. Existing root instructions and
+application custom skills are preserved.
 
 The upgrade validates isolated builds before committing a recoverable transaction.
 It does not run migrations, start services or introduce the new starter's tests
@@ -248,9 +187,7 @@ Trade-specific schema migration.
 
 ## Migrate 3.2.0 to 3.3.0
 
-Use the 3.3.0 application tool for this transition, such as `ngb.mjs` from the
-matching NGB checkout. An existing application's bundled 3.2.0 tool is not updated
-by installing a new template or changing package references.
+Use the application tool bundled with the 3.3.0 NuGet template for this transition.
 
 The automated tool expects one root `.sln`/`.slnx`, a root `Directory.Build.props` with one unconditional
 `NgbPlatformVersion`, `NuGet.Config` with explicit sources and source mapping, and
@@ -259,37 +196,21 @@ must both start at 3.2.0. Explicit and centrally managed NGB package versions ar
 supported within that layout. Other layouts, conditional versions and custom
 version expressions require a reviewed manual migration; the tool refuses them.
 
-From the NGB checkout, preview and apply the supported dependency update:
+From the directory containing your existing `MyApplication`, install the 3.3.0
+template from NuGet and generate the matching tool in a separate directory.
+Use it to preview the update, then apply the reviewed plan.
 
 ```sh
-node ngb.mjs upgrade --app ../MyApplication --to 3.3.0
-node ngb.mjs upgrade --app ../MyApplication --to 3.3.0 --apply
+dotnet new install NGB.Platform.Templates@3.3.0
+dotnet new ngb -n UpgradeTool -o UpgradeTool
+node UpgradeTool/infrastructure/ngb.mjs upgrade --app MyApplication --to 3.3.0
+node UpgradeTool/infrastructure/ngb.mjs upgrade --app MyApplication --to 3.3.0 --apply
 ```
 
-Before publication, prepare the package set as described [above](#before-publication)
-and use:
-
-```sh
-node ngb.mjs upgrade --app ../MyApplication --to 3.3.0 --local
-node ngb.mjs upgrade --app ../MyApplication --to 3.3.0 --local --apply
-```
-
-Use `--packages` instead of `--local` for another local set, for example:
-
-```sh
-node ngb.mjs upgrade --app ../MyApplication --to 3.3.0 --packages artifacts/release-candidate-next
-node ngb.mjs upgrade --app ../MyApplication --to 3.3.0 --packages artifacts/release-candidate-next --apply
-```
-
-The selected directory must already contain a sealed candidate. Generated apps
-also carry `infrastructure/ngb.mjs`; if its version supports the selected transition,
-run it from the application root and use an explicit
-`--packages` path for local packages outside that application. Preview is read-only.
-Apply validates both builds in an isolated copy before updating dependency files
-and lockfiles. It also manages ignored local package copies, `NuGet.Local.Config`,
-`.ngb/packages.json` and `.gitignore` entries when needed. User application source,
-runtime configuration and secrets are preserved; originals of
-changed files are retained under `.ngb/upgrades`. Concurrent edits, inconsistent
+Preview is read-only. Apply validates both builds in an isolated copy before
+updating dependency files and lockfiles. The tool preserves application source,
+runtime configuration and secrets. It saves the original files under
+`.ngb/upgrades`. Concurrent edits, inconsistent
 versions and unsupported transitions are rejected. Build validation does not run
 the application's business tests. Applying does not stop services or run migrations.
 

@@ -10,8 +10,7 @@ This page gives two supported local-development patterns:
 2. **hybrid manual development** — infrastructure in containers, .NET and UI projects started locally for debugging.
 
 The examples below use **Property Management**. Trade and Agency Billing follow the same pattern
-with their own compose and environment files. CRM additionally consumes local platform packages;
-follow [Prepare local platform packages](#prepare-local-platform-packages) before starting it.
+with their own compose and environment files. For CRM, follow [Start CRM](#start-crm).
 
 Use .NET 10 SDK, Docker Compose v2 with Linux containers, and Node.js 24.19.x for
 platform package tooling. Bash examples run from the repository root unless stated
@@ -110,54 +109,16 @@ The PM compose stack runs the migrator container with this effective sequence:
 
 That means a fresh local environment comes up already migrated and seeded.
 
-## Prepare local platform packages
+## Start CRM
 
-The full solution includes CRM, which consumes `NGB.Platform.*` through NuGet. PM, AB, and Trade
-use project references. Before building CRM or the complete solution against unpublished/local
-platform code, populate the local feed configured in `NuGet.config`.
-
-### Package npm before NuGet
-
-From the repository root on macOS/Linux or in WSL2:
+After setting up the HTTPS certificate, build the images from the repository root.
+The backend restores `NGB.Platform.*` from NuGet.org. The web build installs
+`@ngbplatform/ui` from npm using the version and integrity in the CRM lockfile.
 
 ```bash
-npm --prefix ui ci
-npm --prefix quality ci
-npm --prefix ui run pack:platform-ui -- --local-candidate
-bash packaging/nuget/pack-platform.sh
+docker compose -f docker-compose.crm.yml --env-file .env.crm build --build-arg NUGET_CONFIG=NuGet.Registry.Config --build-arg NGB_PLATFORM_UI_TARBALL=
+docker compose -f docker-compose.crm.yml --env-file .env.crm up -d --no-build
 ```
-
-The UI archive must exist first. NuGet packing includes the application template,
-whose lockfile preparation reads that archive. `pack-platform.sh` packages the
-complete set from `packaging/nuget/projects.txt`, refreshes `artifacts/nuget`,
-invalidates replaced versions in `artifacts/nuget-cache`, and restores `NGB.sln`.
-It selects the pinned tools, refreshes Kit package identities after checking the
-public contracts, regenerates consumer lockfiles and packs the matching CLI.
-
-CRM's local web image uses `artifacts/npm/ngbplatform-ui-local.tgz`. Re-run package
-preparation after changing the platform. `--local-candidate` permits npm packing
-before its matching lockfiles exist; subsequent NuGet packing prepares them.
-
-### Windows package tooling
-
-Use a WSL2 checkout and install .NET 10, Node 24.19.x and npm inside that distribution.
-Enable Docker Desktop integration for it, then run the same Bash commands above.
-The current Node packaging/application scripts launch subprocesses that are not
-supported by this runbook on native Windows. The former standalone PowerShell
-`dotnet pack` loop did not generate the template lockfiles and is not equivalent
-to the complete package-preparation sequence.
-
-### Start CRM
-
-After both package preparations and certificate setup:
-
-```bash
-docker compose -f docker-compose.crm.yml --env-file .env.crm up -d --build
-```
-
-`Unable to find package NGB.Platform.*` indicates that the required NuGet version is absent from
-the configured feeds. `ENOENT ... ngbplatform-ui-local.tgz` indicates that the UI packaging step
-was skipped. Both artifacts are ignored by Git and must be recreated on a new machine.
 
 ## Option 2: Hybrid manual development
 
@@ -281,11 +242,12 @@ Modern browsers generally resolve `*.localhost` correctly. If your environment d
 
 ### Validation commands
 
-After preparing the local NuGet feed above, use these commands from the repository root:
+From the repository root, restore the packages from NuGet.org before building and testing.
 
 ```bash
-dotnet build NGB.sln
-dotnet test NGB.sln
+dotnet restore NGB.sln --configfile NuGet.Registry.Config
+dotnet build NGB.sln --no-restore
+dotnet test NGB.sln --no-build
 ```
 
 From the UI workspace:

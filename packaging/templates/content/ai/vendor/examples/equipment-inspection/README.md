@@ -120,7 +120,7 @@ subject, reopens the posted document and compares the downloaded attachment byte
 
 Copy this directory to a temporary directory outside your application before
 building. The installed `ai/vendor/` tree is immutable guidance. Use the exact
-3.4.0 packages and a fresh package cache. For published packages, run:
+3.4.0 packages from NuGet and npm and a fresh package cache.
 
 ```sh
 dotnet restore EquipmentInspection.slnx --configfile NuGet.Config --packages .packages
@@ -135,10 +135,8 @@ npm run test -- --run --coverage
 npm run test:e2e
 ```
 
-Use an explicit sealed-candidate NuGet configuration before publication; never
-fall back to project references or a source checkout. The integration suite
-requires a local Docker engine and creates its own test resources. It does not
-accept a deployment database or application credentials.
+The integration suite requires a local Docker engine and creates its own test
+resources. It does not accept a deployment database or application credentials.
 
 The browser harness creates a fresh realm, users, database and API for each run,
 serves the production web build on a loopback port, and removes its own resources
@@ -431,9 +429,7 @@ The equipment dimension ID is the public SDK's
 `DeterministicGuid.Create("Dimension|example.equipment")` value; it is shared by
 both register examples and the migration. The Reference Register management
 contract checks this correspondence. Arbitrary stable GUIDs are insufficient.
-This example is still unpublished; its earlier local candidate used an arbitrary
-ID and is superseded. Published migrations and installed register identities
-must not be rewritten using this development correction.
+Preserve the dimension ID in installed registers and keep published migrations immutable.
 
 Browser acceptance creates an assessment, displays its current effect in the
 standard Effects page, and confirms that Unpost clears that view. Effects is a

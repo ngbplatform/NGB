@@ -185,15 +185,11 @@ Build every vertical web application against the same `@ngbplatform/ui` version.
 
 ## Deployment sequence
 
-1. Build and verify all `NGB.Platform.*` 3.0 NuGet packages and `@ngbplatform/ui@3.0.0`.
-2. Publish the complete NuGet set before restoring package-consuming verticals.
-3. Prepare and strictly verify the CRM consumer lockfile against the candidate UI tarball, publish
-   the npm package, and verify that its registry integrity matches the committed lockfile. Follow
-   the [publishing guide](https://github.com/ngbplatform/NGB/blob/v3.0.0/packaging/PUBLISHING.md)
-   for preparing the lockfile before the first publication of a new version.
-4. Deploy migrators, APIs, background-job hosts, watchdogs, and matching web applications as one
+1. Restore the 3.0.0 `NGB.Platform.*` packages from NuGet.org.
+2. Install `@ngbplatform/ui@3.0.0` from npm and verify that `npm ci` succeeds with the committed lockfile.
+3. Deploy migrators, APIs, background-job hosts, watchdogs, and matching web applications as one
    coordinated release.
-5. Verify migrations, startup definition validation, PostgreSQL health, canonical error responses,
+4. Verify migrations, startup definition validation, PostgreSQL health, canonical error responses,
    Hangfire storage, and representative document/report workflows before restoring traffic.
 
 Apply the committed migration packs through the migrator; keep their existing history. This

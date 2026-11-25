@@ -6,7 +6,7 @@ vertical scenario packages. Platform releases are documented in the
 
 ## [Unreleased]
 
-Target release: **3.4.0**.
+## [3.4.0]
 
 ### Changed
 
@@ -15,8 +15,6 @@ Target release: **3.4.0**.
   historical measurements are preserved.
 
 ## [3.3.0]
-
-Target release: **3.3.0**.
 
 ### Changed
 

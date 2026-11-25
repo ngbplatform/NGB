@@ -250,8 +250,6 @@ Do not repack or reseal merely to retry a failed download. The runner prepares e
 private host tools and required images first; see the maintainer runbook for its
 checkpoint and cache rules.
 
-For application creation from these files, see
-[Before publication](../docs/architecture/external-app-upgrades.md#before-publication).
 For complete local certification, follow the
 [maintainer runbook](../quality/external-consumer/README.md). Local packaging alone
 does not certify or publish the candidate.
@@ -296,9 +294,14 @@ docker compose --env-file .env.crm -f docker-compose.crm.yml -p ngb-crm logs ngb
 Unlike `build`, `up` runs the configured Migrator. Expect its exit code to be zero,
 then use the web/API ports from `.env.crm` to check login, a saved business record,
 roles/access, audit and Work Center. Exercise Notes and Attachments when enabled.
-Use the [application creation flow](../docs/architecture/external-app-upgrades.md#before-publication)
-to check the starter separately. Stop a manually started starter before certification
-so its ports 5180–5185 are available.
+To check the starter against the sealed candidate, run the following command
+from the repository root with the directory created by `seal`.
+
+```sh
+node ngb.mjs create MyApplication --packages artifacts/release-candidate --start --email administrator@example.com
+```
+
+Stop the starter before certification so its ports 5180–5185 are available.
 
 After the final source change, certify a new candidate using the
 [complete local sequence](../quality/external-consumer/README.md#run-a-new-candidate).

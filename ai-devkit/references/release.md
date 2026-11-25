@@ -1,8 +1,8 @@
 # Application delivery and platform package boundaries
 
 Build an independent application with exact, aligned SDK/UI/CLI/Kit versions.
-Keep the resolved lockfiles and declared package sources reviewable. Use only
-published registry artifacts or the explicitly selected sealed local candidate.
+Keep the resolved lockfiles and declared package sources reviewable. Restore the
+backend packages from NuGet.org and the UI and CLI packages from npm.
 The npm CLI and application-template CLI have one implementation; a second
 tooling template or a source checkout is not required.
 

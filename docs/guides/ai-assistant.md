@@ -84,7 +84,7 @@ the existing HTTPS API profile and trusted development certificate.
 Reload the application after changing flags. Open **AI Assistant** with the **?**
 button in the top bar and ask “What reports can I run?” In PM, you can also ask
 “Find properties in Hoboken.” The model discovers the installed vertical through
-MCP metadata. For CRM or another package consumer, first prepare the matching
+MCP metadata. For CRM or another package consumer, install matching
 [UI and API packages](#update-ui-and-api-together).
 
 ## Request flow and permissions
@@ -325,23 +325,13 @@ payload or proxy body logging for business conversations.
 
 ## Update UI and API together
 
-PM, Agency Billing and Trade use platform project/workspace references. CRM
-consumes the packaged platform through NuGet and the local npm archive. A new
-shared UI build does not update the backend packages used by CRM, and a Compose
-image rebuild does not recreate those packages.
+For CRM and other package consumers, use the same exact platform version for the
+`NGB.Platform.*` NuGet packages and the `@ngbplatform/ui` npm dependency.
+Regenerate and commit the lockfiles, rebuild the API and web client, then reload
+the browser. See the [CRM startup instructions](/start-here/run-locally#start-crm)
+for the Compose commands.
 
-For unpublished platform changes, run the repository's complete
-[local package preparation](/start-here/run-locally#prepare-local-platform-packages)
-from the same checkout: npm packing first, then
-`bash packaging/nuget/pack-platform.sh`. The latter refreshes the local NuGet
-feed, invalidates replaced versions in the repository-local cache and restores
-package consumers. Then rebuild/recreate the CRM services and reload the browser.
-For released applications, upgrade the UI and API using the matching published
-platform package set and regenerated lockfiles.
-
-Do not use a displayed version alone to establish that unpublished packages are
-current: local archives with the same version can contain different code. Compare
-the actual artifacts when diagnosing a mismatch. The chat endpoint rejects
+The chat endpoint rejects
 unknown JSON members. For example, a UI that sends `timeZone` to an older API
 contract without that field receives HTTP `400` before a model request is made.
 Update the package set instead of removing request validation or changing the UI
@@ -359,7 +349,7 @@ the HTTP status is already `200`.
 | Symptom | Check |
 | --- | --- |
 | Panel absent or endpoint `404` | Enable both flags, verify `AddNgbAiAssistant`/`MapNgbAiAssistant`, recreate the API after environment changes and reload the UI. |
-| Different panel behavior across verticals | Compare the shared UI builds/packages actually loaded by each web host. Rebuild source consumers or repack/reinstall the npm package for package consumers. |
+| Different panel behavior across verticals | Compare the shared UI versions loaded by each web host. Check the resolved `@ngbplatform/ui` version in the npm lockfile and rebuild the affected client. |
 | Immediate POST `400`, possibly shown only as `HTTP 400` | Check malformed JSON, unknown fields, message roles, page context and time zone. If this follows an upgrade, verify the UI/API package set before investigating model settings. |
 | HTTP `401` / `403` | Check the current user's API access token, interactive-user policy and active account. Apply the existing [MCP authorization rules](/guides/mcp-server#authentication-and-client-connection). |
 | HTTP `413` / `415` | Reduce the request body or use `Content-Type: application/json`, respectively. |
@@ -420,4 +410,4 @@ when changing provider, model, endpoint or context limits.
 - [MCP Server](/guides/mcp-server)
 - [Feature Flags](/architecture/feature-flags)
 - [Configuration Reference](/reference/configuration-reference#ai-assistant)
-- [Prepare Local Platform Packages](/start-here/run-locally#prepare-local-platform-packages)
+- [External Applications and Upgrades](/architecture/external-app-upgrades)

@@ -179,8 +179,7 @@ Verticals add business-specific meaning without rewriting the platform. They def
 All four verticals include definition, Runtime, PostgreSQL, API, Migrator,
 BackgroundJobs, Watchdog and test projects. PM, Trade and Agency Billing reference
 platform source projects. CRM consumes `NGB.Platform.*` NuGet packages and keeps
-project references within its own vertical. Build the matching local packages
-before testing unpublished platform changes through CRM.
+project references within its own vertical.
 
 ### 5. Shared UI workspace
 
@@ -201,9 +200,8 @@ matching local workspace. The other demo web applications use the workspace sour
 `packaging/nuget/projects.txt` lists the projects to pack, and
 `packaging/templates` contains the external-application starter. The root
 `ngb.mjs` delegates to the application CLI maintained with that starter.
-Follow [local package preparation](/start-here/run-locally#prepare-local-platform-packages)
-and [external application upgrades](/architecture/external-app-upgrades) when
-working across package boundaries.
+See [external applications and upgrades](/architecture/external-app-upgrades)
+for installation from NuGet and npm.
 
 `quality/` contains MCP, assistant, integration, coverage, package-consumer,
 upgrade and mutation verification tooling. The root full-coverage scripts produce

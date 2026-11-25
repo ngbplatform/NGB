@@ -20,12 +20,11 @@ Install Node.js 24.x, the .NET 10 SDK and Docker with Compose v2. Docker is need
 for integration tests and running the application. The installed application's
 project files, package lockfiles and `doctor` output describe its tool requirements.
 
-Choose an exact published platform version. These commands use `3.4.0` as the
-example version. For an unpublished build, follow
-[local package installation](../architecture/external-app-upgrades.md#before-publication).
+The following commands install the latest stable template from NuGet, create an application
+and check its configuration.
 
 ```sh
-dotnet new install NGB.Platform.Templates@3.4.0
+dotnet new install NGB.Platform.Templates
 dotnet new ngb -n ExampleApplication
 cd ExampleApplication
 node infrastructure/ngb.mjs doctor --format json
@@ -165,8 +164,7 @@ storage and authorization behavior.
 
 Read its `README.md` for the available workflows and exact execution commands.
 Copy the example outside `ai/vendor/` before building or editing it so that build
-outputs and experiments do not modify installed official assets. Follow its
-package setup instructions when using unpublished packages.
+outputs and experiments do not modify installed official assets.
 
 Definitions describe provider-neutral business contracts. Runtime composes public
 engine and persistence abstractions. PostgreSQL adapters own physical storage,
@@ -235,10 +233,6 @@ For the supported `3.3.0` to `3.4.0` transition:
 npm exec --ignore-scripts --package=@ngbplatform/cli@3.4.0 -- ngb upgrade --app . --to 3.4.0
 npm exec --ignore-scripts --package=@ngbplatform/cli@3.4.0 -- ngb upgrade --app . --to 3.4.0 --apply
 ```
-
-Registry commands require published target packages. Use the
-[local upgrade procedure](../architecture/external-app-upgrades.md#migrate-3-3-0-to-3-4-0)
-when evaluating an unpublished target.
 
 Preview may download verified artifacts into an external cache. Apply stages
 dependencies, CLI/helper files and Kit content together, validates isolated builds

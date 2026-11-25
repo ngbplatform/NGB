@@ -12,7 +12,7 @@
     "package": "NGB.Platform.Templates",
     "version": "3.4.0"
   },
-  "payloadSha256": "db3b86ddcc5db639f5ee18d6bf19b5a8e74cd4dfecea3da9823c8f2f0815207f",
+  "payloadSha256": "c68de7d7cac1a08604e8768140fb8e0f7a8d44b5876938d6d81978756a27b0f0",
   "capabilitySha256": "750c59faeeff60ea7b174935bb61dd7f5f87d0a65dbd7cdbe676160f77c41e28",
   "files": [
     {
@@ -1203,7 +1203,7 @@
     {
       "path": "ai/vendor/examples/equipment-inspection/README.md",
       "role": "file",
-      "sha256": "5c5ee1d5a8afe3fb1a1c5321840cb51e70830edc76bf451f91a8b138d635b539"
+      "sha256": "b0d6e40d236ba6768108ffb27e236c5c04a88035f20333c9f7c25958c9fc6613"
     },
     {
       "path": "ai/vendor/examples/equipment-inspection/TemporalFixtures/work-calendar.sql",
@@ -1713,7 +1713,7 @@
     {
       "path": "ai/vendor/references/release.md",
       "role": "file",
-      "sha256": "f07af65b0accdc25740414cd07b9116ad0a47a6b85df326c0baf415ac42b5a18"
+      "sha256": "bc770d8ff7159e730b3407bdd50ce890f1bb176454e37a68c49c94dba64ea3c1"
     },
     {
       "path": "ai/vendor/references/reporting.md",

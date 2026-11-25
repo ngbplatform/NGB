@@ -349,8 +349,7 @@ dotnet restore MyApplication.slnx --force-evaluate --configfile NuGet.Config
 dotnet build MyApplication.slnx --no-restore -c Release
 ```
 
-For local packages use `--configfile NuGet.Local.Config`. Subsequent restores should
-use `--locked-mode`.
+Use `--locked-mode` for subsequent restores.
 
 ## Apply and verify
 

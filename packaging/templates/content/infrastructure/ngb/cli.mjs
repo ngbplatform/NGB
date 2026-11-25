@@ -11,10 +11,9 @@ import { captureObligations } from './requirement-trace.mjs'
 
 const help = `NGB application commands:
 
-  node ngb.mjs create MyApp --local --start --email administrator@example.com
-  node ngb.mjs create MyApp --version ${toolVersion} --start
-  node ngb.mjs upgrade --app ../MyApp --to ${toolVersion}
-  node ngb.mjs upgrade --app ../MyApp --to ${toolVersion} --local --apply
+  npm exec --ignore-scripts --package=@ngbplatform/cli@${toolVersion} -- ngb create MyApp --start
+  npm exec --ignore-scripts --package=@ngbplatform/cli@${toolVersion} -- ngb upgrade --app MyApp --to ${toolVersion}
+  npm exec --ignore-scripts --package=@ngbplatform/cli@${toolVersion} -- ngb upgrade --app MyApp --to ${toolVersion} --apply
 
 Inside a generated application:
   node infrastructure/ngb.mjs start
@@ -36,10 +35,8 @@ Inside a generated application:
   node infrastructure/ngb.mjs test --profile e2e
   node infrastructure/ngb.mjs certify --profile external-application
 
---local uses the repository's artifacts/release-candidate by default.
---packages /path/to/candidate selects another manifest-bound local package set.
+Create and upgrade restore platform packages from NuGet and npm.
 --output /path/to/MyApp selects a new, nonexistent destination for create.
-Registry commands require the target release to be published; use local packages before publication.
 Upgrade without --apply only displays the plan. Applying validates in an isolated
 copy and commits dependencies, matching CLI/helper and Kit together after builds pass. Database migration
 is a separate deploy operation and requires a consistent, tested backup.

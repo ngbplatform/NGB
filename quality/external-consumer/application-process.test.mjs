@@ -23,7 +23,8 @@ test('public command reports usage and refuses invalid requests without creating
   const root = await temporary(t)
   const help = spawnSync(process.execPath, [cli, '--help'], { cwd: root, encoding: 'utf8' })
   assert.equal(help.status, 0)
-  assert.match(help.stdout, /create MyApp --local/)
+  assert.match(help.stdout, /npm exec .*--package=@ngbplatform\/cli@\S+ -- ngb create MyApp --start/)
+  assert.doesNotMatch(help.stdout, /--local\b|--packages\b/)
   for (const args of [['invalid'], ['deploy'], ['upgrade', '--to', 'latest'], ['create', '../escape']]) {
     const result = spawnSync(process.execPath, [cli, ...args], { cwd: root, encoding: 'utf8' })
     assert.equal(result.status, 1)

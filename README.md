@@ -582,19 +582,23 @@ See:
 
 ### Create a new application
 
-Use .NET 10 SDK, Node.js 24.19.x and Docker with Compose v2. Once the template and its matching NuGet/npm packages are published, run these commands in the directory that should contain your new application. No NGB repository checkout is required:
+Use the .NET 10 SDK, Node.js 24.19.x and Docker with Compose v2. Run these commands
+in the directory that should contain your new application. The install command
+selects the latest stable template from NuGet.
 
 ```bash
-dotnet new install NGB.Platform.Templates@3.4.0
+dotnet new install NGB.Platform.Templates
 dotnet new ngb -n MyApplication
 cd MyApplication
 node infrastructure/configure.mjs administrator@example.com
 node infrastructure/ngb.mjs start
 ```
 
-This installs the exact 3.4.0 template, including the AI Development Kit, and starts the application's local development stack. Open http://localhost:5182 and sign in with the configured email and `BOOTSTRAP_PASSWORD` from the generated `.env` file. Run `configure.mjs` only once.
+The generated application includes the AI Development Kit. Once the local stack
+starts, open http://localhost:5182 and sign in with the configured email and
+`BOOTSTRAP_PASSWORD` from the generated `.env` file. Run `configure.mjs` only once.
 
-See the [application guide](docs/architecture/external-app-upgrades.md#create-an-application) for setup and next steps. Before publication, use its [local package instructions](docs/architecture/external-app-upgrades.md#before-publication).
+See the [application guide](docs/architecture/external-app-upgrades.md#create-an-application) for setup and next steps.
 
 ### Upgrade an existing application
 
@@ -604,8 +608,8 @@ and database migration. The guide also retains the registered 3.1.0 → 3.2.0 an
 3.2.0 → 3.3.0 paths; it does not define a direct 3.1.0 → 3.4.0 upgrade. Installing
 a newer template does not update an existing application.
 
-The upgrade command uses published NuGet/npm packages by default. After publication,
-acquire the exact target CLI without an NGB checkout:
+Run the 3.4.0 CLI directly from npm to preview the upgrade. Review the plan
+before running the second command to apply it.
 
 ```bash
 npm exec --ignore-scripts --package=@ngbplatform/cli@3.4.0 -- ngb upgrade --app ../MyApplication --to 3.4.0
@@ -614,7 +618,6 @@ npm exec --ignore-scripts --package=@ngbplatform/cli@3.4.0 -- ngb upgrade --app 
 
 The [AI Development Kit guide](docs/guides/ai-development-kit.md) describes official
 and application-owned instructions, validation, testing and coordinated updates.
-Version 3.4.0 is a candidate until release certification and publication complete.
 
 The following sections cover the bundled demos and development in this repository.
 
@@ -672,32 +675,6 @@ dotnet dev-certs https --export-path "$env:HOME/.aspnet/https/servercert.pfx" --
 For Compose launched by an IDE, also configure `HOME` in that run configuration or persist it as a
 user environment variable and restart the IDE.
 
-### Prepare local platform packages
-
-CRM consumes NuGet and npm packages, while PM, Trade, and Agency Billing use platform source
-projects/workspaces. Before building the complete solution or starting CRM against unpublished
-changes, prepare both package sets from the same checkout in the order below.
-Generated packages are ignored by Git and are absent after a fresh clone.
-
-On macOS/Linux, from the repository root:
-
-```bash
-npm --prefix ui ci
-npm --prefix ui run pack:platform-ui -- --local-candidate
-bash packaging/nuget/pack-platform.sh
-```
-
-The npm archive must be created first because template packing uses it to generate lockfiles.
-The NuGet script packs all platform projects, regenerates template and CRM lockfiles,
-refreshes `artifacts/nuget`, invalidates replaced cache entries, and restores the solution.
-The UI command creates `artifacts/npm/ngbplatform-ui-local.tgz`.
-
-Rebuilding a CRM Docker image does not repack the platform. After platform changes,
-repeat both packaging steps before rebuilding the API and web images; a new UI
-archive with an older NuGet package can produce incompatible assistant requests.
-
-On Windows, follow the [WSL2 package preparation instructions](docs/start-here/run-locally.md#prepare-local-platform-packages).
-
 ### Run the Property Management demo locally
 
 ```bash
@@ -718,20 +695,16 @@ docker compose -f docker-compose.ab.yml --env-file .env.ab up --build
 
 ### Run the CRM demo locally
 
-Complete the package preparation above first. Repack after changing platform backend or UI code,
-then rebuild the CRM images:
-
-```bash
-docker compose -f docker-compose.crm.yml --env-file .env.crm up --build
-```
+Follow the [CRM startup instructions](docs/start-here/run-locally.md#start-crm)
+to build the demo with NuGet.org and npm dependencies and start its services.
 
 ### Build the .NET solution
 
-Prepare the local NuGet packages above first when the required platform version is unpublished or
-when validating local platform changes through CRM.
+Restore the solution's package dependencies from NuGet.org.
 
 ```bash
-dotnet build NGB.sln
+dotnet restore NGB.sln --configfile NuGet.Registry.Config
+dotnet build NGB.sln --no-restore
 ```
 
 ### Run backend tests
@@ -742,7 +715,7 @@ and concurrency settings. Native Ollama checks are opt-in and are described in
 the [AI Assistant verification guide](docs/guides/ai-assistant.md#verification).
 
 ```bash
-dotnet test NGB.sln
+dotnet test NGB.sln --no-restore
 ```
 
 ### Run frontend workspace tests
@@ -760,7 +733,7 @@ Docker; see the [Attachments & Notes validation prerequisites](docs/architecture
 
 ### Full coverage reports
 
-From the repository root, after preparing packages and the test prerequisites:
+From the repository root, after restoring dependencies and setting up the test prerequisites:
 
 ```bash
 ./run-backend-full-coverage.sh

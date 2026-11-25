@@ -19,7 +19,7 @@ Deliver **NGB AI Development Kit (AI Dev Kit) v3.4.0** as a first-class, version
 
 A developer must be able to:
 
-1. Install `NGB.Platform.Templates@3.4.0` and run `dotnet new ngb -n ExampleApplication` (or use the existing root `ngb.mjs create` workflow).
+1. Run `dotnet new install NGB.Platform.Templates` and `dotnet new ngb -n ExampleApplication` (or use the existing root `ngb.mjs create` workflow).
 2. Open the generated application in **Rider, Visual Studio, VS Code, another IDE, or a terminal**. No IDE plugin is a required dependency.
 3. Use a compatible coding agent, especially **Codex** and **Claude Code**, with **zero manual copying of NGB architectural documents or skill files**.
 4. Ask the agent to develop complete NGB business functionality through the published platform SDK and the application's own codebase: backend, frontend, database migrations, security, reports, effects, tests, and deployment configuration as applicable.
@@ -533,7 +533,7 @@ A release must fail its gate if its required AI Kit migration documentation, man
 
 ### 8.5 Target-version CLI acquisition
 
-After the official 3.4.0 packages are published, run the following from an existing 3.3.0 application's root:
+To upgrade with the 3.4.0 CLI from npm, run these commands from the root of an existing 3.3.0 application.
 
 ```bash
 # Preview using the target version of the same CLI
@@ -543,7 +543,7 @@ npm exec --package=@ngbplatform/cli@3.4.0 -- ngb upgrade --app . --to 3.4.0
 npm exec --package=@ngbplatform/cli@3.4.0 -- ngb upgrade --app . --to 3.4.0 --apply
 ```
 
-This bootstrap requires neither an NGB checkout nor a second template. For sealed unpublished candidates, execute the verified candidate CLI payload and matching package set from an external temporary/cache directory; document and certify that acquisition path separately from registry commands.
+This bootstrap requires neither an NGB checkout nor a second template. Release maintainers verify the sealed candidate CLI and matching package set from an external temporary/cache directory as part of certification.
 
 Starting with the 3.4 launcher, normal `node infrastructure/ngb.mjs upgrade --to <exact-version>` delegates to the exact target CLI through npm acquisition when needed. Do not resolve `latest`, change the application's package manifest just to acquire the tool, or replace the running bundled tool before the transaction is prepared. Cache downloads outside the application for preview. Preserve arguments, cancellation and exit status; bound delegation and prevent recursion. Verify the invoked CLI's identity/version so a stale or shadowing executable cannot perform a transition accidentally.
 
@@ -753,11 +753,11 @@ Deliver high-quality public documentation in `docs/` and appropriate generated a
 - Getting started with `dotnet new ngb -n ExampleApplication`, and alternative `ngb.mjs create`; IDE-agnostic usage in terminal, Rider, Visual Studio and VS Code.
 - Supported Codex and Claude Code installation/discovery semantics with realistic examples; support for additional agent clients without claiming features they do not implement.
 - Complete public capability matrix, skill catalog, links to supported SDK extensions and examples.
-- Precise CLI reference with command semantics, all flags, JSON schemas, exit codes and safety requirements.
+- Precise CLI reference with public command semantics and flags, JSON schemas, exit codes and safety requirements.
 - Architecture/layer conventions, append-only business semantics, effect-engine independence, permissions and performance patterns.
 - Full verification guidance: build/unit/integration/E2E/coverage/performance/CI and limits of static vs business correctness checks.
 - External app v3.3.0 → v3.4.0 migration with first-time AI Kit installation, target CLI acquisition, preview/apply, backup/conflicts/data preservation.
-- Exact npm CLI bootstrap, target-version delegation, candidate-package operation and shared implementation identity; no `ngb-tooling` template.
+- Install the template and SDK from NuGet.org and the UI and exact target CLI from npm. Document target-version delegation and the shared CLI implementation. Keep candidate-package procedures in the maintainer runbook.
 - Future AI Kit synchronization and release versioning policy, including 3-way merge behavior and how modified skills survive upgrade.
 - Official/application ownership, managed root blocks, `ai/custom/` authoring, dual-agent rendering, reviewable conflict resolutions and interruption recovery.
 - Starter test projects, `ngb.config.json`, inspection/build/test/certification profiles, disposable resources and the limits of each result.
@@ -770,7 +770,7 @@ Keep existing user guides and docs nav accurate; do not replace source-anchored 
 
 ```bash
 # IDE-agnostic bootstrap
-dotnet new install NGB.Platform.Templates@3.4.0
+dotnet new install NGB.Platform.Templates
 dotnet new ngb -n ExampleApplication
 cd ExampleApplication
 
@@ -823,7 +823,7 @@ A v3.4.0 implementation is complete **only if every item below is demonstrably t
 - [ ] Full inventory of supported public NGB capabilities is enforced and complete; no undocumented or unvalidated capability gaps.
 - [ ] Instructions, skills, references, registry, validators and conformance profiles are independent of existing products; examples compile and run using only public SDK/UI contracts.
 - [ ] Existing `ngb.mjs` remains the single public CLI family, with all old commands preserved and production-ready new commands.
-- [ ] `NGB.Platform.Templates@3.4.0` installs a full version-accurate AI Kit automatically through `dotnet new ngb` on an independent filesystem.
+- [ ] The 3.4.0 template package installs the matching AI Kit automatically through `dotnet new ngb` on an independent filesystem.
 - [ ] `@ngbplatform/cli@3.4.0` distributes the same shared CLI; npm bootstrap and target delegation work without an NGB checkout or a separate tooling template.
 - [ ] Official and application-owned instructions are separated, root blocks are bounded, and custom skills render into both supported agent distributions without overwriting user edits.
 - [ ] The starter includes working backend, integration, frontend and E2E tests, application-owned configuration and package-only validation helpers.

@@ -7,8 +7,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
-Target release: **3.4.0**. Publication is pending. Local certification results
-are recorded against their exact source and package identities.
+## [3.4.0]
 
 ### Added
 
@@ -337,7 +336,8 @@ are recorded against their exact source and package identities.
 ### Notes
 - This release establishes the first public baseline of the NGB Platform repository.
 
-[Unreleased]: https://github.com/ngbplatform/ngb/compare/v3.3.0...HEAD
+[Unreleased]: https://github.com/ngbplatform/ngb/compare/v3.4.0...HEAD
+[3.4.0]: https://github.com/ngbplatform/ngb/compare/v3.3.0...v3.4.0
 [3.3.0]: https://github.com/ngbplatform/ngb/compare/v3.2.0...v3.3.0
 [3.2.0]: https://github.com/ngbplatform/ngb/compare/v3.1.0...v3.2.0
 [3.1.0]: https://github.com/ngbplatform/ngb/compare/v3.0.0...v3.1.0
