@@ -2,11 +2,11 @@
   "schemaVersion": 1,
   "package": "NGB.Platform.Tools",
   "version": "3.4.0",
-  "packageSha256": "23fb9e1fdd6b67bc40bf0f2d32a1a3937b86b3b9ab63aedb569b3d9df61b8b3a",
+  "packageSha256": "bbe88e30bde04b7b960e3588cce0c72bade48922969211ed3d6dfb2fdb7a33ba",
   "assembly": {
     "name": "NGB.Tools",
     "version": "3.0.0.0",
-    "sha256": "840fe9898cfbd7deda3d65c6b9d6cf44b7cd7fe59b9cfa987839b1a4baf36480"
+    "sha256": "a5b4cfb98e4fb5110c36cd3400e68b7a3330bf38dc2dbafaf7dd53328c7e0f83"
   },
   "contractSha256": "a2fccf3b0064081c66800d6636dbf43ec855292f7d921277a90968f63067758b",
   "types": [
