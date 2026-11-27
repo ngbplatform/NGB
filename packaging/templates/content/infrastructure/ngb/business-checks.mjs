@@ -3,7 +3,13 @@ import { objectKeys } from './kit-contracts.mjs'
 import { readTestXml } from './project-data.mjs'
 
 const kinds = {
+  'intermediate-balance': 'document',
+  'dependency-window': 'document',
+  'terminal-state': null,
+  'required-reason': null,
   'source-membership': 'document',
+  'prerequisite-scope': 'document',
+  'classification-context': 'report',
   'owner-change': 'document',
   'boundary-withdrawal': 'document',
   'competing-consumers': 'document',
@@ -34,7 +40,8 @@ export function validateBusinessTarget(kind, target) {
   assert.ok(Object.hasOwn(kinds, kind), 'Unknown server acceptance check: ' + kind)
   const [type, ...code] = String(target).split(':')
   const allowedTypes = ['capacity', 'query-growth', 'paged-total'].includes(kind) ? ['document', 'catalog', 'report', 'navigation']
-    : kind === 'state-invariant' ? ['document', 'catalog'] : [kinds[kind]]
+    : kind === 'required-reason' ? ['document', 'catalog', 'navigation']
+    : ['state-invariant', 'terminal-state'].includes(kind) ? ['document', 'catalog'] : [kinds[kind]]
   assert.ok(allowedTypes.includes(type) && nonempty(code.join(':')), 'Invalid server acceptance target.')
 }
 
@@ -83,13 +90,18 @@ export function requireBusinessCheck(plan, kind, target, key) {
     && (key === undefined || key === entry.key)), `Missing ${kind} integration check for ${target}/${key ?? '*'}. See server-acceptance.md.`)
 }
 
+export function isHistoricalReport(plan, report) {
+  const target = 'report:' + report.reportCode
+  return report.parameters?.some(parameter => /^asof(?:utc|date|time|at)?$/i.test(parameter.code.replaceAll('_', '')))
+    || plan.businessChecks?.some(entry => entry.target === target && entry.kind === 'historical-cutoff')
+    || plan.cases.some(entry => entry.target === target && entry.scenario === 'historical-as-of')
+}
+
 export function reconcileHistoricalChecks(plan, reports) {
   for (const report of reports) {
     const target = `report:${report.reportCode}`
     if (report.capabilities?.allowsXlsxExport) requireBusinessCheck(plan, 'report-export', target)
-    const cutoff = report.parameters?.some(parameter => /^asof(?:utc|date|time|at)?$/i.test(parameter.code.replaceAll('_', '')))
-    const declared = plan.businessChecks.some(entry => entry.target === target && entry.kind === 'historical-cutoff')
-    if (!cutoff && !declared && !plan.cases.some(entry => entry.target === target && entry.scenario === 'historical-as-of')) continue
+    if (!isHistoricalReport(plan, report)) continue
     requireBusinessCheck(plan, 'historical-cutoff', target)
     for (const measure of report.dataset?.measures ?? []) requireBusinessCheck(plan, 'historical-cutoff', target, measure.code)
   }
@@ -243,8 +255,183 @@ function unchanged(before, after) {
   assert.deepEqual(after, before, 'A refused operation changed the persisted state.')
 }
 
+export function validatePrerequisiteScope(expected) {
+  assert.ok(/^document:[^\s:]+$/.test(expected.source)
+    && [expected.prerequisite, expected.consumerField, expected.sourceField].every(nonempty),
+  'Identify the prerequisite document and the two matching reference fields.')
+  assert.ok(['same-owner', 'independent'].includes(expected.policy), 'Classify the shared reference against the business requirement.')
+  for (const pair of [expected.expectedBefore, expected.expectedAfter]) {
+    assert.ok(Array.isArray(pair) && pair.length === 2 && pair.every(populated),
+      'Read the positions for the original and revised owners, in that order.')
+  }
+  if (expected.policy === 'same-owner') {
+    assert.ok(nonempty(expected.expectedReason), 'Identify the expected business refusal.')
+    assert.notDeepEqual(expected.expectedBefore[0], expected.expectedBefore[1], 'Establish distinguishable entitlements for the two owners.')
+    assert.deepEqual(expected.expectedAfter, expected.expectedBefore, 'The attempted change must preserve both entitlements.')
+  }
+}
+
+function verifyPrerequisiteScope(proof) {
+  validatePrerequisiteScope(proof)
+  assert.ok([proof.sourceId, proof.consumerId, proof.originalOwnerId, proof.revisedOwnerId].every(nonempty)
+    && proof.originalOwnerId !== proof.revisedOwnerId && proof.sourceId !== proof.consumerId
+    && proof.reopenedSourceId === proof.sourceId && proof.reopenedConsumerId === proof.consumerId
+    && proof.initialConsumerSourceId === proof.sourceId && proof.persistedConsumerSourceId === proof.sourceId
+    && proof.initialConsumerOwnerId === proof.originalOwnerId
+    && proof.sourceOwnerId === proof.originalOwnerId, 'Change one reference while keeping the same source and consumer.')
+  assert.ok(successful(proof.controlStatus) && nonempty(proof.controlId) && proof.reopenedControlId === proof.controlId
+    && proof.controlSourceId === proof.sourceId && proof.controlOwnerId === proof.originalOwnerId,
+    'Confirm and reopen the matching-owner control.')
+  assert.deepEqual(proof.before, proof.expectedBefore)
+  assert.deepEqual(proof.after, proof.expectedAfter)
+  if (proof.policy === 'independent') {
+    assert.ok(successful(proof.editStatus) && successful(proof.postStatus)
+      && proof.persistedOwnerId === proof.revisedOwnerId && proof.state === 'Posted',
+    'Demonstrate that changing this independent reference permits confirmation.')
+    return
+  }
+  const edited = successful(proof.editStatus)
+  const refusal = edited ? proof.postStatus : proof.editStatus
+  assert.ok([400, 409, 422].includes(refusal) && (edited || proof.postStatus == null)
+    && proof.persistedOwnerId === (edited ? proof.revisedOwnerId : proof.originalOwnerId)
+    && proof.state === 'Draft' && nonempty(proof.expectedReason) && proof.reason === proof.expectedReason,
+  'Refuse the owner edit or the subsequent confirmation and reopen the same unconfirmed draft.')
+}
+
+export function validateClassificationContext(expected) {
+  assert.ok(/^document:[^\s:]+$/.test(expected.document) && /^(?:document|catalog):[^\s:]+$/.test(expected.contributor)
+    && expected.contributor !== expected.document, 'Identify the contextual document and a distinct contributor.')
+  assert.ok([expected.expectedGroups, expected.expectedWithContributor].every(pair =>
+    Array.isArray(pair) && pair.length === 2 && pair.every(Number.isFinite)), 'Pin both groups before and after the control.')
+  assert.notDeepEqual(expected.expectedGroups, expected.expectedWithContributor, 'Exercise a control with a measurable effect.')
+}
+
+function businessRefusal(status, reason, expected) {
+  assert.ok([400, 409, 422].includes(status) && nonempty(expected) && reason === expected, 'Expected the specific business refusal.')
+}
+
+function verifyIntermediateBalance(proof) {
+  assert.ok(nonempty(proof.source) && nonempty(proof.ownerId) && nonempty(proof.controlOwnerId), 'Identify both seeded histories.')
+  assert.ok(Array.isArray(proof.dates) && proof.dates.length >= 3
+    && proof.dates.every((date, index) => checkedDate(date) === date && (!index || date > proof.dates[index - 1])),
+  'Read every affected date from the backdated attempt through the later replenishment.')
+  for (const series of [proof.opening, proof.funded]) {
+    assert.ok(Array.isArray(series) && series.length === proof.dates.length && series.every(value => Number.isSafeInteger(value) && value >= 0),
+      'Pin the balance at every affected date for both histories.')
+  }
+  const delta = proof.change
+  assert.ok(Number.isSafeInteger(delta) && delta < 0 && proof.opening[0] + delta >= 0 && proof.opening.at(-1) + delta >= 0
+    && proof.opening.slice(1, -1).some(value => value + delta < 0) && proof.funded.every(value => value + delta >= 0),
+  'Only an intermediate position may prevent the backdated posting. Fund the permitted control early.')
+  assert.equal(proof.attemptDate, proof.dates[0])
+  assert.equal(proof.controlDate, proof.attemptDate)
+  assert.equal(proof.controlChange, delta)
+  assert.equal(proof.funded.at(-1), proof.opening.at(-1), 'Keep the same final funds in the two histories.')
+  assert.ok(nonempty(proof.attemptId) && proof.reopenedAttemptId === proof.attemptId)
+  assert.deepEqual(proof.before, proof.opening)
+  businessRefusal(proof.status, proof.reason, proof.expectedReason)
+  assert.deepEqual(proof.after, proof.opening)
+  assert.deepEqual(proof.controlBefore, proof.funded)
+  assert.ok(successful(proof.controlStatus) && nonempty(proof.controlId) && proof.reopenedId === proof.controlId)
+  assert.deepEqual(proof.controlAfter, proof.funded.map(value => value + delta))
+}
+
+function verifyDependencyWindow(proof) {
+  assert.ok(nonempty(proof.operation) && nonempty(proof.consumer) && Number.isSafeInteger(proof.pageSize) && proof.pageSize > 0)
+  assert.ok(Array.isArray(proof.samples) && proof.samples.length === 2, 'Exercise both sides of the dependency page boundary.')
+  for (const [index, sample] of proof.samples.entries()) {
+    assert.ok(Array.isArray(sample.dependentIds) && sample.dependentIds.length === proof.pageSize + index
+      && sample.dependentIds.every(nonempty) && new Set(sample.dependentIds).size === sample.dependentIds.length
+      && sample.dependentIds.at(-1) === sample.decisiveId, 'Place the decisive dependency last in the actual lookup order.')
+    assert.ok(nonempty(sample.sourceId) && sample.reopenedId === sample.sourceId && sample.reopenedDependentId === sample.decisiveId)
+    assert.equal(sample.operation, proof.operation)
+    businessRefusal(sample.status, sample.reason, proof.expectedReason)
+    validateWithdrawalState(sample.before)
+    assert.deepEqual(sample.before, proof.expectedBefore[index])
+    unchanged(sample.before, sample.after)
+    assert.ok(successful(sample.controlStatus) && sample.controlSourceId === sample.sourceId && sample.resolvedId === sample.decisiveId)
+    assert.deepEqual(sample.unchangedPrefixIds, sample.dependentIds.slice(0, -1),
+      'Resolve only the decisive dependency and retain every earlier entry for the permitted control.')
+    validateWithdrawalState(sample.afterControl)
+    assert.notDeepEqual(sample.afterControl, sample.before, 'The permitted correction must change the persisted state.')
+    assert.deepEqual(sample.afterControl, proof.expectedAfterControl[index])
+  }
+}
+
+function verifyTerminalState(proof) {
+  assert.ok(nonempty(proof.state) && nonempty(proof.consumer) && nonempty(proof.id) && proof.reopenedId === proof.id)
+  assert.ok(successful(proof.terminalStatus) && proof.persistedState === proof.state && proof.reverseId === proof.id)
+  businessRefusal(proof.reverseStatus, proof.reverseError, proof.reverseReason)
+  businessRefusal(proof.useStatus, proof.useError, proof.useReason)
+  assert.equal(proof.afterReverse, proof.state)
+  assert.equal(proof.attemptedUseId, proof.id)
+  assert.equal(proof.afterUse, proof.state)
+  assert.ok(nonempty(proof.activeId) && proof.activeId !== proof.id && proof.controlUseId === proof.activeId
+    && successful(proof.controlStatus), 'Use a distinct active sibling as the permitted control.')
+  if (proof.report !== null) {
+    assert.ok(/^report:[^\s:]+$/.test(proof.report) && nonempty(proof.historicalState) && proof.historicalState !== proof.state)
+    assert.ok(nonempty(proof.laterState) && proof.laterState !== proof.historicalState,
+      'Choose cutoffs on which the affected report shows the transition.')
+    const date = calendarDate.test(proof.cutoff) ? checkedDate : instant
+    assert.ok(date(proof.cutoff) < date(proof.terminalAt) && date(proof.terminalAt) <= date(proof.laterCutoff))
+    for (const [index, read] of proof.reads.entries()) {
+      assert.ok(successful(read.status) && read.id === proof.id && read.report === proof.report)
+      assert.equal(read.cutoff, index === 2 ? proof.laterCutoff : proof.cutoff)
+      assert.deepEqual(read.state, index === 2 ? proof.laterState : proof.historicalState)
+    }
+    assert.equal(proof.reads.length, 3, 'Read the identical historical scope before and after the transition and the later state.')
+  }
+}
+
+function verifyRequiredReason(proof) {
+  assert.ok(nonempty(proof.operation) && nonempty(proof.suppliedReason) && nonempty(proof.recordId))
+  const inputs = new Set()
+  for (const attempt of proof.attempts) {
+    const { input } = attempt
+    if (input === null) {
+      inputs.add('omitted')
+    } else {
+      assert.ok(typeof input === 'string' && input.trim() === '', 'Refused reason evidence must describe a blank input.')
+      inputs.add(input === '' ? 'empty' : 'whitespace')
+    }
+    if (attempt.id == null) {
+      assert.ok(nonempty(attempt.requestKey) && attempt.reopenedKey === attempt.requestKey
+        && attempt.before?.matchingRecords === 0, 'Look up the refused creation by its unique business key.')
+    } else {
+      assert.ok(nonempty(attempt.id) && attempt.reopenedId === attempt.id)
+    }
+    assert.equal(attempt.operation, proof.operation)
+    businessRefusal(attempt.status, attempt.reason, proof.expectedReason)
+    unchanged(attempt.before, attempt.after)
+  }
+  assert.deepEqual(inputs, new Set(['omitted', 'empty', 'whitespace']), 'Exercise omitted, empty and whitespace-only reasons.')
+  assert.ok(successful(proof.controlStatus) && proof.reopenedId === proof.recordId && proof.persistedReason === proof.suppliedReason)
+  assert.ok(proof.audit?.recordId === proof.recordId && proof.audit.operation === proof.operation
+    && proof.audit.reason === proof.suppliedReason && nonempty(proof.actorId) && proof.audit.actorId === proof.actorId
+    && Number.isFinite(Date.parse(proof.audit.at)), 'Read the entered reason and actor from the successful operation in audit history.')
+}
+
 function verifyObservation(entry, proof) {
-  if (entry.kind === 'source-membership') {
+  if (entry.kind === 'intermediate-balance') {
+    verifyIntermediateBalance(proof)
+  } else if (entry.kind === 'dependency-window') {
+    verifyDependencyWindow(proof)
+  } else if (entry.kind === 'terminal-state') {
+    verifyTerminalState(proof)
+  } else if (entry.kind === 'required-reason') {
+    verifyRequiredReason(proof)
+  } else if (entry.kind === 'prerequisite-scope') {
+    verifyPrerequisiteScope(proof)
+  } else if (entry.kind === 'classification-context') {
+    validateClassificationContext(proof)
+    assert.ok(nonempty(proof.documentId) && proof.reopenedId === proof.documentId && successful(proof.postStatus)
+      && successful(proof.reportStatus) && successful(proof.controlStatus) && nonempty(proof.contributorId)
+      && successful(proof.controlReportStatus) && proof.contributorId !== proof.documentId,
+    'Post the contextual document and read its linked contribution separately from the source of the totals.')
+    assert.deepEqual(proof.before, proof.expectedGroups)
+    assert.deepEqual(proof.after, proof.before, 'The contextual document contributed to the group totals.')
+    assert.deepEqual(proof.withContributor, proof.expectedWithContributor, 'Verify the control in the same report scope.')
+  } else if (entry.kind === 'source-membership') {
     assert.ok(nonempty(proof.correctSource) && nonempty(proof.otherSource) && proof.correctSource !== proof.otherSource,
       'Use two distinct persisted sources of the same eligible type and status.')
     assert.ok(nonempty(proof.sourceType) && proof.otherType === proof.sourceType
@@ -357,6 +544,13 @@ function verifyObservation(entry, proof) {
     assert.deepEqual(proof.observed, proof.expected, 'The consumer must use the captured business fact.')
     assert.notDeepEqual(proof.expected, proof.freshExpected, 'Use a fresh transaction affected by the change.')
     assert.deepEqual(proof.freshObserved, proof.freshExpected, 'The new source value must take effect on new work.')
+    if (proof.report !== undefined) {
+      assert.ok(proof.until === entry.target && nonempty(proof.groupField) && successful(proof.reportStatus)
+        && successful(proof.freshReportStatus) && nonempty(proof.freshConsumerId)
+        && proof.freshConsumerId !== proof.consumerId && nonempty(proof.original) && nonempty(proof.changed)
+        && [proof.expected, proof.freshExpected].every(pair => Array.isArray(pair) && pair.length === 2
+          && pair.every(Number.isFinite)), 'Read both groups for the posted document and a distinct fresh control.')
+    }
   } else if (entry.kind === 'report-export') {
     assert.ok(successful(proof.downloadStatus) && proof.contentType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       'Download the workbook through the report endpoint.')

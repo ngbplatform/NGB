@@ -47,19 +47,22 @@ const nodes = computed(() => [
 </script>
 
 <template>
-  <NgbSiteShell
-    module-title="Equipment inspection"
-    product-title="NGB"
-    :user-name="auth.userName"
-    :pinned="[]"
-    :recent="[]"
-    :nodes="nodes"
-    :selected-id="route.path"
-    @navigate="router.push($event)"
-    @sign-out="auth.logout()"
-    @open-palette="palette.open()"
-  >
-    <router-view />
-  </NgbSiteShell>
-  <NgbCommandPaletteDialog />
+  <router-view v-if="route.meta.bare === true" />
+  <template v-else>
+    <NgbSiteShell
+      module-title="Equipment inspection"
+      product-title="NGB"
+      :user-name="auth.userName"
+      :pinned="[]"
+      :recent="[]"
+      :nodes="nodes"
+      :selected-id="route.path"
+      @navigate="router.push($event)"
+      @sign-out="auth.logout()"
+      @open-palette="palette.open()"
+    >
+      <router-view />
+    </NgbSiteShell>
+    <NgbCommandPaletteDialog />
+  </template>
 </template>

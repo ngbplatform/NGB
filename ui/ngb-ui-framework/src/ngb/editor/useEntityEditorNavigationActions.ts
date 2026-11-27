@@ -27,6 +27,7 @@ import {
   shouldOpenDocumentInFullPageByDefault,
 } from './documentNavigation';
 import { saveDocumentCopyDraft } from './documentCopyDraft';
+import { resolveNgbEditorPrintBehavior } from './config';
 import type { EditorKind, EditorMode } from './types';
 
 type UseEntityEditorNavigationActionsArgs = {
@@ -162,6 +163,11 @@ export function useEntityEditorNavigationActions(args: UseEntityEditorNavigation
       buildDocumentPrintPageUrl(args.typeCode.value, args.currentId.value, { autoPrint: true }),
       relatedViewBackTarget.value,
     );
+
+    if (resolveNgbEditorPrintBehavior().openInNewTab) {
+      window.open(args.router.resolve(target).href, '_blank', 'noopener');
+      return;
+    }
 
     args.requestNavigate(target);
   }

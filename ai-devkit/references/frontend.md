@@ -73,6 +73,23 @@ for each authentication, access and failure case, so they do not depend on
 re-evaluating a cached browser module. Keep metadata capability assertions on
 this actual composition path; no frontend override may grant server-denied rights.
 
+## Document print preview
+
+Set `print: { openInNewTab: true }` in `configureNgbEditor`. When configuring
+document lookups, also pass `lookupStore: useLookupStore()` so the printed sheet
+can resolve readable reference labels. Register the public lazy print page as
+a standalone authenticated route:
+
+```ts
+{ path: '/documents/:documentType/:id/print', component: loadNgbDocumentPrintPage, meta: { bare: true } }
+```
+
+In the application root, render the route view directly when `route.meta.bare === true`.
+Mount the site shell and command palette only for the ordinary application routes.
+The SDK opens the saved document from the editor's Print action. The source tab
+keeps its route and edits, the preview provides Back and Print, and print media
+shows only the document sheet. Keep the ordinary authentication guard on this route.
+
 ## Document Lines
 
 Generate the [interactive field dependencies](interactive-workflows.md) around the

@@ -38,6 +38,7 @@ interface OutcomeChecks {
   dashboardLayout(size: 'desktop' | 'mobile', toolbar: Locator, attention: Locator, metrics: Locator): Promise<void>
   businessCalendar(inputs: [Locator, Locator], expected: string): Promise<void>
   journalDraft(memo: string): Promise<void>
+  documentPrint(type: string, id: string, title: string, fieldValues: string[]): Promise<void>
   flowAmount(type: string, id: string, expected: number, root?: { type: string, id: string }): Promise<void>
   registerFields(response: Response, type: string, id: string, code: string, recordId: number | string,
     expected: Record<string, RegisterFieldExpectation>): Promise<void>
@@ -152,9 +153,26 @@ export async function acceptanceProbe(page: Page, info: TestInfo) {
     },
     async accessibleFields(editor: Locator, fields: { label: string, control: Locator }[]) {
       await expect(editor).toBeVisible()
-      const wholeForm = await editor.evaluate(root =>
-        root.matches('[data-ngb-entity-form]') || Boolean(root.querySelector('[data-ngb-entity-form]')))
-      expect(wholeForm, 'Inspect the complete metadata editor').toBe(true)
+      const target = await editor.evaluate(root => {
+        const form = root.matches('[data-ngb-entity-form]') ? root : root.querySelector('[data-ngb-entity-form]')
+        return form?.closest<HTMLElement>('[data-ngb-editor-target]')?.dataset.ngbEditorTarget
+      })
+      expect(target ?? '', 'Inspect the form inside its working editor').toMatch(/^(document|catalog):[^:]+$/)
+      let journalTab: string | undefined
+      if (target === 'document:general_journal_entry') {
+        await expect(page).toHaveURL(origin + '/accounting/general-journal-entries/new')
+        expect(await editor.evaluate(root => {
+          const page = root.closest('[data-testid="journal-entry-edit-page"]')
+          return page && (root === page || root === page.querySelector('[data-ngb-entity-form]'))
+        })).toBe(true)
+        journalTab = (await editor.getByRole('tab', { selected: true }).innerText()).trim()
+        expect(['Lines', 'Workflow']).toContain(journalTab)
+        const panel = editor.getByRole('tabpanel', { name: journalTab, exact: true })
+        await expect(panel).toBeVisible()
+        await expect(editor.getByLabel('Initiated By', { exact: true })).toBeVisible()
+        const field = journalTab === 'Lines' ? 'Account' : 'Submitted By'
+        await expect(panel.getByLabel(field, { exact: true }).first()).toBeVisible()
+      }
       expect(fields.length).toBeGreaterThan(0)
       const checked: ElementHandle<HTMLElement | SVGElement>[] = []
       try {
@@ -183,8 +201,12 @@ export async function acceptanceProbe(page: Page, info: TestInfo) {
       } finally {
         await Promise.all(checked.map(handle => handle.dispose()))
       }
+      if (journalTab) {
+        await expect(editor.getByRole('tab', { selected: true })).toHaveAccessibleName(journalTab)
+        activeChecks?.add('accessible-fields:' + target + '/' + journalTab)
+      }
       assertions += 1
-      activeChecks?.add('accessible-fields')
+      activeChecks?.add('accessible-fields:' + target)
     },
     async figure(locator: Locator, expected: string) {
       expect(typeof expected).toBe('string')
@@ -559,6 +581,51 @@ export async function acceptanceProbe(page: Page, info: TestInfo) {
       }
       assertions += 1
       activeChecks?.add('register:' + type + '/' + code)
+    },
+    async documentPrint(type: string, id: string, title: string, fieldValues: string[]) {
+      expect(title.trim()).toBeTruthy()
+      expect(title).not.toBe(id)
+      expect(fieldValues.length).toBeGreaterThan(0)
+      const editorUrl = page.url()
+      await page.context().addInitScript(() => {
+        window.addEventListener('beforeprint', () => {
+          document.documentElement.dataset.ngbPrintStarted = 'true'
+        }, { once: true })
+      })
+      await page.getByRole('button', { name: 'More actions', exact: true }).click()
+      const [preview] = await Promise.all([
+        page.waitForEvent('popup', { timeout: 15000 }),
+        page.getByRole('menuitem', { name: 'Print', exact: true }).click(),
+      ])
+      try {
+        const path = '/documents/' + encodeURIComponent(type) + '/' + encodeURIComponent(id) + '/print'
+        await expect(preview).toHaveURL(url => url.origin === origin && url.pathname === path
+          && url.searchParams.get('autoprint') === '1')
+        const sheet = preview.getByRole('article')
+        const heading = sheet.getByRole('heading', { level: 1 })
+        await expect(heading).toHaveText(title)
+        expect(await preview.evaluate(() => window.opener === null)).toBe(true)
+        await expect(preview.locator('html')).toHaveAttribute('data-ngb-print-started', 'true')
+        await expect(preview.getByTestId('site-shell')).toHaveCount(0)
+        await expect(preview.getByRole('button', { name: 'Back', exact: true })).toBeVisible()
+        await expect(preview.getByRole('button', { name: 'Print', exact: true })).toBeEnabled()
+        await preview.emulateMedia({ media: 'print' })
+        await expect(heading).toBeVisible()
+        for (const value of fieldValues) {
+          expect(value.trim()).toBeTruthy()
+          await expect(sheet.getByText(value, { exact: true }).first()).toBeVisible()
+        }
+        await expect(preview.locator('button:visible, input:visible, [role="button"]:visible, nav:visible')).toHaveCount(0)
+        expect((await preview.locator('body').innerText()).trim()).toBe((await sheet.innerText()).trim())
+        const pdf = info.outputPath('document-print.pdf')
+        await preview.pdf({ path: pdf })
+        await info.attach('document-print-' + type, { contentType: 'application/pdf', path: pdf })
+      } finally {
+        await preview.close()
+      }
+      await expect(page).toHaveURL(editorUrl)
+      assertions += 1
+      activeChecks?.add('document-print:document:' + type)
     },
     async draftCommands(response: Response, type: string, id: string, codes: string[]) {
       expect(response.url()).toBe(origin + '/api/documents/' + encodeURIComponent(type) + '/' + id + '/editor-state')

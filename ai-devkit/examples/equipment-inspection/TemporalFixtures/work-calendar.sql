@@ -7,7 +7,9 @@ CREATE TABLE work_example.resource (
     contact text NOT NULL CHECK (contact ~ '[^[:space:]]'),
     business_zone text NOT NULL,
     category text NOT NULL,
-    retired boolean NOT NULL DEFAULT false
+    retired boolean NOT NULL DEFAULT false,
+    retired_at timestamptz,
+    CHECK (retired = (retired_at IS NOT NULL))
 );
 
 CREATE FUNCTION work_example.protect_identity() RETURNS trigger LANGUAGE plpgsql AS $$
@@ -15,11 +17,19 @@ BEGIN
     IF TG_OP = 'DELETE' OR NEW.id <> OLD.id OR NEW.stable_code <> OLD.stable_code OR (OLD.retired AND NOT NEW.retired) THEN
         RAISE EXCEPTION 'The resource identity and retirement are permanent' USING ERRCODE = '23514';
     END IF;
+    IF OLD.retired AND NEW.retired AND NEW.retired_at IS DISTINCT FROM OLD.retired_at THEN
+        RAISE EXCEPTION 'The effective retirement instant is permanent' USING ERRCODE = '23514';
+    END IF;
+    IF NEW.retired AND NEW.retired_at IS NULL THEN
+        NEW.retired_at := CURRENT_TIMESTAMP;
+    ELSIF NOT NEW.retired THEN
+        NEW.retired_at := NULL;
+    END IF;
     RETURN NEW;
 END;
 $$;
 
-CREATE TRIGGER protect_identity BEFORE UPDATE OR DELETE ON work_example.resource
+CREATE TRIGGER protect_identity BEFORE INSERT OR UPDATE OR DELETE ON work_example.resource
 FOR EACH ROW EXECUTE FUNCTION work_example.protect_identity();
 
 CREATE TABLE work_example.movement (
@@ -51,7 +61,7 @@ BEGIN
 
     IF EXISTS (
         SELECT 1 FROM (
-            SELECT sum(sum(m.credits)) OVER (ORDER BY business_date) AS funds,
+            SELECT business_date, sum(sum(m.credits)) OVER (ORDER BY business_date) AS funds,
                    sum(sum(m.rights)) OVER (ORDER BY business_date) AS entitlements
             FROM work_example.movement m
             WHERE resource_id = resource_key AND active
@@ -122,6 +132,48 @@ SELECT id, resource_id, captured_category,
        ((finished AT TIME ZONE captured_zone)::date - (started AT TIME ZONE captured_zone)::date + 1) * daily_rate AS amount
 FROM work_example.assignment
 WHERE finished IS NOT NULL;
+
+CREATE FUNCTION work_example.resource_state(resource_key integer, cutoff timestamptz)
+RETURNS text LANGUAGE sql STABLE AS $$
+    SELECT CASE
+        WHEN r.retired_at <= cutoff THEN 'Retired'
+        WHEN EXISTS (SELECT 1 FROM work_example.assignment a WHERE a.resource_id = r.id
+                     AND a.started <= cutoff AND (a.finished IS NULL OR cutoff < a.finished)) THEN 'Assigned'
+        ELSE 'Available'
+    END
+    FROM work_example.resource r WHERE r.id = resource_key;
+$$;
+
+CREATE TABLE work_example.adjustment_history (
+    movement_id bigint NOT NULL REFERENCES work_example.movement,
+    operation text NOT NULL,
+    actor text NOT NULL,
+    occurred_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    reason text NOT NULL CHECK (reason ~ '[^[:space:]]'),
+    PRIMARY KEY (movement_id, operation)
+);
+
+-- Recording the audit entry and the underlying change is one transaction.
+CREATE FUNCTION work_example.adjust_position(resource_key integer, effective date, credits integer, reason text)
+RETURNS bigint LANGUAGE plpgsql AS $$
+DECLARE
+    changed bigint;
+BEGIN
+    changed := work_example.change_position(resource_key, effective, credits, 0);
+    INSERT INTO work_example.adjustment_history (movement_id, operation, actor, reason)
+    VALUES (changed, 'adjust', current_user, coalesce(reason, ''));
+    RETURN changed;
+END;
+$$;
+
+CREATE FUNCTION work_example.withdraw_adjustment(resource_key integer, movement bigint, reason text)
+RETURNS void LANGUAGE plpgsql AS $$
+BEGIN
+    PERFORM work_example.change_position(resource_key, NULL, 0, 0, movement);
+    INSERT INTO work_example.adjustment_history (movement_id, operation, actor, reason)
+    VALUES (movement, 'withdraw', current_user, coalesce(reason, ''));
+END;
+$$;
 
 -- A draft can change its beneficiary after a credit has been selected.
 CREATE TABLE work_example.request (

@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import test from 'node:test'
 import { verifyBusinessObservations } from '../../packaging/templates/content/infrastructure/ngb/business-checks.mjs'
 import { verifyOutcomeProof } from '../../packaging/templates/content/infrastructure/ngb/acceptance-outcomes.mjs'
-import { verifyOperationReview } from '../../packaging/templates/content/infrastructure/ngb/operation-review.mjs'
+import { verifyOperationReview, verifyRuntimeOperationReview } from '../../packaging/templates/content/infrastructure/ngb/operation-review.mjs'
 import { captureObligations } from '../../packaging/templates/content/infrastructure/ngb/requirement-trace.mjs'
 
 const request = 'document:example.request'
@@ -62,6 +62,105 @@ test('the review distinguishes journal, worker and local editor operations', () 
   const local = { ...rows[0], facts: rows[0].facts.slice(0, 1) }
   assert.throws(() => verifyOperationReview([local], obligations, plan), /contended operation/)
   assert.throws(() => verifyOperationReview([{ ...post, facts: [{ kind: 'unknown', key: 'edit' }] }], obligations), /Unknown reviewed/)
+})
+
+test('live lookups and contributing document types expose omissions even when the plan agrees with the review', () => {
+  const report = 'report:example.activity'
+  const lookup = key => ({ key, lookup: { kind: 'catalog', catalogType: 'example.party' } })
+  const metadata = (target, fields) => ({ documentType: target.slice(9), form: { sections: [{ rows: [{ fields }] }] } })
+  const context = 'document:example.folder'
+  const inventory = {
+    documents: [metadata(request, [lookup('beneficiary'), { ...lookup('creator'), isReadOnly: true }]),
+      metadata(credit, [lookup('recipient')])],
+    reports: [{ reportCode: 'example.activity', dataset: { fields: [
+      { code: 'group', isGroupable: true },
+      { code: 'record', lookup: { kind: 'document', documentTypes: [request.slice(9), release.slice(9), context.slice(9)] } },
+    ] } }],
+  }
+  const rows = [{ ...post, facts: [{ ...prerequisite, owner: 'parent', editableOwner: false, position: 'eligibility',
+    corrections: [{ operation: 'unpost', cardinality: 'single' }] }] }]
+  const plan = { cases: [{ scenario: 'historical-classification', target: report }], surfaces: [request, release, context, report] }
+  const scope = { kind: 'prerequisite-scope', target: request, expect: {
+    prerequisite: prerequisite.key, source: credit, consumerField: 'beneficiary', sourceField: 'recipient',
+  } }
+  const phase = target => ({ kind: 'snapshot-stability', target, expect: { report, groupField: 'group', until: target } })
+  const link = { kind: 'classification-context', target: report, expect: { document: context, contributor: request } }
+  const verify = proofs => verifyRuntimeOperationReview(rows, [{ proofs }], plan, inventory)
+  assert.throws(() => verify([]), /shared prerequisite reference/)
+  assert.throws(() => verify([scope]), /historical report group/)
+  verify([scope, phase(request), phase(release), link])
+  assert.throws(() => verify([scope, phase(request), link]), /before posting document:example.release/)
+  assert.throws(() => verify([scope, phase(release), link]), /before posting document:example.request/)
+  assert.throws(() => verify([scope, phase(request), phase(release)]), /document:example.folder/)
+  const wrongSource = { ...scope, expect: { ...scope.expect, sourceField: 'beneficiary' } }
+  assert.throws(() => verify([wrongSource, phase(request), phase(release), link]), /shared prerequisite reference/)
+  const afterPosting = { ...phase(request), expect: { ...phase(request).expect, until: 'render-report' } }
+  assert.throws(() => verify([scope, afterPosting, phase(release), link]), /before posting document:example.request/)
+  const history = [{ proofs: [phase(request), phase(release), link] }]
+  const [consumer, source] = inventory.documents
+  for (const documents of [[consumer], [source], [{ ...consumer, capabilities: { canEditDraft: false } }, source]]) {
+    verifyRuntimeOperationReview(rows, history, plan, { ...inventory, documents })
+  }
+
+  const draftField = { ...lookup('beneficiary'), readOnlyWhenStatusIn: [1] }
+  const unrelated = { key: 'department', lookup: { kind: 'catalog', catalogType: 'example.department' } }
+  const reviewFields = (field, sourceFields) => verifyRuntimeOperationReview(rows, history, plan, {
+    ...inventory, documents: [metadata(request, [field]), metadata(credit, sourceFields)],
+  })
+  reviewFields(draftField, [lookup('recipient')])
+  reviewFields(lookup('beneficiary'), [unrelated])
+  assert.throws(() => reviewFields({ ...draftField, readOnlyWhenStatusIn: [2] }, [unrelated, lookup('recipient')]),
+    /shared prerequisite reference: document:example.request\/beneficiary, document:example.credit\/recipient/)
+})
+
+test('changing one draft reference preserves the two scoped positions or proves an independent reference', () => {
+  const entry = { kind: 'prerequisite-scope', target: request, key: 'available-beneficiary', test: 'Fixture.Scope' }
+  const plan = { surfaces: [request], businessChecks: [entry] }
+  const proof = { ...entry, policy: 'same-owner', source: credit, prerequisite: 'available', consumerField: 'beneficiary',
+    sourceField: 'recipient', sourceId: 'authorization', consumerId: 'draft', reopenedSourceId: 'authorization',
+    reopenedConsumerId: 'draft', originalOwnerId: 'A', sourceOwnerId: 'A', revisedOwnerId: 'B',
+    initialConsumerSourceId: 'authorization', persistedConsumerSourceId: 'authorization', initialConsumerOwnerId: 'A',
+    persistedOwnerId: 'B', state: 'Draft', editStatus: 200, postStatus: 409, reason: 'not-funded', expectedReason: 'not-funded',
+    controlId: 'control', reopenedControlId: 'control', controlSourceId: 'authorization', controlOwnerId: 'A', controlStatus: 200,
+    before: [50, 0], after: [50, 0], expectedBefore: [50, 0], expectedAfter: [50, 0] }
+  const check = changes => verifyBusinessObservations(plan, [{ test: entry.test, proof: { ...proof, ...changes } }])
+  check({})
+  check({ editStatus: 409, postStatus: null, persistedOwnerId: 'A' })
+  check({ policy: 'independent', postStatus: 200, state: 'Posted', after: [40, 0], expectedAfter: [40, 0] })
+  for (const invalid of [{ after: [0, 50] }, { postStatus: 200 }, { state: 'Posted' }, { reopenedConsumerId: 'other' },
+    { controlSourceId: 'different' }, { persistedConsumerSourceId: 'other' }, { initialConsumerOwnerId: 'B' },
+    { editStatus: 409, postStatus: null }, { policy: 'independent' }]) {
+    assert.throws(() => check(invalid))
+  }
+})
+
+test('a historical group observation distinguishes the timing and distribution of a posting', () => {
+  const entry = { kind: 'snapshot-stability', target: release, key: 'report-group', test: 'Fixture.Groups' }
+  const plan = { surfaces: [release], businessChecks: [entry] }
+  const proof = { ...entry, report: 'report:example.activity', groupField: 'class', sourceId: 'source',
+    consumerId: 'issued', freshConsumerId: 'later', from: request, until: release,
+    capture: { operation: request, id: 'source', status: 200 }, consumption: { operation: release, id: 'issued', status: 200 },
+    capturedAt: '2026-05-01', changedAt: '2026-05-02', consumedAt: '2026-05-03', original: 'A', changed: 'B',
+    expected: [20, 0], observed: [20, 0], freshExpected: [0, 20], freshObserved: [0, 20], reportStatus: 200, freshReportStatus: 200 }
+  const verify = changes => verifyBusinessObservations(plan, [{ test: entry.test, proof: { ...proof, ...changes } }])
+  verify({})
+  for (const invalid of [{ observed: [0, 20] }, { observed: [30, -10] }, { changedAt: '2026-05-04' },
+    { freshConsumerId: 'issued' }, { reportStatus: 404 }, { freshObserved: [20, 0] }]) {
+    assert.throws(() => verify(invalid))
+  }
+
+  const link = { kind: 'classification-context', target: proof.report, key: 'request-link', test: 'Fixture.Context' }
+  const context = { ...link, document: request, documentId: 'context-id', reopenedId: 'context-id',
+    contributor: release, contributorId: 'posting-id', postStatus: 200, controlStatus: 200, reportStatus: 200,
+    expectedGroups: [4, 7], before: [4, 7], after: [4, 7], withContributor: [6, 7],
+    expectedWithContributor: [6, 7], controlReportStatus: 200 }
+  const check = changes => verifyBusinessObservations({ surfaces: [proof.report], businessChecks: [link] },
+    [{ test: link.test, proof: { ...context, ...changes } }])
+  check({})
+  for (const invalid of [{ after: [5, 7] }, { withContributor: [4, 7] }, { withContributor: [9, 9] },
+    { controlReportStatus: 403 }, { contributor: request }]) {
+    assert.throws(() => check(invalid))
+  }
 })
 
 test('the priced editor and long-history totals need their own measured operations', () => {

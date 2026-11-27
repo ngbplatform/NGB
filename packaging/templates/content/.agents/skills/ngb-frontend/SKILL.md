@@ -14,6 +14,8 @@ including defaults, source snapshots, filtered lookups and recalculation. Readon
 derived values must actually populate. Use the shell's `navigate` event once;
 `select` is not a second navigation command. Preserve the full product name and
 place Dashboard first as a standalone root link.
+Keep [document print previews](../../../ai/vendor/references/frontend.md#document-print-preview)
+in their own tab outside the site shell. Verify the saved sheet in print media.
 Use the runnable examples in that reference for whole-chain invalidation, readonly
 source navigation and saved-row reference hydration. Preserve primary Name displays;
 put disambiguating codes in secondary metadata. Explain conditional editability and

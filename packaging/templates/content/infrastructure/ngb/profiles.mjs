@@ -258,9 +258,9 @@ export async function executeProfile(root, options) {
                 message: 'Disposable application and identity services are healthy.', runId: environment.runId })
               await inspectEvidence('test.e2e.acceptance-plan', 'ai/acceptance.json', async text => {
                 const plan = acceptancePlan(JSON.parse(text))
-                await verifyRequirementTrace(root, plan)
                 const inventory = await readAcceptanceInventory(environment, 2)
                 await writeFile(join(output, 'acceptance-inventory.json'), JSON.stringify(inventory, null, 2), { mode: 0o600 })
+                await verifyRequirementTrace(root, plan, undefined, undefined, inventory)
                 if (inventory.documents.length || inventory.catalogs.length || inventory.reports.length) {
                   assert.equal(plan.schemaVersion, 2, 'Update ai/acceptance.json to schema 2 with business outcomes; see ai/vendor/references/browser-acceptance.md.')
                 }

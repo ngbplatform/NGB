@@ -12,6 +12,7 @@ vi.hoisted(() => vi.stubGlobal('__NGB_RUNTIME_CONFIG__', {
 const state = vi.hoisted(() => ({
   push: vi.fn(), logout: vi.fn(), accessLoad: vi.fn(), menuLoad: vi.fn(),
   openPalette: vi.fn(), paletteHotkeys: vi.fn(),
+  meta: {} as { bare?: boolean },
   groups: [
     { label: 'Dashboard', icon: 'home', items: [{ route: '/', label: 'Dashboard', icon: 'home' }] },
     { label: 'Setup & Controls', items: [
@@ -24,7 +25,7 @@ const state = vi.hoisted(() => ({
 vi.mock('vue-router', async importOriginal => ({
   ...await importOriginal<typeof import('vue-router')>(),
   useRouter: () => ({ push: state.push }),
-  useRoute: () => ({ path: '/roles' }),
+  useRoute: () => ({ path: '/roles', meta: state.meta }),
 }))
 vi.mock('@ngbplatform/ui', async importOriginal => {
   const { NgbSiteSidebar } = await importOriginal<typeof import('@ngbplatform/ui')>()
@@ -58,9 +59,19 @@ vi.mock('@ngbplatform/ui', async importOriginal => {
 })
 
 afterEach(() => {
+  delete state.meta.bare
+  vi.clearAllMocks()
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
   document.body.innerHTML = ''
+})
+
+it('renders only the routed page for a standalone preview', async () => {
+  state.meta.bare = true
+  const { default: App } = await import('../../src/App.vue')
+  const preview = defineComponent(() => () => h('article', 'Printable document'))
+  const screen = render(App, { global: { stubs: { RouterView: preview } } })
+  expect(screen.container.textContent).toBe('Printable document')
 })
 
 it('renders standalone navigation and navigates once per real sidebar click', async () => {

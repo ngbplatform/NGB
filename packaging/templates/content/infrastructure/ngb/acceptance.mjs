@@ -94,6 +94,7 @@ function documentOutcomes(plan, document, metadata) {
     needsOutcome('commands:' + document.type + '/' + JSON.stringify(codes), 'draft-edit', 'ngb-admin')
     for (const code of codes) needsOutcome('command:' + document.type + '/' + code)
   }
+  if (document.type !== 'general_journal_entry') needsOutcome('printed-sheet', 'document-print')
   const references = unique(document.referenceRegisters ?? [], 'reference register')
   const operational = unique(document.operationalRegisters ?? [], 'operational register')
   if (metadata.form && document.type !== 'general_journal_entry' && metadata.capabilities?.canPost !== false) {
@@ -183,7 +184,8 @@ export function reconcileAcceptance(plan, inventory) {
     const forms = [...inventory.documents.map(item => [`document:${item.documentType}`, item.form]),
       ...(inventory.catalogs ?? []).map(item => [`catalog:${item.catalogType}`, item.form])]
     for (const [target, form] of forms) {
-      if (!form?.sections?.some(section => section.rows.some(row => row.fields?.length))) continue
+      const hasFields = form?.sections?.some(section => section.rows.some(row => row.fields?.length))
+      if (!hasFields && target !== 'document:general_journal_entry') continue
       assert.ok(plan.cases.some(entry => entry.target === target && entry.scenario === 'form-labels'),
         `Missing form-labels browser test for ${target}.`)
       required.push(`${target}/form-labels`)

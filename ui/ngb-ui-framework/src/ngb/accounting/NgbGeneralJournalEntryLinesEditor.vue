@@ -408,6 +408,7 @@ function badgeToneForDiff(): 'success' | 'warn' {
 
             <td class="border-r border-dotted border-ngb-border px-0 py-1 align-top">
               <NgbSelect
+                aria-label="Side"
                 :model-value="row.side"
                 :options="sideOptions"
                 :disabled="!canEdit"
@@ -418,6 +419,7 @@ function badgeToneForDiff(): 'success' | 'warn' {
 
             <td class="border-r border-dotted border-ngb-border px-0 py-1 align-top">
               <NgbLookup
+                aria-label="Account"
                 :model-value="row.account"
                 :items="accountItemsByRow[row.clientKey] ?? []"
                 :readonly="!canEdit"
@@ -433,6 +435,7 @@ function badgeToneForDiff(): 'success' | 'warn' {
 
             <td class="border-r border-dotted border-ngb-border px-1 py-1 align-top">
               <NgbInput
+                aria-label="Amount"
                 :model-value="row.amount"
                 type="number"
                 :disabled="!canEdit"
@@ -444,6 +447,7 @@ function badgeToneForDiff(): 'success' | 'warn' {
 
             <td class="border-r border-dotted border-ngb-border px-1 py-1 align-top">
               <NgbInput
+                aria-label="Memo"
                 :model-value="row.memo"
                 :disabled="!canEdit"
                 variant="grid"
@@ -483,6 +487,7 @@ function badgeToneForDiff(): 'success' | 'warn' {
                   </div>
 
                   <NgbLookup
+                    :aria-label="humanizeDimensionLabel(rule.dimensionCode)"
                     :model-value="selectedDimensionItem(row, rule)"
                     :items="dimensionItems(row, rule)"
                     :disabled="!rule.lookup"

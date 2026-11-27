@@ -45,19 +45,22 @@ onMounted(async () => {
 </script>
 
 <template>
-  <NgbSiteShell
-    module-title="NgbApplication"
-    product-title="NGB"
-    :user-name="auth.userName"
-    :pinned="[]"
-    :recent="[]"
-    :nodes="nodes"
-    :selected-id="route.path"
-    @navigate="navigate($event)"
-    @open-palette="palette.open()"
-    @sign-out="auth.logout()"
-  >
-    <router-view />
-  </NgbSiteShell>
-  <NgbCommandPaletteDialog />
+  <router-view v-if="route.meta.bare === true" />
+  <template v-else>
+    <NgbSiteShell
+      module-title="NgbApplication"
+      product-title="NGB"
+      :user-name="auth.userName"
+      :pinned="[]"
+      :recent="[]"
+      :nodes="nodes"
+      :selected-id="route.path"
+      @navigate="navigate($event)"
+      @open-palette="palette.open()"
+      @sign-out="auth.logout()"
+    >
+      <router-view />
+    </NgbSiteShell>
+    <NgbCommandPaletteDialog />
+  </template>
 </template>

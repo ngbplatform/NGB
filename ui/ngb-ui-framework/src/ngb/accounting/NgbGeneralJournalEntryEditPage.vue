@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, useId, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import { useAuthStore } from '../auth'
@@ -65,6 +65,7 @@ const props = withDefaults(defineProps<{
   listPath: null,
 })
 
+const formId = useId()
 const route = useRoute()
 const router = useRouter()
 const toasts = useToasts()
@@ -550,7 +551,7 @@ function extractErrorMessages(error: unknown): string[] {
 </script>
 
 <template>
-  <div data-testid="journal-entry-edit-page" class="flex h-full min-h-0 flex-col bg-ngb-bg">
+  <div data-testid="journal-entry-edit-page" data-ngb-editor-target="document:general_journal_entry" class="flex h-full min-h-0 flex-col bg-ngb-bg">
     <NgbPageHeader :title="pageTitle" can-back @back="navigateBack(router, route, resolvedListPath)">
       <template #secondary>
         <div class="min-w-0 flex flex-wrap items-center gap-2">
@@ -696,38 +697,39 @@ function extractErrorMessages(error: unknown): string[] {
 
         <div v-if="loading" class="text-sm text-ngb-muted">Loading…</div>
 
-        <template v-else>
+        <div v-else data-ngb-entity-form class="space-y-4">
           <NgbFormLayout>
             <NgbFormSection title="Header" description="General journal entry business fields and workflow state.">
-              <NgbFormRow label="Document Date" hint="Date is fixed when the draft is created.">
-                <NgbDatePicker v-model="draftDate" :disabled="!isNew || !canSave" />
+              <NgbFormRow label="Document Date" :control-id="`${formId}-document-date`" hint="Date is fixed when the draft is created.">
+                <NgbDatePicker :control-id="`${formId}-document-date`" v-model="draftDate" :disabled="!isNew || !canSave" />
               </NgbFormRow>
 
-              <NgbFormRow label="Initiated By">
-                <NgbInput :model-value="initiatedByDisplay" readonly />
+              <NgbFormRow label="Initiated By" :control-id="`${formId}-initiated-by`">
+                <NgbInput :control-id="`${formId}-initiated-by`" :model-value="initiatedByDisplay" readonly />
               </NgbFormRow>
 
-              <NgbFormRow label="Journal Type">
-                <NgbSelect v-model="journalType" :options="journalTypeOptions" :disabled="!canEditDraft" />
+              <NgbFormRow label="Journal Type" :control-id="`${formId}-journal-type`">
+                <NgbSelect :control-id="`${formId}-journal-type`" v-model="journalType" :options="journalTypeOptions" :disabled="!canEditDraft" />
               </NgbFormRow>
 
-              <NgbFormRow label="Reason Code">
-                <NgbInput v-model="reasonCode" :disabled="!canEditDraft" placeholder="Optional business reason code" />
+              <NgbFormRow label="Reason Code" :control-id="`${formId}-reason-code`">
+                <NgbInput :control-id="`${formId}-reason-code`" v-model="reasonCode" :disabled="!canEditDraft" placeholder="Optional business reason code" />
               </NgbFormRow>
 
-              <NgbFormRow label="Memo">
-                <NgbInput v-model="memo" :disabled="!canEditDraft" placeholder="Explain the journal entry" />
+              <NgbFormRow label="Memo" :control-id="`${formId}-memo`">
+                <NgbInput :control-id="`${formId}-memo`" v-model="memo" :disabled="!canEditDraft" placeholder="Explain the journal entry" />
               </NgbFormRow>
 
-              <NgbFormRow label="External Reference">
-                <NgbInput v-model="externalReference" :disabled="!canEditDraft" placeholder="External ticket, import id, or source ref" />
+              <NgbFormRow label="External Reference" :control-id="`${formId}-external-reference`">
+                <NgbInput :control-id="`${formId}-external-reference`" v-model="externalReference" :disabled="!canEditDraft" placeholder="External ticket, import id, or source ref" />
               </NgbFormRow>
 
-              <NgbFormRow label="Auto Reverse">
+              <NgbFormRow label="Auto Reverse" :control-id="`${formId}-auto-reverse`">
                 <div class="flex h-9 items-center gap-3">
-                  <NgbCheckbox v-model="autoReverse" :disabled="!canEditDraft" />
+                  <NgbCheckbox :control-id="`${formId}-auto-reverse`" v-model="autoReverse" :disabled="!canEditDraft" />
                   <div class="w-[12rem]">
-                    <NgbDatePicker v-model="autoReverseOnUtc" :disabled="!canEditDraft || !autoReverse" />
+                    <label :for="`${formId}-auto-reverse-date`" class="sr-only">Auto Reverse Date</label>
+                    <NgbDatePicker :control-id="`${formId}-auto-reverse-date`" v-model="autoReverseOnUtc" :disabled="!canEditDraft || !autoReverse" />
                   </div>
                 </div>
               </NgbFormRow>
@@ -779,38 +781,37 @@ function extractErrorMessages(error: unknown): string[] {
 
               <NgbFormLayout v-else class="pb-6">
                 <NgbFormSection title="Workflow" description="Workflow actors are captured automatically from the authenticated current user.">
-                  <NgbFormRow label="Submitted By">
-                    <NgbInput :model-value="submittedByDisplay" readonly />
+                  <NgbFormRow label="Submitted By" :control-id="`${formId}-submitted-by`">
+                    <NgbInput :control-id="`${formId}-submitted-by`" :model-value="submittedByDisplay" readonly />
                   </NgbFormRow>
 
-                  <NgbFormRow label="Approved By">
-                    <NgbInput :model-value="approvedByDisplay" readonly />
+                  <NgbFormRow label="Approved By" :control-id="`${formId}-approved-by`">
+                    <NgbInput :control-id="`${formId}-approved-by`" :model-value="approvedByDisplay" readonly />
                   </NgbFormRow>
 
-                  <NgbFormRow label="Rejected By">
-                    <NgbInput :model-value="rejectedByDisplay" readonly />
+                  <NgbFormRow label="Rejected By" :control-id="`${formId}-rejected-by`">
+                    <NgbInput :control-id="`${formId}-rejected-by`" :model-value="rejectedByDisplay" readonly />
                   </NgbFormRow>
 
-                  <NgbFormRow label="Reject Reason">
-                    <NgbInput v-model="rejectReason" :disabled="!canReject" placeholder="Required when rejecting" />
+                  <NgbFormRow label="Reject Reason" :control-id="`${formId}-reject-reason`">
+                    <NgbInput :control-id="`${formId}-reject-reason`" v-model="rejectReason" :disabled="!canReject" placeholder="Required when rejecting" />
                   </NgbFormRow>
 
-                  <NgbFormRow label="Posted By">
-                    <NgbInput :model-value="postedByDisplay" readonly />
+                  <NgbFormRow label="Posted By" :control-id="`${formId}-posted-by`">
+                    <NgbInput :control-id="`${formId}-posted-by`" :model-value="postedByDisplay" readonly />
                   </NgbFormRow>
 
-                  <NgbFormRow label="Reverse Initiated By">
-                    <NgbInput :model-value="reverseInitiatedByDisplay" readonly />
+                  <NgbFormRow label="Reverse Initiated By" :control-id="`${formId}-reverse-initiated-by`">
+                    <NgbInput :control-id="`${formId}-reverse-initiated-by`" :model-value="reverseInitiatedByDisplay" readonly />
                   </NgbFormRow>
 
-                  <NgbFormRow label="Reversal Date">
+                  <NgbFormRow label="Reversal Date" :control-id="`${formId}-reversal-date`">
                     <div class="flex items-center gap-3">
                       <div class="w-[12rem]">
-                        <NgbDatePicker v-model="reversalDate" :disabled="!canReverse" />
+                        <NgbDatePicker :control-id="`${formId}-reversal-date`" v-model="reversalDate" :disabled="!canReverse" />
                       </div>
                       <div class="flex h-9 items-center gap-2">
-                        <NgbCheckbox v-model="reversePostImmediately" :disabled="!canReverse" />
-                        <span class="text-sm text-ngb-muted">Post immediately</span>
+                        <NgbCheckbox v-model="reversePostImmediately" label="Post immediately" :disabled="!canReverse" />
                       </div>
                     </div>
                   </NgbFormRow>
@@ -818,7 +819,7 @@ function extractErrorMessages(error: unknown): string[] {
               </NgbFormLayout>
             </template>
           </NgbTabs>
-        </template>
+        </div>
       </div>
     </div>
 

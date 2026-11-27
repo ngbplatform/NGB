@@ -6,6 +6,7 @@ import type { EntityEditorHandle, MainMenuGroup } from '@ngbplatform/ui'
 const state = vi.hoisted(() => ({
   push: vi.fn(), logout: vi.fn(), save: vi.fn(), guard: vi.fn(), beforeEach: vi.fn(),
   openPalette: vi.fn(),
+  meta: {} as { bare?: boolean },
   menu: { groups: [] as MainMenuGroup[], load: vi.fn() },
   lookup: {}, searchLookup: vi.fn(), lookupTarget: vi.fn(), normalizeLookup: vi.fn(),
   createRouter: vi.fn(), catalog: vi.fn(), document: vi.fn(), documentPersistence: vi.fn(),
@@ -30,7 +31,7 @@ vi.mock('vue-router', () => ({
   createWebHistory: vi.fn(),
   createRouter: state.createRouter.mockReturnValue({ beforeEach: state.beforeEach }),
   useRouter: () => ({ push: state.push }),
-  useRoute: () => ({ path: '/catalogs/example.equipment' }),
+  useRoute: () => ({ path: '/catalogs/example.equipment', meta: state.meta }),
 }))
 vi.mock('@ngbplatform/ui', () => ({
   useAuthStore: () => ({ userName: 'Example operator', logout: state.logout }),
@@ -96,6 +97,7 @@ vi.mock('@ngbplatform/ui', () => ({
 
 beforeEach(() => {
   vi.clearAllMocks()
+  delete state.meta.bare
   vi.stubGlobal('__NGB_RUNTIME_CONFIG__', {
     VITE_KEYCLOAK_URL: 'http://127.0.0.1:18081',
     VITE_KEYCLOAK_REALM: 'component-tests',
@@ -127,6 +129,14 @@ it('shows only authorized navigation and forwards shell actions', async () => {
   expect(state.push.mock.calls).toEqual([['/documents/example.inspection']])
   expect(state.logout).toHaveBeenCalledOnce()
   expect(state.openPalette).toHaveBeenCalledOnce()
+})
+
+it('renders a standalone preview outside the site shell', async () => {
+  state.meta.bare = true
+  const { default: App } = await import('../../src/App.vue')
+  const preview = defineComponent(() => () => h('article', 'Printable document'))
+  const screen = render(App, { global: { stubs: { RouterView: preview } } })
+  expect(screen.container.textContent).toBe('Printable document')
 })
 
 it('omits Dashboard when it is absent from the registered menu', async () => {

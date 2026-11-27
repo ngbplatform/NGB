@@ -237,6 +237,147 @@ obligation. Resolve contradictory classifications against the brief before captu
 | `rows` | Review each public row-dependent lookup, report or calculation. Use its HTTP method and pathname as `operation` and pin it in `query-growth.expect.operation`. Emit the observed method and pathname as `small.requestOperation` and `large.requestOperation`. For remote line pricing use the same route in the pricing case's `priceOperation`. Use `{id}` for GUID path segments. Verify the price fields from independently seeded rows and read them from that request in the browser. |
 | `history-total` | Bind `paged-total` for each total derived from a paginated history, including settlement balances. Pin `operation`, `pageLimit` and three independently calculated `expectedTotals`. At limit minus one, limit and limit plus one, read the same record and an independent report, recording `count`, `recordId`, both statuses and both totals. Follow the next page, retain both sets of IDs and verify that the last entry appears exactly once. |
 
+For a document prerequisite, compare the header lookups on the consumer and the
+source when designing the draft. The same parent document may have a different
+beneficiary after an edit. For each editable consumer lookup sharing a target
+type with a source lookup, bind a `prerequisite-scope` business check on the
+consumer. The CLI reconciles the field keys against live metadata, including
+lookups with different names. This applies even when the parent ID is immutable.
+Freeze the following in the source obligation's `proof.expect`:
+
+```json
+{ "source": "document:example.authorization", "prerequisite": "available",
+  "consumerField": "beneficiary_id", "sourceField": "recipient_id", "policy": "same-owner",
+  "expectedBefore": [50, 0], "expectedAfter": [50, 0], "expectedReason": "funding-owner-mismatch" }
+```
+
+Fund the first owner, then change only the lookup on the same draft. Read both
+owners' business positions before the edit and after the attempt in that order,
+and emit `before`, `after`, `sourceId`, `reopenedSourceId`, `consumerId`,
+`reopenedConsumerId`, `originalOwnerId`, `revisedOwnerId`, `sourceOwnerId`,
+`persistedOwnerId`, `state`, `editStatus` and `postStatus`. Read the draft's
+source link as `initialConsumerSourceId` and `persistedConsumerSourceId`,
+and its initial owner as `initialConsumerOwnerId`. A same-owner rule
+can refuse the edit or refuse posting the changed draft. Record the business
+`reason` and `expectedReason`; omit the post status if editing was refused.
+Confirm and reopen a matching control against the same source and record
+`controlStatus`, `controlId`, `reopenedControlId`, `controlSourceId` and
+`controlOwnerId`. For references with independent business roles, cite that
+requirement, use `policy: "independent"`, and demonstrate the permitted edit,
+confirmation and expected positions. Keep the source reference fixed in both tests.
+
+For each document contributing to a `historical-classification` report, bind a
+separate `snapshot-stability` proof on that document. Include the full report
+target in `expect.report`, the dataset field in `expect.groupField`, the capture
+operation in `from`, and the full posting document target in `until`. Freeze
+`expected` and `freshExpected` as numeric pairs in original-group, changed-group
+order. Change the classification before the operation being tested; exercise
+both the original posting and any later adjustment. If the posting itself fixes
+the group, change the classification between opening the draft and posting and
+use the totals required by that timing. In that case, restore the original
+classification before posting the fresh control so the two expected distributions
+differ. Emit both group IDs as `original` and
+`changed`, the two read statuses as `reportStatus` and `freshReportStatus`, and
+the distinct `freshConsumerId` alongside the normal snapshot evidence.
+For a document link that supplies context only, bind `classification-context`
+to the report. Freeze its full `document` target, the actual `contributor`
+target, `expectedGroups` and `expectedWithContributor`. Post and reopen the context record (`postStatus`,
+`documentId`, `reopenedId`), rerun the report (`reportStatus`, `before`,
+`after`), then apply the contributing operation to a distinct record and read its
+effect in the same scope (`controlStatus`, `contributorId`, `controlReportStatus`, `withContributor`).
+
+### Backdated consumption and corrections
+
+On each `consumes` fact, set `position` to `bounded` for a depleted balance or
+`eligibility` for a prerequisite such as an effective approval. For a bounded
+position bind `intermediate-balance` to the consumer and the same fact key.
+Seed 20 on day 1, use 20 on day 3, and add 20 on day 5. Attempt a further use
+of 20 on day 2. The attempted date and the final date can both cover it.
+Day 3 cannot. Read back each affected closing after refusal. Repeat with the
+second funding effective on day 1 and confirm the same use successfully.
+
+Freeze `source`, `dates` (attempt through last affected business day),
+`change`, `opening`, `funded` and `expectedReason`. Use signed integer units
+at the fixture's precision for money or quantities. For the example the two
+opening series are `[20,0,20]` and `[40,20,20]`. Emit the attempted and control
+`ownerId`/`controlOwnerId`, `attemptDate`/`controlDate`, `controlChange`,
+`attemptId`/`reopenedAttemptId`, `status`, `reason`, `before`, `after`,
+`controlStatus`, `controlId`/`reopenedId`, `controlBefore` and `controlAfter`.
+
+On a withdrawable prerequisite, list its `corrections`, including `unpost`
+and each permitted business edit that can invalidate a dependency. Declare
+each as `{"operation":"unpost","cardinality":"multiple"}` or `single`
+when a structural uniqueness rule limits the check to one dependent. For each
+`multiple` operation bind `dependency-window` to the source and key
+`<fact key>/<operation>`. Implement the guard across the entire relevant history.
+Use the dependency reader's page size as the test boundary (an explicit
+representative window for an unpaged reader). Test exactly N and N+1 candidates
+in actual lookup order with the decisive dependency last. Resolve only that
+dependency and show that the identical correction then succeeds.
+
+Freeze `operation`, `consumer`, `pageSize`, `expectedReason`, and two
+ordered snapshots each in `expectedBefore` and `expectedAfterControl`. For
+each of the two `samples`, emit the observed `operation`, `dependentIds`,
+`decisiveId`, `sourceId`, `reopenedId`, `reopenedDependentId`, refusal
+`status`/`reason`, and persisted `before`/`after` snapshots. Record the
+permitted correction's `controlStatus`, `controlSourceId`, `resolvedId`,
+`unchangedPrefixIds` and `afterControl`. Snapshots carry `source`, `consumer`
+and the `balance` at the decisive date.
+
+### Terminal states and reason-bearing operations
+
+Review each registered application catalog in the operation review. On its
+relevant row list `terminalStates` (empty for a catalog without a terminal
+state). Each entry has a proof `key`, terminal `state`, normal downstream
+`consumer` target and historical `report` target. Use null when the brief
+requires no such report. Bind `terminal-state` on the same catalog and key.
+Cover each affected consumer and as-of report. For a dated report which only
+displays a contextual lookup, explain it in `unaffectedReports: [{report, reason}]`.
+Apply the same review to document-owned terminal states where applicable.
+
+Freeze `state`, `consumer`, `report`, `historicalState`, `laterState`,
+`reverseReason` and `useReason`. Read the historical state, perform the later
+transition, rerun the same report at the original cutoff, then at the later
+cutoff. Emit ordered `reads` with `id`, `report`, `cutoff`, `state`, `status`,
+and record `cutoff`, `terminalAt` and `laterCutoff` consistently as business
+dates or offset timestamps. Through the ordinary authorized edit, try to reverse
+the state. Then try the prohibited use of that same record. Emit `id`/`reopenedId`,
+`terminalStatus`, `persistedState`, `reverseId`, `reverseStatus`, `reverseError`,
+`afterReverse`, `attemptedUseId`, `useStatus`, `useError` and `afterUse`.
+Exercise a permitted use on a distinct active sibling (`activeId`, `controlUseId`,
+`controlStatus`). Use null report states when no report applies.
+
+For a brief clause requiring an entered business reason, enumerate each named
+operation family and all its concrete targets in the source obligation:
+
+```json
+"reasonOperations": [
+  { "term": "adjustments", "operation": "post", "targets": ["document:example.increase", "document:example.decrease"] }
+]
+```
+
+Copy each `term` verbatim from the cited clause. Reconcile the required set with
+the live application documents and catalogs, grouping unrelated targets under
+`reasonExclusions: [{targets, reason}]`. For a write clause covering several
+surfaces that requires no business reason, declare `reasonOperations: []`.
+Include a registered navigation target for a form-owned operation outside a
+document or catalog. A legacy `state-invariant` with key `reason-required`
+also needs a reviewed operation and its own reason evidence.
+Bind a `required-reason` proof in the same obligation for **each target and
+operation**, freezing `operation`, `suppliedReason` and `expectedReason`.
+Exercise all three refusals in any order. Record an omitted reason as `input: null`,
+an empty reason as `input: ""`, and a whitespace-only reason as the actual
+nonempty string sent. Additional blank inputs are valid independent attempts.
+Then test the supplied reason. Each refused attempt emits `input`, `id`,
+`reopenedId`, `operation`, `status`, `reason`, `before` and `after`. Include
+applicable effects and audit counts in the persisted snapshots. For a refused
+creation without an ID, look up the same unique business key before and after
+the attempt. Emit `requestKey`, `reopenedKey` and `matchingRecords: 0` in both
+snapshots. For the
+successful operation emit `recordId`, `reopenedId`, `controlStatus`,
+`persistedReason`, `actorId` and the actual audit entry's `recordId`, `operation`,
+`reason`, `actorId` and `at` under `audit`.
+
 For each substantive clause, identify the actor, write or read, applicable date,
 observable effect and independent positive control. Include independent resource
 histories, an active sibling beside a retired record, and permitted correction

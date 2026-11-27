@@ -64,6 +64,10 @@ same business key. Test same-date corrections, backdating, future changes,
 withdraw/repost retries and rollback. See [Reference Registers](registers.md).
 Use `temporal-restoration`; a test that merely asserts a 409 cannot satisfy it.
 
+For bounded balances, corrections with multiple dependents, terminal states
+and operations requiring a reason, use the source review and paired controls in
+[Server acceptance](server-acceptance.md#backdated-consumption-and-corrections).
+
 Review prerequisites as well as explicit document links. A posted operation may
 have relied on a balance, security, reservation, approval or limit without storing
 a direct reference to the transaction that supplied it. Withdrawing that supplying
@@ -158,11 +162,14 @@ The [minor-unit reference calculation](partial-adjustment.mjs) provides an
 independent expected amount for a frozen half-up policy. Compare the application
 postings and ledger to that expectation in acceptance tests.
 
-For a historical report grouped by a mutable classification, persist the applicable
-dimension at posting or use a dated relationship that resolves as of the transaction.
-Post a known amount in group A, change the catalog to B and post a later amount.
-Re-run the earlier period. Its source IDs, original group and total must agree with
-the recorded expectations. Reconcile the later period separately.
+Identify the event at which the brief fixes a reporting group. Persist that
+dimension or resolve the dated relationship as of that event. Change group A to
+B after capture and before the first downstream posting. In a separate run,
+change it after the posting and before an adjustment. Post through each public
+operation and read both group totals. For an original amount of 30 and a reduction
+of 10 attributed to the original group, the result is A=20 and B=0 in both runs.
+A fresh transaction captured in B must contribute there. Repeat the historical
+report after the change and retain its contributing record IDs.
 
 ### Dashboard scope, roles and competing operations
 

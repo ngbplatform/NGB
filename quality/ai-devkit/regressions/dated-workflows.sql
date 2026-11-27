@@ -83,8 +83,8 @@ BEGIN
         RAISE EXCEPTION 'oracle: refused closing produced a charge';
     END IF;
     UPDATE work_example.resource SET business_zone = 'UTC' WHERE id = 1;
-    UPDATE work_example.assignment SET finished = '2026-05-08T04:20:00Z' WHERE id = original;
     UPDATE work_example.resource SET category = 'B' WHERE id = 1;
+    UPDATE work_example.assignment SET finished = '2026-05-08T04:20:00Z' WHERE id = original;
     BEGIN
         PERFORM work_example.begin_assignment(1, '2026-05-08T03:30:00Z', 12);
         RAISE EXCEPTION 'oracle: closed overlap accepted';
@@ -103,7 +103,8 @@ BEGIN
     END IF;
     SELECT array_agg(amount ORDER BY id) INTO amounts FROM work_example.completed_charges;
     IF amounts IS DISTINCT FROM ARRAY[24,12]::numeric[] THEN RAISE EXCEPTION 'oracle: changed calendar'; END IF;
-    IF (SELECT sum(amount) FROM work_example.completed_charges WHERE captured_category = 'A') IS DISTINCT FROM 24 THEN
+    IF (SELECT sum(amount) FROM work_example.completed_charges WHERE captured_category = 'A') IS DISTINCT FROM 24
+       OR (SELECT sum(amount) FROM work_example.completed_charges WHERE captured_category = 'B') IS DISTINCT FROM 12 THEN
         RAISE EXCEPTION 'oracle: changed category';
     END IF;
 
@@ -184,7 +185,9 @@ BEGIN
         RAISE EXCEPTION 'oracle: changed beneficiary consumed another owner credit';
     EXCEPTION WHEN check_violation THEN NULL;
     END;
-    IF (SELECT confirmed_id FROM work_example.request WHERE id = dependent) IS NOT NULL THEN
+    IF (SELECT confirmed_id FROM work_example.request WHERE id = dependent) IS NOT NULL
+       OR work_example.credit_balance(2, '2026-05-12') IS DISTINCT FROM 12
+       OR work_example.credit_balance(3, '2026-05-12') IS DISTINCT FROM 1 THEN
         RAISE EXCEPTION 'oracle: refused beneficiary change created a movement';
     END IF;
     UPDATE work_example.request SET beneficiary = 2 WHERE id = dependent;
@@ -208,3 +211,96 @@ BEGIN
     END IF;
 END;
 $audit$;
+
+DO $corrections$
+DECLARE
+    day_one constant date := '2026-05-01';
+    source_id bigint;
+    dependent_id bigint;
+    sample integer;
+    owner_id integer;
+    invalid_reason text;
+BEGIN
+    INSERT INTO work_example.resource (id, stable_code, contact, business_zone, category)
+    SELECT id, 'R' || id, 'test@example.test', 'UTC', 'A' FROM generate_series(11, 16) id;
+    FOR owner_id IN 11..12 LOOP
+        PERFORM work_example.change_position(owner_id, day_one, 20, 0);
+        PERFORM work_example.change_position(owner_id, day_one + 2, -20, 0);
+        PERFORM work_example.change_position(owner_id, CASE WHEN owner_id = 11 THEN day_one + 4 ELSE day_one END, 20, 0);
+        IF owner_id = 11 THEN
+            BEGIN
+                PERFORM work_example.change_position(owner_id, day_one + 1, -20, 0);
+                RAISE EXCEPTION 'oracle: intermediate overdraft accepted';
+            EXCEPTION WHEN check_violation THEN NULL;
+            END;
+        ELSE
+            PERFORM work_example.change_position(owner_id, day_one + 1, -20, 0);
+        END IF;
+        IF work_example.credit_balance(owner_id, day_one + 1) <> 20
+           OR work_example.credit_balance(owner_id, day_one + 2) <> 0
+           OR work_example.credit_balance(owner_id, day_one + 4) <> (CASE WHEN owner_id = 11 THEN 20 ELSE 0 END) THEN
+            RAISE EXCEPTION 'oracle: incorrect intermediate positions';
+        END IF;
+    END LOOP;
+
+    FOR sample IN 50..51 LOOP
+        owner_id := sample - 37;
+        source_id := work_example.change_position(owner_id, day_one, 1, 0);
+        PERFORM work_example.change_position(owner_id, day_one, sample - 1, 0);
+        FOR i IN 1..sample LOOP
+            dependent_id := work_example.change_position(owner_id, day_one + i, -1, 0);
+        END LOOP;
+        PERFORM work_example.change_position(owner_id, day_one + sample + 1, 1, 0);
+        BEGIN
+            PERFORM work_example.change_position(owner_id, NULL, 0, 0, source_id);
+            RAISE EXCEPTION 'oracle: withdrawal missed the last dependent';
+        EXCEPTION WHEN check_violation THEN NULL;
+        END;
+        IF NOT (SELECT active FROM work_example.movement WHERE id = source_id)
+           OR NOT (SELECT active FROM work_example.movement WHERE id = dependent_id)
+           OR work_example.credit_balance(owner_id, day_one + sample) <> 0 THEN
+            RAISE EXCEPTION 'oracle: refused withdrawal changed the history';
+        END IF;
+        PERFORM work_example.change_position(owner_id, day_one, 1, 0);
+        PERFORM work_example.change_position(owner_id, NULL, 0, 0, source_id);
+        IF (SELECT active FROM work_example.movement WHERE id = source_id)
+           OR work_example.credit_balance(owner_id, day_one + sample) <> 0 THEN
+            RAISE EXCEPTION 'oracle: funded withdrawal failed';
+        END IF;
+    END LOOP;
+
+    source_id := work_example.begin_assignment(15, '2026-05-10T09:00Z', 1);
+    UPDATE work_example.assignment SET finished = '2026-05-10T15:00Z' WHERE id = source_id;
+    IF work_example.resource_state(15, '2026-05-10T10:00Z') IS DISTINCT FROM 'Assigned' THEN
+        RAISE EXCEPTION 'oracle: incorrect historical assignment';
+    END IF;
+    UPDATE work_example.resource SET retired = true, retired_at = '2026-05-11T00:00Z' WHERE id = 15;
+    IF work_example.resource_state(15, '2026-05-10T10:00Z') IS DISTINCT FROM 'Assigned'
+       OR work_example.resource_state(15, '2026-05-11T00:00Z') IS DISTINCT FROM 'Retired' THEN
+        RAISE EXCEPTION 'oracle: retirement rewrote history';
+    END IF;
+
+    FOREACH invalid_reason IN ARRAY ARRAY[E'\t', NULL, '', E' \t'] LOOP
+        BEGIN
+            PERFORM work_example.adjust_position(16, day_one, 10, invalid_reason);
+            RAISE EXCEPTION 'oracle: adjustment without reason';
+        EXCEPTION WHEN check_violation THEN NULL;
+        END;
+    END LOOP;
+    source_id := work_example.adjust_position(16, day_one, 10, 'Independent count');
+    FOREACH invalid_reason IN ARRAY ARRAY['', E' \t', NULL, E'\t'] LOOP
+        BEGIN
+            PERFORM work_example.withdraw_adjustment(16, source_id, invalid_reason);
+            RAISE EXCEPTION 'oracle: withdrawal without reason';
+        EXCEPTION WHEN check_violation THEN NULL;
+        END;
+    END LOOP;
+    IF work_example.credit_balance(16, day_one) <> 10 THEN RAISE EXCEPTION 'oracle: refused operation changed balance'; END IF;
+    PERFORM work_example.withdraw_adjustment(16, source_id, 'Count corrected');
+    IF (SELECT array_agg(reason ORDER BY operation) FROM work_example.adjustment_history
+        WHERE movement_id = source_id AND actor = current_user AND occurred_at IS NOT NULL)
+       IS DISTINCT FROM ARRAY['Independent count', 'Count corrected'] OR work_example.credit_balance(16, day_one) <> 0 THEN
+        RAISE EXCEPTION 'oracle: distinct adjustment reasons not preserved';
+    END IF;
+END;
+$corrections$;

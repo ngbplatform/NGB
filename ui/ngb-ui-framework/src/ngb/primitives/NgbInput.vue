@@ -5,6 +5,7 @@
     </label>
     <input
       :id="controlId"
+      :aria-label="ariaLabel"
       :type="type"
       :value="modelValue"
       :placeholder="placeholder"
@@ -27,6 +28,7 @@ const props = withDefaults(defineProps<{
   modelValue?: string | number
   controlId?: string
   label?: string
+  ariaLabel?: string
   hint?: string
   placeholder?: string
   type?: string

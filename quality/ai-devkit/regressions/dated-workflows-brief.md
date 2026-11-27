@@ -43,6 +43,17 @@ by assignment ID. Provide these public entry points.
   Ending one assignment permits a successor at the same instant. Clearing
   the earlier finish after a successor starts must preserve exclusive occupancy.
 * `completed_charges` exposes `id`, `captured_category` and `amount`.
+* `resource_state(integer, timestamptz)` reports Available, Assigned or Retired
+  as of the supplied instant. Preserve the first effective `retired_at` and
+  forbid reactivation through the ordinary catalog edit.
+* `adjust_position(integer, date, integer, text)` and
+  `withdraw_adjustment(integer, bigint, text)` require an entered reason for
+  each operation. Record movement ID, operation, database actor, time and
+  reason in `adjustment_history` atomically with the change.
+
+Exercise backdated spending with sufficient funds on the attempted date and
+at the end, but insufficient funds on an intervening date. Exercise withdrawal
+at 50 and 51 uses with the only unsupported use last in dependency order.
 
 Use SQLSTATE 23514 for business refusals. List the obligations you extracted.
 Deliver a fresh migration and a separate executable smoke suite covering

@@ -7,6 +7,7 @@ export const scenarioOutcomes = {
   access: ['access-result'],
   'draft-edit': ['saved', 'reopened'],
   'form-labels': ['named-fields'],
+  'document-print': ['printed-sheet'],
   validation: ['refusal', 'corrected'],
   lifecycle: ['posted', 'unposted', 'reposted', 'effects-restored'],
   reversal: ['posted', 'reversal-target', 'original-preserved', 'net-effects'],
@@ -202,13 +203,20 @@ export function verifyOutcomeProof(entry, proof) {
       assert.ok(proof.evidence?.[name]?.includes('price-request:' + entry.priceOperation),
         'Observe the measured price request during the browser date change: ' + entry.priceOperation)
     }
-    const check = name === 'revised-price' ? 'posted-price:' + entry.target.slice('document:'.length)
+    const check = name === 'named-fields' ? 'accessible-fields:' + entry.target
+      : name === 'printed-sheet' ? 'document-print:' + entry.target
+      : name === 'revised-price' ? 'posted-price:' + entry.target.slice('document:'.length)
       : /^(?:posted-override|persisted-retry|report-reference|dashboard-layout|reference|flow-amount|registers?|commands?):/.test(name) ? name : requiredChecks[name]
     if (name.startsWith('persisted-retry:')) {
       assert.ok(proof.evidence?.[name]?.includes('current-retry'), 'Verify the failed calculation and retry before its persisted readback.')
     }
     if (check) assert.ok(Array.isArray(proof.evidence?.[name]) && proof.evidence[name].includes(check),
       `Use the ${check} check for ${entry.id}/${name} and verify its expected business value.`)
+    if (name === 'named-fields' && entry.target === 'document:general_journal_entry') {
+      for (const tab of ['Lines', 'Workflow']) {
+        assert.ok(proof.evidence[name].includes(check + '/' + tab), 'Inspect the journal fields on the ' + tab + ' tab.')
+      }
+    }
   }
 }
 
@@ -219,7 +227,6 @@ const requiredChecks = {
   'journal-create-access': 'journal-create-access',
   'business-calendar': 'business-calendar',
   'dashboard-home': 'dashboard-home',
-  'named-fields': 'accessible-fields',
   'linked-records': 'flow',
   'linked-chain': 'chain',
   'linked-target': 'record',

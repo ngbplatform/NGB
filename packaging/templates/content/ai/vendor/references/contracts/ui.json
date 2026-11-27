@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "package": "@ngbplatform/ui",
   "version": "3.4.0",
-  "packageSha256": "493908ca4aa2d9823cb7dd3bd6379dfb0a766e2f91ca9990b305a49466fb3245",
+  "packageSha256": "f22e4ff3a80db92fc6236635f6ac8ea6db5f64edb2ac1ab48d6eb43d7a87df71",
   "exports": [
     {
       "subpath": ".",

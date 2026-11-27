@@ -282,5 +282,6 @@ export type EditorPrintLookupHintArgs = {
 };
 
 export type EditorPrintBehavior = {
+  openInNewTab?: boolean;
   resolveLookupHint?: (args: EditorPrintLookupHintArgs) => LookupHint | null;
 };

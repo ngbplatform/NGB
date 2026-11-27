@@ -155,7 +155,7 @@ function normalizeBannerText(value: string | null | undefined): string {
 </script>
 
 <template>
-  <div :class="mode === 'page' ? 'flex h-full min-h-0 flex-col' : 'flex flex-col'">
+  <div :data-ngb-editor-target="`${kind}:${entityTypeCode}`" :class="mode === 'page' ? 'flex h-full min-h-0 flex-col' : 'flex flex-col'">
     <NgbEntityEditorHeader
       :kind="kind"
       :mode="mode"

@@ -112,6 +112,16 @@ its own identity. An invalid plan fails before Playwright starts and retains its
   or its containing editor. Include auxiliary picker buttons and readonly inputs.
   Exercise conditional and line fields when present. A passing test requires
   accessible controls from both the application and the shared SDK.
+  The SDK editor root identifies the document or catalog type. When Accounting
+  exposes the general journal, include its typed editor even when the metadata
+  lists no form fields. Sign in as a creator and select Create from the journal list. Verify
+  the `/accounting/general-journal-entries/new` route and inspect the header,
+  workflow and line fields inside `journal-entry-edit-page`, including the
+  readonly Initiated By field. Inside the same `named-fields` outcome, call
+  `accessibleFields` once with Lines selected and once with Workflow selected.
+  For each tab, pass the header and all visible controls on that tab. The helper
+  records the selected panel after checking its controls. Finish on the blank
+  creation form. The separate `journal-draft` case saves and reopens a draft.
 - `pricing` for priced documents: effective date, defaults, permitted override,
   editable reason, rounding and preservation of persisted snapshots.
   In the `revised-price` outcome call `checks.postRevisedPrice` with the real date
@@ -250,6 +260,15 @@ exercise `commandChange(type, id, code, trigger, field, before, after)` with an
 observable persisted result. Verify the dirty form protects existing edits too.
 The inventory outcome is `commands:<type>/<JSON sorted codes>`; each individual
 outcome is `command:<type>/<code>`.
+
+For every standard document, including those using the default editor, declare a `document-print` case and bind its `printed-sheet` outcome to
+`documentPrint(type, id, title, fieldValues)` from an authorized, saved record.
+Pass its expected display title and visible persisted field values, including a
+readable reference label when applicable. The probe
+clicks Print from More actions, checks the new page and original editor, inspects
+the sheet under print media and saves the Chromium PDF. Exercise both full-page and
+drawer entry points when the application offers both. Check any unsaved editor
+input after closing the preview.
 
 List `operationalRegisters` and `referenceRegisters` by document. Call
 `postedRegisters(response, type, id, operational, reference)` on the Effects

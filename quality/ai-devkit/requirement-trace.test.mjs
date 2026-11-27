@@ -26,6 +26,67 @@ test('only an empty starter can use the legacy plan, even before obligations are
   }
 })
 
+test('captured scope and reporting obligations must agree with the live fields and integration evidence', async t => {
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'ngb-scope-trace-')))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  await mkdir(join(root, 'ai'))
+  const save = (file, value) => writeFile(join(root, 'ai', file), JSON.stringify(value))
+  const source = 'document:example.allocation'
+  const target = 'document:example.consume'
+  const report = 'report:example.activity'
+  const quote = 'Use the allocation of the named party and keep its original reporting group when confirming usage.'
+  await writeFile(join(root, 'brief.md'), quote)
+  await save('brief-sources.json', ['brief.md'])
+  const fixture = [
+    { kind: 'effective-prerequisite', key: 'allocation', target, expect: { source, owner: 'allocation', effectiveAt: 'confirmation' } },
+    { kind: 'prerequisite-scope', key: 'beneficiary', target, expect: { source, prerequisite: 'allocation',
+      consumerField: 'beneficiary', sourceField: 'owner', policy: 'same-owner', expectedBefore: [15, 0],
+      expectedAfter: [15, 0], expectedReason: 'unfunded-party' } },
+    { kind: 'snapshot-stability', key: 'classification', target, expect: { from: source, until: target,
+      report, groupField: 'group', expected: [6, 0], freshExpected: [0, 6] } },
+  ]
+  const checks = fixture.map(({ kind, key, target }) => ({ kind, key, target }))
+  const review = [
+    { target: source, requirement: 'usage', operation: 'allocate', facts: [], reason: 'Establishes the initial allocation.' },
+    { target, requirement: 'usage', operation: 'confirm', facts: [
+      { kind: 'consumes', key: 'allocation', source, owner: 'allocation', effectiveAt: 'confirmation', editableOwner: false,
+        withdrawable: false, position: 'eligibility' },
+      { kind: 'snapshot', key: 'classification', from: source, until: target },
+    ] },
+  ]
+  const obligation = { id: 'usage', source: 'brief.md', quote, effect: 'write', reasonOperations: [], proofs: fixture }
+  await save('operation-review.json', review)
+  await save('business-obligations.json', [obligation])
+  const unchanged = { reason: 'This operation has no such rule.' }
+  await save('requirement-trace.json', {
+    requirements: [{ id: 'usage', source: 'brief.md', quote, checks }],
+    documentRules: [
+      { type: 'example.allocation', 'interval-overlap': unchanged, 'effective-prerequisite': unchanged, 'snapshot-stability': unchanged },
+      { type: 'example.consume', 'interval-overlap': unchanged, 'effective-prerequisite': ['allocation'], 'snapshot-stability': ['classification'] },
+    ],
+  })
+  const documents = (type, key) => ({ documentType: type, form: { sections: [{ rows: [{ fields: [
+    { key, lookup: { kind: 'catalog', catalogType: 'example.party' } },
+  ] }] }] } })
+  const inventory = { documents: [documents('example.allocation', 'owner'), documents('example.consume', 'beneficiary')],
+    reports: [{ reportCode: 'example.activity', dataset: { fields: [{ code: 'group', isGroupable: true },
+      { code: 'source', lookup: { kind: 'document', documentTypes: ['example.consume'] } }] } }] }
+  const plan = { schemaVersion: 2, surfaces: [source, target, report], documents: inventory.documents.map(doc => ({ type: doc.documentType })),
+    requirements: [{ id: 'usage', cases: [] }], cases: [{ target: report, scenario: 'historical-classification' }], businessChecks: checks }
+  const observations = fixture.map(entry => ({ proof: { ...entry, ...entry.expect } }))
+  const verify = () => verifyRequirementTrace(root, plan, undefined, observations, inventory)
+  await captureObligations(root, true)
+  await verify()
+  observations[2].proof.expected = [0, 6]
+  await assert.rejects(verify(), /Unexpected observed expected/)
+  observations[2].proof.expected = [6, 0]
+  observations[1].proof.expectedReason = 'invalid-date'
+  await assert.rejects(verify(), /Unexpected observed expectedReason/)
+  await save('business-obligations.json', [{ ...obligation, proofs: fixture.filter(entry => entry.kind !== 'prerequisite-scope') }])
+  await captureObligations(root, true)
+  await assert.rejects(verify(), /Exercise the shared prerequisite reference/)
+})
+
 test('source bindings survive deletion of a declared check and preserve dated and memory requirements', async t => {
   const root = await realpath(await mkdtemp(join(tmpdir(), 'ngb-trace-')))
   t.after(() => rm(root, { recursive: true, force: true }))

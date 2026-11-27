@@ -13,7 +13,7 @@ function fixture() {
   }
   const surfaces = ['document:example.order', 'catalog:example.customer', 'report:example.balance', 'navigation:orders']
   const bindings = [
-    ...['access', 'draft-edit', 'validation', 'lifecycle', 'search'].map(kind => [surfaces[0], kind]),
+    ...['access', 'draft-edit', 'validation', 'lifecycle', 'document-print', 'search'].map(kind => [surfaces[0], kind]),
     [surfaces[1], 'search'], [surfaces[2], 'report'], [surfaces[3], 'navigation'],
   ]
   const cases = bindings.map(([target, scenario], index) => ({
@@ -48,6 +48,19 @@ test('business acceptance reconciles hidden catalogs, reports and navigation in 
     changed.requirements[0].cases = changed.cases.map(item => item.id)
     assert.throws(() => reconcileAcceptance(changed, inventory), /Missing surface acceptance|no executable case/)
   }
+})
+
+test('every standard document requires print proof for its own saved record, including the default editor', () => {
+  const { plan, inventory } = fixture()
+  const print = plan.cases.find(entry => entry.scenario === 'document-print')
+  const observed = target => ({ outcomes: print.outcomes, evidence: { 'printed-sheet': ['document-print:' + target] } })
+  assert.throws(() => verifyOutcomeProof(print, observed('document:example.invoice')), /document-print:document:example.order/)
+  verifyOutcomeProof(print, observed(print.target))
+
+  plan.cases = plan.cases.filter(entry => entry !== print)
+  plan.requirements[0].cases = plan.cases.map(entry => entry.id)
+  plan.requirements[0].scenarios = plan.requirements[0].scenarios.filter(scenario => scenario !== 'document-print')
+  assert.throws(() => reconcileAcceptance(plan, inventory), /example.order\/printed-sheet/)
 })
 
 test('a denial cannot stand in for allowed withdrawal and one cleared line cannot stand in for the whole dependency chain', () => {
@@ -139,7 +152,7 @@ test('schema 2 binds the named outcomes to each successful current-run browser c
         body: Buffer.from(JSON.stringify({ schemaVersion: 2, ...context, caseId: entry.id, role: entry.role,
           subject: 'subject', url: context.origin, interactions: 2, assertions: entry.outcomes.length,
           outcomes: entry.outcomes, evidence: { figures: ['figure'], 'source-target': ['record'],
-            'opened-target': ['record'] } })).toString('base64') }] }] }],
+            'opened-target': ['record'], 'printed-sheet': ['document-print:' + entry.target] } })).toString('base64') }] }] }],
   })) }], stats: { expected: plan.cases.length, unexpected: 0, flaky: 0, skipped: 0 } }
   for (const spec of report.suites[0].specs) {
     spec.tests[0].results[0].attachments.push({ name: 'ngb-page-errors', contentType: 'application/json',
@@ -183,7 +196,7 @@ test('every persisted business reference requires its own graph evidence, includ
     evidence: { 'linked-records': ['flow'], 'linked-target': ['record'], 'reference:base_id': ['flow'] } }), /reference:base_id/)
 })
 
-test('journal reversal remains mandatory for legacy and corrected metadata', () => {
+test('journal reversal and working-form labels remain mandatory for legacy and corrected metadata', () => {
   for (const canUnpost of [false, true]) {
     const { inventory, plan } = fixture()
     inventory.documents[0] = { documentType: 'general_journal_entry', capabilities: { canPost: true, canUnpost } }
@@ -201,7 +214,13 @@ test('journal reversal remains mandatory for legacy and corrected metadata', () 
     for (const entry of plan.cases.filter(item => item.scenario === 'access' && item.target === plan.surfaces[0])) {
       entry.outcomes.push('journal-create-access')
     }
-    reconcileAcceptance(plan, inventory)
+    const target = plan.surfaces[0]
+    assert.throws(() => reconcileAcceptance(plan, inventory), /Missing form-labels browser test for document:general_journal_entry/)
+    const labels = { ...journal, id: 'journal-labels', title: 'Journal field labels', scenario: 'form-labels', outcomes: ['named-fields'] }
+    plan.cases.push(labels)
+    plan.requirements[0].cases.push(labels.id)
+    plan.requirements[0].scenarios.push(labels.scenario)
+    assert.ok(reconcileAcceptance(plan, inventory).includes(target + '/form-labels'))
   }
 })
 
@@ -308,7 +327,18 @@ test('a saved Flow edge and an editable source still require proof of server mem
   reconcileAcceptance(plan, inventory)
   const entry = plan.cases.at(-1)
   assert.throws(() => verifyOutcomeProof(entry, { outcomes: entry.outcomes, evidence: { 'named-fields': ['text'] } }), /accessible-fields/)
-  verifyOutcomeProof(entry, { outcomes: entry.outcomes, evidence: { 'named-fields': ['accessible-fields'] } })
+  const observed = marks => ({ outcomes: entry.outcomes, evidence: { 'named-fields': marks } })
+  assert.throws(() => verifyOutcomeProof(entry, observed(['accessible-fields'])), /accessible-fields:/)
+  verifyOutcomeProof(entry, observed(['accessible-fields:' + entry.target]))
+  const journal = { ...entry, target: 'document:general_journal_entry' }
+  assert.throws(() => verifyOutcomeProof(journal, observed(['accessible-fields:' + entry.target])), /accessible-fields:document:general_journal_entry/)
+  const form = 'accessible-fields:' + journal.target
+  const lines = form + '/Lines'
+  const workflow = form + '/Workflow'
+  assert.throws(() => verifyOutcomeProof(journal, observed([form])), /Lines/)
+  assert.throws(() => verifyOutcomeProof(journal, observed([form, workflow])), /Lines/)
+  assert.throws(() => verifyOutcomeProof(journal, observed([form, lines])), /Workflow/)
+  verifyOutcomeProof(journal, observed([form, workflow, lines]))
 })
 
 test('metadata can omit part columns and navigation when checking server dependencies', () => {

@@ -21,6 +21,7 @@ import {
   normalizeCatalogTypeMetadata,
   useAccessStore,
   useAuthStore,
+  useLookupStore,
 } from '@ngbplatform/ui'
 import { configureNgbNavigation } from '@ngbplatform/ui/navigation'
 import '@ngbplatform/ui/styles'
@@ -50,6 +51,8 @@ async function bootstrap(): Promise<void> {
     formBehavior: metadataFormBehavior,
   })
   configureNgbEditor({
+    print: { openInNewTab: true },
+    lookupStore: useLookupStore(),
     loadDocumentById: getDocumentById,
     loadDocumentEffects: getDocumentEffects,
     loadDocumentGraph: getDocumentGraph,

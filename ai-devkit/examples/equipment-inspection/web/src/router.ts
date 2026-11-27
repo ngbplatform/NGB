@@ -31,7 +31,7 @@ export const router = createRouter({
     { path: '/documents/:documentType/:id', component: loadNgbMetadataDocumentEditPage, props: { editorComponent: EntityEditor } },
     { path: '/documents/:documentType/:id/effects', component: loadNgbDocumentEffectsPage },
     { path: '/documents/:documentType/:id/flow', component: loadNgbDocumentFlowPage },
-    { path: '/documents/:documentType/:id/print', component: loadNgbDocumentPrintPage },
+    { path: '/documents/:documentType/:id/print', component: loadNgbDocumentPrintPage, meta: { bare: true } },
     { path: '/reports/:reportCode', component: loadNgbReportPage },
     { path: '/accounting/general-journal-entries', component: loadNgbGeneralJournalEntryListPage },
     { path: '/accounting/general-journal-entries/new', component: loadNgbGeneralJournalEntryEditPage },

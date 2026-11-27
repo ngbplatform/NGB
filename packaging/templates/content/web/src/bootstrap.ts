@@ -35,6 +35,7 @@ async function bootstrap(): Promise<void> {
   configureNgbNavigation()
   configureNgbWorkCenter(createDefaultNgbWorkCenterConfig())
   configureNgbEditor({
+    print: { openInNewTab: true },
     loadDocumentById: getDocumentById,
     loadDocumentEffects: getDocumentEffects,
     loadDocumentGraph: getDocumentGraph,

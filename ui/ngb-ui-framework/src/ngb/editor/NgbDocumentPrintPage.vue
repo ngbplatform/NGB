@@ -87,7 +87,7 @@ async function goBack(): Promise<void> {
 
 const sheetTitle = computed(() => {
   const display = String(documentRecord.value?.display ?? '').trim();
-  if (display) return display;
+  if (display && display !== documentRecord.value?.id) return display;
 
   const number = String(documentRecord.value?.number ?? '').trim();
   const typeLabel = String(metadata.value?.displayName ?? 'Document').trim();

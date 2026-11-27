@@ -49,6 +49,30 @@ async function search(page: Page, value: string) {
   return page.getByRole('dialog')
 }
 
+for (const mode of ['page', 'drawer'] as const) {
+  test(`Print from the ${mode} opens a separate clean preview and preserves the working draft`, async ({ page }, info) => {
+    const proof = await acceptanceProbe(page, info)
+    const data = await seed(page)
+    const type = 'example.inspection'
+    const result = 'Saved inspection result'
+    const display = mode === 'page' ? 'Workshop safety inspection' : undefined
+    const draft = await data.send('/api/documents/' + type, {
+      fields: { display, equipment_id: data.equipment.id, result },
+    })
+    const metadata = await page.request.get(data.origin + '/api/documents/' + type + '/metadata', { headers: data.headers })
+    expect(metadata.ok()).toBe(true)
+    const title = display ?? [(await metadata.json()).displayName, draft.number].filter(Boolean).join(' ')
+    const path = '/documents/' + type
+    const target = mode === 'page' ? path + '/' + draft.id : path + '?panel=edit&id=' + draft.id
+    await page.goto(data.origin + target)
+    const field = page.locator('[data-validation-key="result"] input, [data-validation-key="result"] textarea').first()
+    await field.fill('Unfinished revision')
+    await proof.outcome('printed-sheet', checks => checks.documentPrint(type, draft.id, title, [result, data.name]))
+    await expect(field).toHaveValue('Unfinished revision')
+    await proof.finish('inspection-print-' + mode, 'ngb-admin')
+  })
+}
+
 test('a failed quote retries with the same inputs and persists its calculated amount on reopening', async ({ page }, info) => {
   const proof = await acceptanceProbe(page, info)
   const { origin, headers } = await signIn(page)

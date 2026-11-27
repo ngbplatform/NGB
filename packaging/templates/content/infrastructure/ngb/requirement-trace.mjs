@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import { isDashboardMenuItem } from './acceptance-outcomes.mjs'
-import { businessDateFormat, validateBusinessTarget, validateExportCells, validateGrowthBudget, validateHistoricalControl,
-  validatePageTotals, validateValueFields, validateWithdrawalState } from './business-checks.mjs'
-import { verifyOperationReview } from './operation-review.mjs'
+import { businessDateFormat, validateBusinessTarget, validateClassificationContext, validateExportCells, validateGrowthBudget,
+  validateHistoricalControl, validatePageTotals, validatePrerequisiteScope, validateValueFields, validateWithdrawalState } from './business-checks.mjs'
+import { reviewedPolicyGaps, verifyOperationReview, verifyRuntimeOperationReview } from './operation-review.mjs'
 import { readAsset } from './file-data.mjs'
 import { digest, distinctPaths, objectKeys } from './kit-contracts.mjs'
 import { applyAssets } from './kit-files.mjs'
@@ -15,8 +15,15 @@ const contextPath = 'ai/brief-context.json'
 const reviewPath = 'ai/operation-review.json'
 const tracePath = 'ai/requirement-trace.json'
 const writeChecks = new Set(['source-membership', 'withdrawal-cycle', 'effective-prerequisite', 'dated-withdrawal',
-  'state-invariant', 'history-conflict', 'interval-overlap', 'snapshot-stability', 'owner-change', 'boundary-withdrawal', 'competing-consumers'])
+  'intermediate-balance', 'dependency-window', 'terminal-state', 'required-reason',
+  'state-invariant', 'history-conflict', 'interval-overlap', 'snapshot-stability', 'owner-change', 'prerequisite-scope', 'boundary-withdrawal', 'competing-consumers'])
 const expectedFields = {
+  'intermediate-balance': ['source', 'dates', 'change', 'opening', 'funded', 'expectedReason'],
+  'dependency-window': ['operation', 'consumer', 'pageSize', 'expectedReason', 'expectedBefore', 'expectedAfterControl'],
+  'terminal-state': ['state', 'consumer', 'report', 'historicalState', 'laterState', 'reverseReason', 'useReason'],
+  'required-reason': ['operation', 'suppliedReason', 'expectedReason'],
+  'prerequisite-scope': ['source', 'prerequisite', 'consumerField', 'sourceField', 'policy', 'expectedBefore', 'expectedAfter'],
+  'classification-context': ['document', 'contributor', 'expectedGroups', 'expectedWithContributor'],
   'historical-cutoff': ['expected', 'laterExpected', 'timeZone'],
   'query-growth': ['valueFields'],
   'report-export': ['expectedCells'],
@@ -66,7 +73,7 @@ async function readObligations(root) {
   }
   const ids = new Set()
   for (const item of obligations) {
-    objectKeys(item, ['id', 'source', 'quote', 'effect', 'proofs'])
+    objectKeys(item, ['id', 'source', 'quote', 'effect', 'proofs'], ['reasonOperations', 'reasonExclusions'])
     assert.ok(typeof item.id === 'string' && item.id.trim() && !ids.has(item.id), 'Use a distinct obligation ID.')
     ids.add(item.id)
     assert.ok(sources.has(item.source), 'Obligation cites a source outside ai/brief-sources.json: ' + item.source)
@@ -106,9 +113,18 @@ async function readObligations(root) {
         if (proof.kind === 'query-growth') validateValueFields(proof.expect.valueFields)
         if (proof.kind === 'report-export') validateExportCells(proof.expect.expectedCells)
         if (proof.kind === 'dated-withdrawal') validateWithdrawalState(proof.expect.expectedControl)
+        if (proof.kind === 'prerequisite-scope') validatePrerequisiteScope(proof.expect)
+        if (proof.kind === 'classification-context') validateClassificationContext(proof.expect)
       }
       if (proof.kind === 'query-growth') validateGrowthBudget(proof.budget)
       else assert.ok(!('budget' in proof), 'Only query-growth obligations carry a row-growth budget.')
+      if (proof.kind === 'snapshot-stability' && proof.expect?.report !== undefined) {
+        assert.ok(/^report:[^\s:]+$/.test(proof.expect.report) && proof.expect.until === proof.target
+          && typeof proof.expect.groupField === 'string' && proof.expect.groupField.trim()
+          && [proof.expect.expected, proof.expect.freshExpected].every(pair =>
+            Array.isArray(pair) && pair.length === 2 && pair.every(Number.isFinite)),
+        'Pin the report, classification field, consuming document and two group totals for both snapshots.')
+      }
     }
     if (item.effect === 'write') {
       assert.ok(item.proofs.some(proof => writeChecks.has(proof.kind) || (proof.scenario && proof.target.startsWith('document:')
@@ -174,7 +190,10 @@ async function readObligations(root) {
 }
 
 export async function captureObligations(root, apply) {
-  const { baseline, snapshot } = await readObligations(root)
+  const { baseline, snapshot, review, obligations } = await readObligations(root)
+  const catalogs = new Set(review.filter(row => row.target.startsWith('catalog:')).map(row => row.target))
+  const gaps = reviewedPolicyGaps(review, obligations, catalogs)
+  assert.equal(gaps.size, 0, [...gaps].join('\n'))
   const current = await readAsset(root, baselinePath)
   const incoming = JSON.stringify(baseline, null, 2) + '\n'
   if (apply && current !== incoming) {
@@ -223,7 +242,7 @@ export async function verifyApplicationUpgrade(root, observations) {
 
 // Capture the source-to-proof inventory before implementation. An independent
 // requirement binding survives removing a rule and its test from the plan.
-export async function verifyRequirementTrace(root, plan, passedTests, observations) {
+export async function verifyRequirementTrace(root, plan, passedTests, observations, inventory) {
   if (plan.schemaVersion === 1) {
     const inputs = await Promise.all([sourceListPath, obligationPath, baselinePath, tracePath, contextPath, reviewPath].map(path => readAsset(root, path)))
     assert.ok(!plan.documents?.length && !process.env.NGB_OBLIGATIONS_SHA256 && inputs.every(input => input === null),
@@ -244,6 +263,7 @@ export async function verifyRequirementTrace(root, plan, passedTests, observatio
   assert.deepEqual(obligations.map(item => item.id).sort(), trace.requirements.map(row => row.id).sort(),
     'Retain each original business obligation in the trace and acceptance plan.')
   verifyOperationReview(review, obligations, plan)
+  if (inventory) verifyRuntimeOperationReview(review, obligations, plan, inventory)
   const sources = new Map()
   const checked = new Set()
   const reviewedBindings = new Set(obligations.flatMap(item => item.proofs.filter(proof => proof.kind).map(binding)))

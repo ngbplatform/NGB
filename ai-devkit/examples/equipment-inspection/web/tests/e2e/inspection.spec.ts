@@ -565,6 +565,45 @@ test('the journal list opens a new editable draft and saves it through the typed
   await probe.finish('example-journal-draft', 'ngb-admin')
 })
 
+test('journal fields are named on the Create form without creating a draft', async ({ page }, info) => {
+  const probe = await acceptanceProbe(page, info)
+  await signIn(page, 'administrator')
+  const listUrl = process.env.NGB_TEST_ORIGIN + '/accounting/general-journal-entries'
+  const createUrl = process.env.NGB_TEST_ORIGIN + '/api/accounting/general-journal-entries'
+  let draftCreations = 0
+  page.on('request', request => {
+    if (request.method() === 'POST' && request.url() === createUrl) {
+      draftCreations += 1
+    }
+  })
+  await page.goto(listUrl)
+  await page.getByTestId('journal-entry-list-page').getByRole('button', { name: 'Create', exact: true }).click()
+  await expect(page).toHaveURL(listUrl + '/new')
+  const editor = page.getByTestId('journal-entry-edit-page')
+  const form = editor.locator('[data-ngb-entity-form]')
+  const namedField = (label: string) => ({ label, control: form.getByLabel(label, { exact: true }) })
+  const header = ['Document Date', 'Initiated By', 'Journal Type', 'Reason Code', 'External Reference',
+    'Auto Reverse', 'Auto Reverse Date'].map(namedField)
+  header.push({ label: 'Memo', control: form.getByLabel('Memo', { exact: true }).first() })
+  await probe.outcome('named-fields', async checks => {
+    await form.getByRole('tab', { name: 'Lines', exact: true }).click()
+    const lines = form.getByRole('tabpanel', { name: 'Lines', exact: true })
+    const buttons = ['Side', 'Show options'].map(label => ({ label, control: lines.getByRole('button', { name: label, exact: true }) }))
+    await checks.accessibleFields(form, [...header, namedField('Account'), namedField('Amount'), ...buttons,
+      { label: 'Memo', control: lines.getByLabel('Memo', { exact: true }) }])
+
+    await form.getByRole('tab', { name: 'Workflow', exact: true }).click()
+    const workflow = ['Submitted By', 'Approved By', 'Rejected By', 'Reject Reason', 'Posted By',
+      'Reverse Initiated By', 'Reversal Date'].map(namedField)
+    const postImmediately = form.getByRole('checkbox', { name: 'Post immediately', exact: true })
+    await expect(postImmediately).toBeChecked()
+    await checks.accessibleFields(form, [...header, ...workflow, { label: 'Post immediately', control: postImmediately }])
+  })
+  expect(draftCreations).toBe(0)
+  await expect(page).toHaveURL(listUrl + '/new')
+  await probe.finish('journal-working-fields', 'ngb-admin')
+})
+
 test('equipment service posts accounting, operational and reference effects together', async ({ page }, info) => {
   const probe = await acceptanceProbe(page, info)
   await signIn(page, 'administrator')

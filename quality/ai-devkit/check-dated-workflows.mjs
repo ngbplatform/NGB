@@ -13,6 +13,20 @@ const fixture = await readFile(new URL('../../ai-devkit/examples/equipment-inspe
 const oracle = await readFile(new URL('./regressions/dated-workflows.sql', import.meta.url), 'utf8')
 const container = 'ngb-timeline-' + randomUUID()
 const mutations = [
+  [') daily WHERE funds < 0 OR entitlements < 0', `) daily WHERE (funds < 0 OR entitlements < 0)
+          AND (withdraw IS NOT NULL OR daily.business_date IN (effective,
+            (SELECT max(business_date) FROM work_example.movement WHERE resource_id = resource_key AND active)))`,
+    'intermediate overdraft accepted'],
+  ['WHERE resource_id = resource_key AND active\n            GROUP BY',
+    `WHERE resource_id = resource_key AND active AND (withdraw IS NULL OR m.credits >= 0 OR m.id IN
+                (SELECT prior.id FROM work_example.movement prior WHERE prior.resource_id = resource_key
+                 AND prior.credits < 0 AND prior.active ORDER BY prior.id LIMIT 50))
+            GROUP BY`, 'withdrawal missed the last dependent'],
+  ['WHEN r.retired_at <= cutoff', 'WHEN r.retired', 'retirement rewrote history'],
+  ["'adjust', current_user, coalesce(reason, '')", "'adjust', current_user, coalesce(nullif(btrim(reason), ''), 'automatic')",
+    'adjustment without reason'],
+  ["'withdraw', current_user, coalesce(reason, '')", "'withdraw', current_user, coalesce(nullif(btrim(reason), ''), 'automatic')",
+    'withdrawal without reason'],
   ['id = draft.funding_id AND resource_id = draft.beneficiary', 'id = draft.funding_id',
     'changed beneficiary consumed another owner credit'],
   ['IF NEW.finished < NEW.started THEN', "IF TG_OP = 'UPDATE' AND NEW.finished IS NULL THEN RETURN NEW; END IF; IF NEW.finished < NEW.started THEN",
@@ -30,6 +44,10 @@ const mutations = [
   ['CHECK (finished > started)', 'CHECK (finished >= started)', 'zero duration accepted'],
   ['started AT TIME ZONE captured_zone', "started AT TIME ZONE 'UTC'", 'changed calendar'],
   ['SELECT id, resource_id, captured_category,', 'SELECT id, resource_id, (SELECT category FROM work_example.resource r WHERE r.id = resource_id) AS captured_category,', 'changed category'],
+  ['IF NEW.finished < NEW.started THEN', `IF NEW.finished IS NOT NULL THEN
+        SELECT category INTO NEW.captured_category FROM work_example.resource WHERE id = NEW.resource_id;
+    END IF;
+    IF NEW.finished < NEW.started THEN`, 'changed category'],
   ['(OLD.retired AND NOT NEW.retired)', 'false', 'reactivated identity'],
   ['IF item.retired THEN', 'IF false THEN', 'retired resource accepted new work'],
   ['resource_id = resource_key AND active AND business_date <= cutoff;',
