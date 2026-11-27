@@ -2,11 +2,11 @@
   "schemaVersion": 1,
   "package": "NGB.Platform.Runtime",
   "version": "3.4.0",
-  "packageSha256": "f82b4b5937d1d65a1aa655cbbecfd733bb635702eab0b48f0e354c7ef2ed403c",
+  "packageSha256": "fc07273f30ac99364d475133c78bdf079ef69c5bcda1929eb354739b64fbddc0",
   "assembly": {
     "name": "NGB.Runtime",
     "version": "3.0.0.0",
-    "sha256": "ee406e95b26855246061cb6880c9d695dae00f350eb9b82ddb323cd1565de139"
+    "sha256": "84f3210c9e6531b355ee3b9da994b0143f60165d2db5cdfff8b78cb78645ac94"
   },
   "contractSha256": "00e670c0cbc21d12f8a4a80b254eab720245611bf4ea0f4acd1b655f64876366",
   "types": [

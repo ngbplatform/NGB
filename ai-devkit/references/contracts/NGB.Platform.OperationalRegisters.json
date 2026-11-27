@@ -2,11 +2,11 @@
   "schemaVersion": 1,
   "package": "NGB.Platform.OperationalRegisters",
   "version": "3.4.0",
-  "packageSha256": "69d5ab671f594c287ca24991f8a7419c6df35c160aac0cc9c360ff0488f7ad83",
+  "packageSha256": "e64a21f981285f6469bbc83305db5f17e3e5324e482fc3694d429a5a71921bad",
   "assembly": {
     "name": "NGB.OperationalRegisters",
     "version": "3.0.0.0",
-    "sha256": "04a9753bf5408d38970e655f44ce7fe5ed3e16d13f908b0d15049b46db746f25"
+    "sha256": "1ccf8e9868e22a5d2916317b96b61cef95e25c4d7197d95b921941602d4f5389"
   },
   "contractSha256": "64c1b1ee32acfaa32662a4422570f36f2c5e4b6adbfd29e6c20e06b711e642d0",
   "types": [

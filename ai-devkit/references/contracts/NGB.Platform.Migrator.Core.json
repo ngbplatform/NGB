@@ -2,11 +2,11 @@
   "schemaVersion": 1,
   "package": "NGB.Platform.Migrator.Core",
   "version": "3.4.0",
-  "packageSha256": "8efe3ffa823b52e0b329cb7cf088949d74c66e2d79afed8692a432fcdc9d4399",
+  "packageSha256": "2d470207eb946fd153feaa51f5c256f5880ff2abb38c757d65d0e90d22a6d78b",
   "assembly": {
     "name": "NGB.Migrator.Core",
     "version": "3.0.0.0",
-    "sha256": "4459ecd5fb48b30878f060c8e3968f0a39ae55904d55dfa3c87ed241c177c3f7"
+    "sha256": "df761b63679fca2745d916c5095037b4a42a71ce43997e9402637833bd89ceae"
   },
   "contractSha256": "9e3e68a06fc50b539d76ada27c4db686a0eef512d9512d9ad6d9a43146921efe",
   "types": [

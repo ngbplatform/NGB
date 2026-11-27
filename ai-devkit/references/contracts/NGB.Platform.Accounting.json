@@ -2,11 +2,11 @@
   "schemaVersion": 1,
   "package": "NGB.Platform.Accounting",
   "version": "3.4.0",
-  "packageSha256": "b7cd43fff995c36b7abf60ac34458666739261105913ca76c2977b0e255d60aa",
+  "packageSha256": "50861b6240800daeb0220672231d9d39667ffbe1c5961a3e7b43845dc933865f",
   "assembly": {
     "name": "NGB.Accounting",
     "version": "3.0.0.0",
-    "sha256": "a1206d4e27439dc92b414f93fb34502551ba3ff8415efcb4c7af75984ec2a83a"
+    "sha256": "175ef58a4d744aa4d41d696c7f948e2eb571298e25eefe76d67dcb20b5c00a7b"
   },
   "contractSha256": "35f7483cef23d8f7162dca9b010870f01a6973b77b8ca98d3b2706c7c005581c",
   "types": [
