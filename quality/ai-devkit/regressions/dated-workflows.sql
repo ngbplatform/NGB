@@ -8,6 +8,26 @@ DECLARE
     subsequent bigint;
     amounts numeric[];
 BEGIN
+    INSERT INTO work_example.resource VALUES (5, 'Q9', 'five@example.test', 'UTC', 'C', false);
+    -- Check the business total and the actual continuation at limit - 1, limit and limit + 1.
+    PERFORM work_example.change_position(5, '2026-05-01', 3, 0);
+    IF work_example.credit_balance(5, '2026-05-01') IS DISTINCT FROM 3 THEN
+        RAISE EXCEPTION 'oracle: incorrect total before full page';
+    END IF;
+    dependent := work_example.change_position(5, '2026-05-01', -1, 0);
+    IF work_example.credit_balance(5, '2026-05-01') IS DISTINCT FROM 2 THEN
+        RAISE EXCEPTION 'oracle: incorrect total at full page';
+    END IF;
+    subsequent := work_example.change_position(5, '2026-05-01', -2, 0);
+    IF work_example.credit_balance(5, '2026-05-01') IS DISTINCT FROM 0 THEN
+        RAISE EXCEPTION 'oracle: truncated history total';
+    END IF;
+    SELECT max(movement_id) INTO original FROM work_example.movement_history(5, '2026-05-01', 0, 2);
+    IF original IS DISTINCT FROM dependent OR (SELECT array_agg(movement_id)
+        FROM work_example.movement_history(5, '2026-05-01', original, 2)) IS DISTINCT FROM ARRAY[subsequent] THEN
+        RAISE EXCEPTION 'oracle: missing history continuation';
+    END IF;
+
     first_credit := work_example.change_position(1, '2026-05-03', 20, 0);
     BEGIN
         PERFORM work_example.change_position(1, '2026-05-02', -20, 0);
@@ -152,6 +172,39 @@ BEGIN
     IF work_example.credit_balance(3, '2026-05-03') IS DISTINCT FROM 1
        OR work_example.credit_balance(2, '2026-05-03') IS DISTINCT FROM 7 THEN
         RAISE EXCEPTION 'oracle: own funded withdrawal changed the wrong balance';
+    END IF;
+
+    -- Even two independently funded owners cannot use each other's selected credit.
+    first_credit := work_example.change_position(2, '2026-05-12', 5, 0);
+    INSERT INTO work_example.request (beneficiary, funding_id, effective, amount)
+    VALUES (2, first_credit, '2026-05-12', 1) RETURNING id INTO dependent;
+    UPDATE work_example.request SET beneficiary = 3 WHERE id = dependent;
+    BEGIN
+        PERFORM work_example.confirm_request(dependent);
+        RAISE EXCEPTION 'oracle: changed beneficiary consumed another owner credit';
+    EXCEPTION WHEN check_violation THEN NULL;
+    END;
+    IF (SELECT confirmed_id FROM work_example.request WHERE id = dependent) IS NOT NULL THEN
+        RAISE EXCEPTION 'oracle: refused beneficiary change created a movement';
+    END IF;
+    UPDATE work_example.request SET beneficiary = 2 WHERE id = dependent;
+    PERFORM work_example.confirm_request(dependent);
+    IF work_example.credit_balance(2, '2026-05-12') IS DISTINCT FROM 11 THEN
+        RAISE EXCEPTION 'oracle: matching beneficiary control failed';
+    END IF;
+
+    INSERT INTO work_example.resource VALUES (4, 'Q8', 'four@example.test', 'UTC', 'C', false);
+    original := work_example.begin_assignment(4, '2026-05-15T10:00Z', 12);
+    UPDATE work_example.assignment SET finished = '2026-05-15T11:00Z' WHERE id = original;
+    subsequent := work_example.begin_assignment(4, '2026-05-15T11:00Z', 12);
+    BEGIN
+        UPDATE work_example.assignment SET finished = NULL WHERE id = original;
+        RAISE EXCEPTION 'oracle: same-instant release withdrawal displaced a successor';
+    EXCEPTION WHEN check_violation THEN NULL;
+    END;
+    IF (SELECT array_agg(id) FROM work_example.assignment WHERE resource_id = 4 AND finished IS NULL)
+        IS DISTINCT FROM ARRAY[subsequent] THEN
+        RAISE EXCEPTION 'oracle: withdrawal changed current custody';
     END IF;
 END;
 $audit$;

@@ -197,13 +197,46 @@ Store these project-owned inputs in `ai/business-obligations.json`. For example:
     "effect": "write",
     "proofs": [
       { "kind": "effective-prerequisite", "target": "document:example.release", "key": "approval",
-        "expect": { "refusalStatus": 409 } }
+        "expect": { "refusalStatus": 409, "source": "document:example.approval",
+          "owner": "recipient", "effectiveAt": "releaseDate" } }
     ]
   }
 ]
 ```
 
 Make a second pass over every authoritative source file in its original order.
+Write a project-owned `ai/operation-review.json` while reading the brief, before
+generating the plan. The approval obligation above has this corresponding entry.
+
+```json
+[
+  {
+    "requirement": "approved-before-release",
+    "target": "document:example.release",
+    "operation": "post",
+    "facts": [
+      { "kind": "consumes", "key": "approval", "source": "document:example.approval",
+        "owner": "recipient", "effectiveAt": "releaseDate", "editableOwner": false, "withdrawable": false }
+    ]
+  }
+]
+```
+
+Use one entry per target, operation and source obligation. Include each application
+document. Use an empty `facts` array with a concrete `reason` for a reviewed
+operation with no applicable facts. Other applicable checks still belong in its
+obligation. Resolve contradictory classifications against the brief before capture.
+
+| Fact | Required evidence |
+| --- | --- |
+| `consumes` | Identify the source, owner field and effective date separately for each right. Bind these in `effective-prerequisite.expect`; read both owners and the source ID. For an editable owner bind `owner-change` to the consumer. Persist a changed owner, attempt the original source, read back unchanged state, then succeed with matching ownership. For a withdrawable source declare `replaceable` and bind `dated-withdrawal` on that source with the consumer target, replacement policy and independent `expectedControl`. If substitution is permitted, exercise a later substitute that cannot cover the original date, then an effective substitute. |
+| `exclusive` | Bind `interval-overlap`. For a correctable release declare `correctable: true`, `releaseTarget` and `boundary`. Bind `boundary-withdrawal` on the release target. For half-open intervals start a successor at the release instant, try to undo the release and read the sole holder. For inclusive endpoints prove refusal at equality and success immediately after. |
+| `snapshot` | Bind one `snapshot-stability` key per fact and consumption phase. Put `from` and `until` in both the fact and proof expectations. Change the upstream value between these phases. Read the original record and a fresh control, including reporting group, currency or calendar when applicable. |
+| `contended` | Declare `scope` as `record` or `shared-source`. Bind the target's `concurrent-operation` case. For a shared source also bind `competing-consumers` on the same target and key. Submit distinct drafts concurrently, record both HTTP responses and read both records and their source associations. The losing draft must retain its state and return the expected business refusal. |
+| `manual-price` | Bind the typed `posted-override:<type>` outcome on the pricing requirement. Use a second browser control for the automatic price. |
+| `rows` | Review each public row-dependent lookup, report or calculation. Use its HTTP method and pathname as `operation` and pin it in `query-growth.expect.operation`. Emit the observed method and pathname as `small.requestOperation` and `large.requestOperation`. For remote line pricing use the same route in the pricing case's `priceOperation`. Use `{id}` for GUID path segments. Verify the price fields from independently seeded rows and read them from that request in the browser. |
+| `history-total` | Bind `paged-total` for each total derived from a paginated history, including settlement balances. Pin `operation`, `pageLimit` and three independently calculated `expectedTotals`. At limit minus one, limit and limit plus one, read the same record and an independent report, recording `count`, `recordId`, both statuses and both totals. Follow the next page, retain both sets of IDs and verify that the last entry appears exactly once. |
+
 For each substantive clause, identify the actor, write or read, applicable date,
 observable effect and independent positive control. Include independent resource
 histories, an active sibling beside a retired record, and permitted correction
@@ -213,9 +246,15 @@ both balances, then fund the sibling and allow the withdrawal. For scoped
 intervals, also allow two independent resources to occupy the same interval. Keep separately
 testable clauses bound even when their quotations overlap. Record headings,
 context or deliberate exclusions in the optional `ai/brief-context.json` array,
-for example `[{"source":"requirements.md","quote":"Operations","reason":"Section heading."}]`.
+for example `[{"source":"requirements.md","quote":"## Operations","reason":"Section heading."}]`.
+For a non-heading excerpt give one complete source line, its reason and a
+`category` of `background`, `definition` or `out-of-scope`. Bind each required
+verification item to an obligation even when it appears under a testing appendix.
+For an excluded list item, classify its exact section heading in the same source
+as `out-of-scope` too. Review the heading and exclusion reason in the brief's
+own language. A repeated item under a required section still needs a proof.
 The CLI checks text coverage across the entire declared inventory, including files
-with no obligation quotes. It fingerprints the inventory, source contents and context. Review the list of source files, the meaning of each
+with no obligation quotes. It fingerprints the operation review, inventory, source contents and context. Review the list of source files, the meaning of each
 quotation and each exclusion independently of the code and generated test plan.
 
 `node infrastructure/ngb.mjs ai capture` previews the fingerprint. Add `--apply`
@@ -224,7 +263,8 @@ to record the reviewed input and the complete source-file digests. Commit the so
 Once an application declares documents, obligations or a requirement trace, its
 acceptance plan must use schema 2, including for the integration-only profile.
 For an existing schema 2 plan, review the original delivery and its appendices to
-create the source list. Recover the intended report zone and lookup fields from
+create the source list and operation review, classify existing context lines, and
+add the corresponding proof bindings. Recover the intended report zone and lookup fields from
 the requirements, update the test observations, then preview and record the new
 fingerprint. Update any independently pinned digest after reviewing that change. Recapture differences only as a reviewed change
 of requirements or acceptance criteria. Keep capture out of test/plan generators.

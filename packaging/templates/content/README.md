@@ -51,8 +51,10 @@ functions and statements. Missing tests, skipped tests and missing required
 evidence fail the profile. Reports and logs are under `.ngb/reports/<run-id>/`.
 
 Before implementation, list the authoritative brief and appendices in
-`ai/brief-sources.json`, extract their individual rules into `ai/business-obligations.json` and run `node infrastructure/ngb.mjs ai capture --apply`.
-Version the source list, briefs, obligations and resulting lock together. Keep a reviewed copy
+`ai/brief-sources.json`, extract their individual rules into `ai/business-obligations.json`,
+and review their public operations in `ai/operation-review.json`. Run `node infrastructure/ngb.mjs ai capture`
+to preview the fingerprint, then add `--apply` to record it.
+Version the source list, briefs, operation review, obligations and resulting lock together. Keep a reviewed copy
 of the fingerprint outside the generator when comparing independent implementations.
 See `ai/vendor/references/server-acceptance.md` for the format and migration steps.
 

@@ -122,3 +122,43 @@ SELECT id, resource_id, captured_category,
        ((finished AT TIME ZONE captured_zone)::date - (started AT TIME ZONE captured_zone)::date + 1) * daily_rate AS amount
 FROM work_example.assignment
 WHERE finished IS NOT NULL;
+
+-- A draft can change its beneficiary after a credit has been selected.
+CREATE TABLE work_example.request (
+    id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    beneficiary integer NOT NULL REFERENCES work_example.resource,
+    funding_id bigint NOT NULL REFERENCES work_example.movement,
+    effective date NOT NULL,
+    amount integer NOT NULL CHECK (amount > 0),
+    confirmed_id bigint REFERENCES work_example.movement
+);
+
+CREATE FUNCTION work_example.confirm_request(request_key bigint) RETURNS bigint LANGUAGE plpgsql AS $$
+DECLARE
+    draft work_example.request%ROWTYPE;
+    confirmed bigint;
+BEGIN
+    SELECT * INTO STRICT draft FROM work_example.request WHERE id = request_key FOR UPDATE;
+    IF draft.confirmed_id IS NOT NULL THEN
+        RETURN draft.confirmed_id;
+    END IF;
+    PERFORM id FROM work_example.resource WHERE id = draft.beneficiary FOR UPDATE;
+    IF NOT EXISTS (
+        SELECT 1 FROM work_example.movement
+        WHERE id = draft.funding_id AND resource_id = draft.beneficiary AND active
+          AND business_date <= draft.effective AND credits > 0
+    ) THEN
+        RAISE EXCEPTION 'The selected credit is unavailable to this beneficiary' USING ERRCODE = '23514';
+    END IF;
+    confirmed := work_example.change_position(draft.beneficiary, draft.effective, -draft.amount, 0);
+    UPDATE work_example.request SET confirmed_id = confirmed WHERE id = draft.id;
+    RETURN confirmed;
+END;
+$$;
+
+CREATE FUNCTION work_example.movement_history(resource_key integer, cutoff date, after_id bigint, page_size integer)
+RETURNS TABLE (movement_id bigint, amount integer) LANGUAGE sql STABLE AS $$
+    SELECT id, credits FROM work_example.movement
+    WHERE resource_id = resource_key AND active AND business_date <= cutoff AND id > after_id
+    ORDER BY id LIMIT page_size;
+$$;

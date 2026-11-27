@@ -5,6 +5,7 @@ using System.Text.Json;
 using EquipmentInspection.Definitions;
 using EquipmentInspection.Runtime;
 using Microsoft.Extensions.DependencyInjection;
+using NGB.Contracts.Common;
 using NGB.Contracts.Documents;
 using NGB.Contracts.Metadata;
 using NGB.Contracts.Services;
@@ -134,31 +135,18 @@ public sealed class InspectionSourceTests(ITestOutputHelper output)
         var warm = (await admin.GetFromJsonAsync<InspectionSource[]>(path + seeded.Count, Json))!;
         Assert.Equal(seeded.ToArray(), warm);
 
-        async Task<SourcePageEvidence> ReadPageAsync(int limit)
+        async Task<PageEvidence<InspectionSource>> ReadPageAsync(int limit)
         {
-            using var trace = new Activity(operation).SetIdFormat(ActivityIdFormat.W3C).Start();
-            var queries = 0;
-            using var listener = new ActivityListener
-            {
-                ShouldListenTo = source => source.Name.StartsWith("Npgsql", StringComparison.Ordinal)
-                    || source.Name is "System.Net.Http" or "Microsoft.AspNetCore",
-                Sample = static (ref _) => ActivitySamplingResult.AllData,
-                SampleUsingParentId = static (ref _) => ActivitySamplingResult.AllData,
-                ActivityStopped = activity =>
-                {
-                    if (activity.TraceId == trace.TraceId
-                        && (activity.GetTagItem("db.query.text") is not null || activity.GetTagItem("db.statement") is not null))
-                        Interlocked.Increment(ref queries);
-                }
-            };
-            ActivitySource.AddActivityListener(listener);
-            using var response = await admin.GetAsync(path + limit);
+            var measured = await MeasureRequestAsync(admin, operation, path + limit);
+            using var response = measured.Response;
             await EnsureSuccessAsync(response);
             var page = (await response.Content.ReadFromJsonAsync<InspectionSource[]>(Json))!;
             var expected = seeded.Take(limit).ToArray();
             Assert.Equal(expected, page);
-            Assert.True(queries > 0);
-            return new SourcePageEvidence(actor, operation, (int)response.StatusCode, queries, expected, page);
+            Assert.True(measured.Queries > 0);
+            var request = response.RequestMessage!;
+            var requestOperation = $"{request.Method} {request.RequestUri!.AbsolutePath}";
+            return new PageEvidence<InspectionSource>(actor, operation, requestOperation, (int)response.StatusCode, measured.Queries, expected, page);
         }
 
         var small = await ReadPageAsync(1);
@@ -167,14 +155,89 @@ public sealed class InspectionSourceTests(ITestOutputHelper output)
         output.WriteLine("NGB-CHECK " + JsonSerializer.Serialize(new
         {
             kind = "query-growth", target = "document:" + EquipmentDefinitions.InspectionCode, key = operation,
+            operation = small.RequestOperation,
             valueFields = new[] { "number", "equipmentId", "result" },
             small,
             large
         }, Json));
     }
 
-    private sealed record SourcePageEvidence(string Actor, string Operation, int Status, int Queries,
-        InspectionSource[] ExpectedRows, InspectionSource[] ActualRows)
+    [Fact]
+    public async Task The_price_reader_returns_the_expected_service_rates_with_bounded_query_growth()
+    {
+        await using var host = new InspectionHost();
+        await host.StartAsync();
+        const string actor = "administrator";
+        const string type = EquipmentServiceDefinitions.DocumentCode;
+        const string operation = "dated-service-prices";
+        const string endpoint = "/api/documents/" + type;
+        const string priceList = "Service rate fixture 2026-04-09";
+        using var client = await host.CreateClientAsync(actor);
+        var expected = new List<ServicePrice>();
+        for (var index = 0; index < 12; index++)
+        {
+            var amount = 12.75m + index;
+            var draft = await PostAsync<DocumentDto>(client, endpoint,
+                Payload(("display", $"{priceList} {index:D2}"), ("amount", amount)));
+            expected.Add(new ServicePrice(draft.Id, amount));
+        }
+
+        var path = endpoint + "?search=" + Uri.EscapeDataString(priceList) + "&limit=";
+        using var warm = await client.GetAsync(path + expected.Count);
+        await EnsureSuccessAsync(warm);
+
+        async Task<PageEvidence<ServicePrice>> ReadPricesAsync(int limit)
+        {
+            var measured = await MeasureRequestAsync(client, operation, path + limit);
+            using var response = measured.Response;
+            await EnsureSuccessAsync(response);
+            var page = (await response.Content.ReadFromJsonAsync<PageResponseDto<DocumentDto>>(Json))!;
+            var prices = page.Items.Select(item => new ServicePrice(item.Id, item.Payload.Fields!["amount"].GetDecimal())).ToArray();
+            var expectedPrices = expected.Take(limit).ToArray();
+            Assert.Equal(expectedPrices, prices);
+            Assert.True(measured.Queries > 0);
+            var request = response.RequestMessage!;
+            return new PageEvidence<ServicePrice>(actor, operation, $"{request.Method} {request.RequestUri!.AbsolutePath}",
+                (int)response.StatusCode, measured.Queries, expectedPrices, prices);
+        }
+
+        var small = await ReadPricesAsync(1);
+        var large = await ReadPricesAsync(12);
+        Assert.True(large.Queries <= small.Queries);
+        output.WriteLine("NGB-CHECK " + JsonSerializer.Serialize(new
+        {
+            kind = "query-growth", target = "document:" + type, key = operation, operation = small.RequestOperation,
+            valueFields = new[] { "amount" }, small, large
+        }, Json));
+    }
+
+    private static async Task<(HttpResponseMessage Response, int Queries)> MeasureRequestAsync(
+        HttpClient client, string operation, string path)
+    {
+        using var trace = new Activity(operation).SetIdFormat(ActivityIdFormat.W3C).Start();
+        var queries = 0;
+        using var listener = new ActivityListener
+        {
+            ShouldListenTo = source => source.Name.StartsWith("Npgsql", StringComparison.Ordinal)
+                || source.Name is "System.Net.Http" or "Microsoft.AspNetCore",
+            Sample = static (ref _) => ActivitySamplingResult.AllData,
+            SampleUsingParentId = static (ref _) => ActivitySamplingResult.AllData,
+            ActivityStopped = activity =>
+            {
+                if (activity.TraceId == trace.TraceId
+                    && (activity.GetTagItem("db.query.text") is not null || activity.GetTagItem("db.statement") is not null))
+                    Interlocked.Increment(ref queries);
+            }
+        };
+        ActivitySource.AddActivityListener(listener);
+        var response = await client.GetAsync(path);
+        return (response, queries);
+    }
+
+    private sealed record ServicePrice(Guid Id, decimal Amount);
+
+    private sealed record PageEvidence<T>(string Actor, string Operation, string RequestOperation, int Status, int Queries,
+        T[] ExpectedRows, T[] ActualRows)
     {
         public int ReturnedRows => ActualRows.Length;
     }
@@ -189,14 +252,38 @@ public sealed class InspectionSourceTests(ITestOutputHelper output)
         var source = await ConfirmAsync(admin, await CreateAsync(admin, equipment.Id));
         var first = await DeriveAsync(admin, source, equipment.Id);
         var second = await DeriveAsync(admin, source, equipment.Id);
+        var firstVersion = await VersionAsync(admin, first.Id);
+        var secondVersion = await VersionAsync(admin, second.Id);
         var responses = await Task.WhenAll(
-            ExecutePostAsync(admin, Documents + "/" + first.Id, await VersionAsync(admin, first.Id), "first-reinspection"),
-            ExecutePostAsync(admin, Documents + "/" + second.Id, await VersionAsync(admin, second.Id), "second-reinspection"));
+            ExecutePostAsync(admin, Documents + "/" + first.Id, firstVersion, "first-reinspection"),
+            ExecutePostAsync(admin, Documents + "/" + second.Id, secondVersion, "second-reinspection"));
         using var firstResponse = responses[0];
         using var secondResponse = responses[1];
         var winner = await ReadActionAsync(Assert.Single(responses, item => item.IsSuccessStatusCode));
-        await AssertErrorAsync(Assert.Single(responses, item => !item.IsSuccessStatusCode),
-            HttpStatusCode.Conflict, "example.inspection.source_unavailable");
+        const string expectedReason = "example.inspection.source_unavailable";
+        var reason = await AssertErrorAsync(Assert.Single(responses, item => !item.IsSuccessStatusCode),
+            HttpStatusCode.Conflict, expectedReason);
+        await using var scope = host.Services.CreateAsyncScope();
+        var relationships = scope.ServiceProvider.GetRequiredService<IDocumentRelationshipService>();
+        var attempts = new List<object>();
+        foreach (var (draft, response) in new[] { (first, firstResponse), (second, secondResponse) })
+        {
+            var reopened = (await admin.GetFromJsonAsync<DocumentDto>(Documents + "/" + draft.Id, Json))!;
+            Assert.Equal(response.IsSuccessStatusCode ? DocumentStatus.Posted : DocumentStatus.Draft, reopened.Status);
+            var link = Assert.Single(await relationships.ListOutgoingAsync(draft.Id),
+                item => item.RelationshipCode == InspectionDerivationDefinitions.RelationshipCode);
+            Assert.Equal(source.Id, link.ToDocumentId);
+            attempts.Add(new
+            {
+                draft.Id, reopenedId = reopened.Id, sourceId = link.ToDocumentId, state = reopened.Status.ToString(),
+                status = (int)response.StatusCode, reason = response.IsSuccessStatusCode ? null : reason
+            });
+        }
+        output.WriteLine("NGB-CHECK " + JsonSerializer.Serialize(new
+        {
+            kind = "competing-consumers", target = "document:" + EquipmentDefinitions.InspectionCode,
+            key = "reinspection", sourceId = source.Id, expectedReason, attempts
+        }, Json));
         var lookup = $"/api/inspection-sources?equipmentId={equipment.Id}";
         Assert.DoesNotContain((await admin.GetFromJsonAsync<InspectionSource[]>(lookup, Json))!, item => item.Id == source.Id);
         using var stalePreview = await admin.GetAsync($"/api/inspection-sources/{source.Id}?equipmentId={equipment.Id}");

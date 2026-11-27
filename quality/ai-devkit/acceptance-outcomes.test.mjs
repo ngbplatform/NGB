@@ -53,9 +53,9 @@ test('business acceptance reconciles hidden catalogs, reports and navigation in 
 test('a denial cannot stand in for allowed withdrawal and one cleared line cannot stand in for the whole dependency chain', () => {
   for (const scenario of ['lifecycle', 'source-change-clear', 'async-race', 'pricing', 'temporal-restoration',
     'prerequisite-withdrawal', 'dashboard-complete', 'historical-as-of', 'numbering-date']) {
-    const entry = { id: scenario, outcomes: scenarioOutcomes[scenario] }
+    const entry = { id: scenario, target: 'document:example.request', outcomes: scenarioOutcomes[scenario] }
     verifyOutcomeProof(entry, { outcomes: entry.outcomes,
-      evidence: { 'metric-scope': ['metric-drilldown'], 'reconciled-total': ['figure'], 'current-retry': ['current-retry'] } })
+      evidence: { 'revised-price': ['posted-price:example.request'], 'metric-scope': ['metric-drilldown'], 'reconciled-total': ['figure'], 'current-retry': ['current-retry'] } })
     if (scenario === 'async-race') {
       assert.throws(() => verifyOutcomeProof(entry, { outcomes: entry.outcomes, evidence: { 'current-retry': ['text'] } }), /current-retry/)
     }

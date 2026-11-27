@@ -2,11 +2,11 @@
   "schemaVersion": 1,
   "package": "NGB.Platform.Hosting.AspNetCore",
   "version": "3.4.0",
-  "packageSha256": "4531d31730d0e16e245e1a042ec54e826309ee3b35bb7b5d8e3cdd5a14cafad2",
+  "packageSha256": "eeaaca1899172e11ec7ba2fe1cd73b635700d654f73e2a7ed7bc64e41315293c",
   "assembly": {
     "name": "NGB.Hosting.AspNetCore",
     "version": "3.0.0.0",
-    "sha256": "8038c55cf69c00cf9a1f343e6d2a9c8959b8fc659fe3af489db40523942c6100"
+    "sha256": "45f8bd0ffb021ee97ab0f45071ea15f99727657f7c474a013e3a80534eed4301"
   },
   "contractSha256": "880caf5a05bbea952ceec33e6f5220acb698662ee1e6201810f03b3809bf05c1",
   "types": [

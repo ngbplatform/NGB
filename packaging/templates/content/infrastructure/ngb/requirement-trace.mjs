@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
 import { isDashboardMenuItem } from './acceptance-outcomes.mjs'
 import { businessDateFormat, validateBusinessTarget, validateExportCells, validateGrowthBudget, validateHistoricalControl,
-  validateValueFields, validateWithdrawalState } from './business-checks.mjs'
+  validatePageTotals, validateValueFields, validateWithdrawalState } from './business-checks.mjs'
+import { verifyOperationReview } from './operation-review.mjs'
 import { readAsset } from './file-data.mjs'
 import { digest, distinctPaths, objectKeys } from './kit-contracts.mjs'
 import { applyAssets } from './kit-files.mjs'
@@ -11,14 +12,16 @@ const obligationPath = 'ai/business-obligations.json'
 const sourceListPath = 'ai/brief-sources.json'
 const baselinePath = 'ai/business-obligations.lock.json'
 const contextPath = 'ai/brief-context.json'
+const reviewPath = 'ai/operation-review.json'
 const tracePath = 'ai/requirement-trace.json'
 const writeChecks = new Set(['source-membership', 'withdrawal-cycle', 'effective-prerequisite', 'dated-withdrawal',
-  'state-invariant', 'history-conflict', 'interval-overlap', 'snapshot-stability'])
+  'state-invariant', 'history-conflict', 'interval-overlap', 'snapshot-stability', 'owner-change', 'boundary-withdrawal', 'competing-consumers'])
 const expectedFields = {
   'historical-cutoff': ['expected', 'laterExpected', 'timeZone'],
   'query-growth': ['valueFields'],
   'report-export': ['expectedCells'],
   'dated-withdrawal': ['expectedControl'],
+  'paged-total': ['pageLimit', 'expectedTotals', 'operation'],
 }
 
 function verifyBriefCoverage(path, source, excerpts) {
@@ -99,6 +102,7 @@ async function readObligations(root) {
           validateHistoricalControl(proof.expect.expected, proof.expect.laterExpected)
           if (proof.expect.timeZone !== null) businessDateFormat(proof.expect.timeZone)
         }
+        if (proof.kind === 'paged-total') validatePageTotals(proof.expect)
         if (proof.kind === 'query-growth') validateValueFields(proof.expect.valueFields)
         if (proof.kind === 'report-export') validateExportCells(proof.expect.expectedCells)
         if (proof.kind === 'dated-withdrawal') validateWithdrawalState(proof.expect.expectedControl)
@@ -108,7 +112,9 @@ async function readObligations(root) {
     }
     if (item.effect === 'write') {
       assert.ok(item.proofs.some(proof => writeChecks.has(proof.kind) || (proof.scenario && proof.target.startsWith('document:')
-        && (proof.outcome === 'persisted-retry:' + proof.target.slice('document:'.length)
+        && ((proof.scenario === 'pricing' && (proof.outcome === 'revised-price'
+          || proof.outcome === 'posted-override:' + proof.target.slice('document:'.length)))
+          || proof.outcome === 'persisted-retry:' + proof.target.slice('document:'.length)
           || (proof.outcome.startsWith('command:' + proof.target.slice('document:'.length) + '/') && proof.outcome.split('/').at(-1))))), 'A write obligation needs a verified mutation and persisted readback: ' + item.id)
     }
     if (item.effect === 'recovery') {
@@ -119,15 +125,42 @@ async function readObligations(root) {
   const contextText = await readAsset(root, contextPath)
   const context = contextText === null ? [] : JSON.parse(contextText)
   assert.ok(Array.isArray(context), 'List the reviewed non-requirement excerpts.')
+  const exclusionHeadings = new Set(context.filter(item => item?.category === 'out-of-scope')
+    .map(item => JSON.stringify([item.source, item.quote])))
   for (const item of context) {
-    objectKeys(item, ['source', 'quote', 'reason'])
+    objectKeys(item, ['source', 'quote', 'reason'], ['category'])
     assert.ok(typeof item.quote === 'string' && item.quote.trim() && sources.get(item.source)?.includes(item.quote)
       && typeof item.reason === 'string' && item.reason.trim(), 'Explain each exact context excerpt from the reviewed brief.')
+    const quote = item.quote.trim()
+    const lines = sources.get(item.source).split(/\r?\n/u)
+    const heading = /^#{1,6} [^\n]+$/u.test(quote) && lines.includes(quote)
+    if (!heading) {
+      const listItem = /^(?:[-*+] |\d+[.)] )/u.test(quote)
+      // A repeated bullet can occur under both an exclusion and a required workflow.
+      let section = ''
+      const clause = quote.replace(/^(?:[-*+] |\d+[.)] )/u, '')
+      const excludedListItem = listItem && item.category === 'out-of-scope' && lines.every(line => {
+        if (/^#{1,6}\s/u.test(line)) section = line.trim()
+        return line.trim() !== quote || exclusionHeadings.has(JSON.stringify([item.source, section]))
+          || obligations.some(rule => rule.source === item.source && rule.quote.includes(clause))
+      })
+      assert.ok(['background', 'definition', 'out-of-scope'].includes(item.category)
+        && !/[\r\n]/u.test(quote) && (!listItem || excludedListItem)
+        && !/\b(?:must|shall|required|mandatory)\b/iu.test(quote),
+      'Capture each required clause as an obligation. Context must be a heading or one classified non-requirement.')
+      // A substring of a mandatory sentence must not turn that sentence into background.
+      assert.ok(lines.some(line => line.trim() === quote),
+        'Classify one complete source line as context.')
+    }
   }
   for (const [path, source] of sources) {
     verifyBriefCoverage(path, source, [...obligations, ...context].filter(item => item.source === path).map(item => item.quote))
   }
+  const reviewText = await readAsset(root, reviewPath)
+  const review = reviewText && JSON.parse(reviewText)
+  verifyOperationReview(review, obligations)
   const fingerprints = {
+    operationReviewSha256: digest(reviewText),
     sourceListSha256: digest(sourceListText),
     obligationsSha256: digest(original),
     sources: Object.fromEntries([...sources].map(([path, value]) => [path, digest(value)])),
@@ -137,7 +170,7 @@ async function readObligations(root) {
   if (process.env.NGB_OBLIGATIONS_SHA256) {
     assert.equal(baseline.baselineSha256, process.env.NGB_OBLIGATIONS_SHA256, 'The reviewed brief or business obligations changed.')
   }
-  return { obligations, baseline, snapshot: { ...Object.fromEntries(sources), [sourceListPath]: sourceListText, [obligationPath]: original, [contextPath]: contextText } }
+  return { obligations, review, baseline, snapshot: { [reviewPath]: reviewText, ...Object.fromEntries(sources), [sourceListPath]: sourceListText, [obligationPath]: original, [contextPath]: contextText } }
 }
 
 export async function captureObligations(root, apply) {
@@ -192,7 +225,7 @@ export async function verifyApplicationUpgrade(root, observations) {
 // requirement binding survives removing a rule and its test from the plan.
 export async function verifyRequirementTrace(root, plan, passedTests, observations) {
   if (plan.schemaVersion === 1) {
-    const inputs = await Promise.all([sourceListPath, obligationPath, baselinePath, tracePath, contextPath].map(path => readAsset(root, path)))
+    const inputs = await Promise.all([sourceListPath, obligationPath, baselinePath, tracePath, contextPath, reviewPath].map(path => readAsset(root, path)))
     assert.ok(!plan.documents?.length && !process.env.NGB_OBLIGATIONS_SHA256 && inputs.every(input => input === null),
       'Use schema 2 for application documents or business obligations. Only the empty starter uses schema 1.')
     return
@@ -204,12 +237,13 @@ export async function verifyRequirementTrace(root, plan, passedTests, observatio
   assert.ok(Array.isArray(trace.requirements), 'List the original requirements.')
   assert.deepEqual(trace.requirements.map(row => row.id).sort(), plan.requirements.map(row => row.id).sort(),
     'Reconcile the source requirements with ai/acceptance.json.')
-  const { obligations, baseline } = await readObligations(root)
+  const { obligations, review, baseline } = await readObligations(root)
   const captured = await readAsset(root, baselinePath)
   assert.ok(captured, 'Run ai capture --apply on the reviewed obligations before implementation.')
   assert.deepEqual(JSON.parse(captured), baseline, 'The source brief or obligations differ from the reviewed baseline.')
   assert.deepEqual(obligations.map(item => item.id).sort(), trace.requirements.map(row => row.id).sort(),
     'Retain each original business obligation in the trace and acceptance plan.')
+  verifyOperationReview(review, obligations, plan)
   const sources = new Map()
   const checked = new Set()
   const reviewedBindings = new Set(obligations.flatMap(item => item.proofs.filter(proof => proof.kind).map(binding)))

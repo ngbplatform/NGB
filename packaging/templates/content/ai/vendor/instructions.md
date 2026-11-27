@@ -74,7 +74,11 @@ Before implementing a business brief, inventory every supplied requirements file
 `node infrastructure/ngb.mjs ai capture --apply`. Keep this input independent of the
 code that generates tests, `ai/acceptance.json` and `ai/requirement-trace.json`.
 Review every source and substantive clause a second time against the original text.
-Record the actor, operation, date, expected result and a positive control. Explain
+Record the actor, operation, date, expected result and a positive control. Write
+the inventory of operations derived from the brief to `ai/operation-review.json`.
+For each consumed right identify its owner, effective date and source. Follow each
+historical fact from capture to its last required use. Review contention, editable
+prices, public reads with variable row counts and totals from paginated history. Explain
 non-requirement excerpts in `ai/brief-context.json` when needed. Freeze fixture
 expectations and any per-operation query-growth bounds during this review.
 The [server acceptance guide](references/server-acceptance.md) describes the bindings,

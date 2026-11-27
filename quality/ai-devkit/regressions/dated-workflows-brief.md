@@ -27,7 +27,21 @@ by assignment ID. Provide these public entry points.
   as the last argument, NULL for the date, and zero for both deltas. The
   original event supplies the effective date.
 * `credit_balance(integer, date)` returns the numeric closing balance.
+* `movement_history(integer, date, bigint, integer)` returns active movements for
+  that resource through the cutoff, ordered by ID. Return `movement_id` and
+  `amount` (credit delta), starting strictly after the supplied cursor, limited
+  to the requested page size. A cursor of zero reads the first page. The closing
+  balance includes all qualifying movements across pages.
+* A draft in `request` has a generated bigint `id`, an editable `beneficiary`
+  (resource ID), a selected `funding_id` (movement ID), an `effective` business
+  date, a positive integer `amount` and a nullable `confirmed_id`. Calling
+  `confirm_request(bigint)` spends the amount for the current beneficiary,
+  records the spending movement ID and returns it. The selected credit must
+  belong to that beneficiary and be active and effective on the spending date.
+  Refused confirmation leaves the draft and both balances intact.
 * `begin_assignment(integer, timestamptz, numeric)` returns the assignment ID.
+  Ending one assignment permits a successor at the same instant. Clearing
+  the earlier finish after a successor starts must preserve exclusive occupancy.
 * `completed_charges` exposes `id`, `captured_category` and `amount`.
 
 Use SQLSTATE 23514 for business refusals. List the obligations you extracted.

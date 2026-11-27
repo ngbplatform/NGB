@@ -28,6 +28,9 @@ public sealed class EquipmentServiceDefinitions : IDefinitionsContributor
                             Lookup: new CatalogLookupSourceMetadata(EquipmentDefinitions.EquipmentCode)),
                         new("hours", ColumnType.Decimal, UiLabel: "Service hours"),
                         new("amount", ColumnType.Decimal, UiLabel: "Service cost"),
+                        new("pricing_date", ColumnType.Date, UiLabel: "Pricing date"),
+                        new("quoted_amount", ColumnType.Decimal, UiLabel: "Quoted amount"),
+                        new("adjustment_reason", ColumnType.String, MaxLength: 200, UiLabel: "Price adjustment reason"),
                         new("condition", ColumnType.String, MaxLength: 200, UiLabel: "Condition after service")
                     ])
             ],

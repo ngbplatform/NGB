@@ -16,7 +16,7 @@ export const scenarioOutcomes = {
   lines: ['line-values', 'reference-target'],
   'source-change-clear': ['replacement-header', 'replacement-lines', 'cleared-header', 'cleared-lines', 'cleared-totals'],
   'lookup-eligibility': ['eligible', 'ineligible', 'reopened-selection'],
-  pricing: ['preview', 'date-change', 'posted', 'snapshot'],
+  pricing: ['preview', 'date-change', 'posted', 'snapshot', 'revised-price'],
   'async-race': ['late-source', 'late-dependent', 'late-failure', 'current-retry'],
   search: ['opened-target'],
   'search-denial': ['denied-result', 'permitted-result'],
@@ -198,7 +198,12 @@ export function verifyOutcomeProof(entry, proof) {
   assert.deepEqual([...proof.outcomes].sort(), [...entry.outcomes].sort(),
     `Browser did not verify every expected outcome: ${entry.id}`)
   for (const name of entry.outcomes) {
-    const check = /^(?:persisted-retry|report-reference|dashboard-layout|reference|flow-amount|registers?|commands?):/.test(name) ? name : requiredChecks[name]
+    if (name === 'revised-price' && entry.priceOperation !== undefined) {
+      assert.ok(proof.evidence?.[name]?.includes('price-request:' + entry.priceOperation),
+        'Observe the measured price request during the browser date change: ' + entry.priceOperation)
+    }
+    const check = name === 'revised-price' ? 'posted-price:' + entry.target.slice('document:'.length)
+      : /^(?:posted-override|persisted-retry|report-reference|dashboard-layout|reference|flow-amount|registers?|commands?):/.test(name) ? name : requiredChecks[name]
     if (name.startsWith('persisted-retry:')) {
       assert.ok(proof.evidence?.[name]?.includes('current-retry'), 'Verify the failed calculation and retry before its persisted readback.')
     }

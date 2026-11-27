@@ -37,7 +37,10 @@ export function acceptancePlan(value) {
   }
   for (const entry of value.cases) {
     objectKeys(entry, current ? ['id', 'target', 'role', 'scenario', 'file', 'title', 'project', 'outcomes']
-      : ['id', 'document', 'role', 'scenario', 'file', 'title', 'project'])
+      : ['id', 'document', 'role', 'scenario', 'file', 'title', 'project'], current && entry.scenario === 'pricing' ? ['priceOperation'] : [])
+    if (entry.priceOperation !== undefined) {
+      assert.match(entry.priceOperation, /^(?:GET|POST|PUT|PATCH) \/api\/[^?#\s]+$/u, 'Identify the price request by HTTP method and API path.')
+    }
     if (current) assert.ok(value.surfaces.includes(entry.target), `Unknown surface: ${entry.target}`)
     else assert.ok(value.documents.some(document => document.type === entry.document), `Unknown document: ${entry.document}`)
     assert.ok(value.roles.includes(entry.role), `Unknown role: ${entry.role}`)

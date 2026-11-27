@@ -124,7 +124,11 @@ public sealed class InspectionReportTests(ITestOutputHelper output)
         using var admin = await host.CreateClientAsync("administrator");
         var equipment = await PostAsync<CatalogItemDto>(admin, "/api/catalogs/example.equipment",
             Payload(("display", "Complete aggregate bench")));
-        const int count = 501;
+        const int pageLimit = 500;
+        const int count = pageLimit + 1;
+        const string dashboard = "/api/inspection-dashboard";
+        var boundarySamples = new List<object>();
+        var request = Request() with { Limit = pageLimit };
         for (var index = 0; index < count; index++)
         {
             var document = await PostAsync<DocumentDto>(admin, "/api/documents/example.inspection",
@@ -133,9 +137,29 @@ public sealed class InspectionReportTests(ITestOutputHelper output)
             var state = (await admin.GetFromJsonAsync<DocumentEditorStateDto>(path + "/editor-state", Json))!;
             using var posted = await ExecutePostAsync(admin, path, state.DocumentVersion, document.Id.ToString());
             await EnsureSuccessAsync(posted);
+
+            if (index + 1 >= pageLimit - 1)
+            {
+                using var summary = await admin.GetAsync(dashboard);
+                await EnsureSuccessAsync(summary);
+                var snapshot = await summary.Content.ReadFromJsonAsync<EquipmentInspection.Api.InspectionDashboardController.Snapshot>(Json);
+                using var details = await admin.PostAsJsonAsync(ExecutePath, request);
+                await EnsureSuccessAsync(details);
+                var sheet = (await details.Content.ReadFromJsonAsync<ReportExecutionResponseDto>(Json))!;
+                if (sheet.HasMore)
+                    sheet = await PostAsync<ReportExecutionResponseDto>(admin, ExecutePath, request with { Cursor = sheet.NextCursor });
+
+                Assert.Equal(index + 1, snapshot!.Total);
+                Assert.Equal(index + 1, Total(sheet.Sheet.Rows));
+                boundarySamples.Add(new
+                {
+                    recordId = equipment.Id, count = index + 1,
+                    status = (int)summary.StatusCode, total = snapshot.Total,
+                    comparisonStatus = (int)details.StatusCode, comparisonTotal = Total(sheet.Sheet.Rows)
+                });
+            }
         }
 
-        var request = Request() with { Limit = 500 };
         var first = await PostAsync<ReportExecutionResponseDto>(admin, ExecutePath, request);
         Assert.True(first.HasMore);
         Assert.Equal(500, Groups(first.Sheet.Rows).Length);
@@ -146,6 +170,21 @@ public sealed class InspectionReportTests(ITestOutputHelper output)
         Assert.Single(Groups(last.Sheet.Rows));
         Assert.Equal(count, Total(last.Sheet.Rows));
         Assert.Equal(count, Groups(first.Sheet.Rows).Concat(Groups(last.Sheet.Rows)).Sum(row => row.Count));
+
+        output.WriteLine("NGB-CHECK " + JsonSerializer.Serialize(new
+        {
+            kind = "paged-total",
+            target = "report:" + InspectionReports.Summary,
+            key = "inspection-history",
+            operation = "GET " + dashboard,
+            recordId = equipment.Id,
+            pageLimit,
+            expectedTotals = new[] { pageLimit - 1, pageLimit, count },
+            samples = boundarySamples,
+            pageIds = Groups(first.Sheet.Rows).Select(group => group.Result),
+            continuationIds = Groups(last.Sheet.Rows).Select(group => group.Result),
+            lastId = $"Result {count - 1:D4}"
+        }));
 
         var samples = new List<object>();
         for (var index = 0; index < 6; index++)

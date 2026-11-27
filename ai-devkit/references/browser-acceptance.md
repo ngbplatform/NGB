@@ -114,6 +114,21 @@ its own identity. An invalid plan fails before Playwright starts and retains its
   accessible controls from both the application and the shared SDK.
 - `pricing` for priced documents: effective date, defaults, permitted override,
   editable reason, rounding and preservation of persisted snapshots.
+  In the `revised-price` outcome call `checks.postRevisedPrice` with the real date
+  input, visible amount, initial and revised fixture values, persisted date and
+  amount paths, the Save control and the standard Post action. Keep the revised
+  date through save, reopen and post. Use two dates with different automatic
+  prices. For a remotely priced Lines editor,
+  set the pricing case's `priceOperation` to the method and API path measured
+  in its server `query-growth` check. Pass `quote` to `postRevisedPrice` with
+  the method, concrete pathname, expected numeric result and a `readAmount`
+  function that selects the intended record and value from the actual response.
+  Check any date or selection parameters that distinguish the operation. The
+  helper observes a new browser request during the date change. Its evidence
+  uses `{id}` for a GUID path segment. When an intentional override is supported, bind
+  `posted-override:<type>`. Enter an explicit price and reason before changing
+  the date. Supply the revised list price and the persisted reason and list
+  paths to the helper. Reopening the posted document must preserve all three.
 - `async-race` for asynchronous dependencies: delayed old success and failure after
   source/date replacement, clear, document reload and leaving the editor.
 - `document-flow` for business document references in the header or parts, including

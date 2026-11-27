@@ -4,6 +4,10 @@ import { readTestXml } from './project-data.mjs'
 
 const kinds = {
   'source-membership': 'document',
+  'owner-change': 'document',
+  'boundary-withdrawal': 'document',
+  'competing-consumers': 'document',
+  'paged-total': null,
   'withdrawal-cycle': 'document',
   'historical-cutoff': 'report',
   'effective-prerequisite': 'document',
@@ -29,7 +33,7 @@ function nonempty(value) {
 export function validateBusinessTarget(kind, target) {
   assert.ok(Object.hasOwn(kinds, kind), 'Unknown server acceptance check: ' + kind)
   const [type, ...code] = String(target).split(':')
-  const allowedTypes = ['capacity', 'query-growth'].includes(kind) ? ['document', 'catalog', 'report', 'navigation']
+  const allowedTypes = ['capacity', 'query-growth', 'paged-total'].includes(kind) ? ['document', 'catalog', 'report', 'navigation']
     : kind === 'state-invariant' ? ['document', 'catalog'] : [kinds[kind]]
   assert.ok(allowedTypes.includes(type) && nonempty(code.join(':')), 'Invalid server acceptance target.')
 }
@@ -120,6 +124,33 @@ export function validateGrowthBudget(budget) {
     'Declare two increasing, positive numbers of returned rows.')
   assert.ok(Number.isSafeInteger(maxAdditionalQueries) && maxAdditionalQueries >= 0 && maxAdditionalQueries < largeRows - smallRows,
     'The growth budget must detect one additional database command per added row.')
+}
+
+export function validatePageTotals(expected) {
+  assert.ok(Number.isSafeInteger(expected.pageLimit) && expected.pageLimit > 0
+    && Number.isSafeInteger(expected.pageLimit + 1), 'Use the effective history page limit.')
+  assert.ok(nonempty(expected.operation) && Array.isArray(expected.expectedTotals)
+    && expected.expectedTotals.length === 3 && expected.expectedTotals.every(Number.isFinite)
+    && expected.expectedTotals[1] !== expected.expectedTotals[2],
+  'Freeze numeric totals before, at and beyond the page boundary; the last entry must change the total.')
+}
+
+function verifyPagedTotal(proof) {
+  validatePageTotals(proof)
+  assert.ok(nonempty(proof.recordId) && Array.isArray(proof.samples) && proof.samples.length === 3,
+    'Read the same persisted record before, at and beyond the page limit.')
+  for (const [index, sample] of proof.samples.entries()) {
+    const count = proof.pageLimit + index - 1
+    assert.ok(sample.count === count && sample.recordId === proof.recordId && successful(sample.status)
+      && successful(sample.comparisonStatus), 'Read both the business card and its independent reconciliation at each boundary.')
+    assert.equal(sample.total, proof.expectedTotals[index], 'Incorrect full-history total.')
+    assert.equal(sample.comparisonTotal, proof.expectedTotals[index], 'The independent total differs.')
+  }
+  const { pageIds, continuationIds, lastId } = proof
+  assert.ok(Array.isArray(pageIds) && pageIds.length === proof.pageLimit && pageIds.every(nonempty)
+    && Array.isArray(continuationIds) && continuationIds.length === 1 && continuationIds.every(nonempty) && nonempty(lastId)
+    && [...pageIds, ...continuationIds].includes(lastId) && new Set([...pageIds, ...continuationIds]).size === proof.pageLimit + 1,
+  'Follow the next page and find the last confirmed entry exactly once.')
 }
 
 export function validateValueFields(fields) {
@@ -225,17 +256,49 @@ function verifyObservation(entry, proof) {
       assert.ok([400, 409, 422].includes(proof.otherStatus) && nonempty(proof.reason) && proof.reason === proof.expectedReason, 'Expected a business refusal for the unrelated source.')
       unchanged(proof.beforeRefusal, proof.afterRefusal)
     }
-  } else if (['state-invariant', 'dated-withdrawal', 'effective-prerequisite', 'history-conflict', 'interval-overlap'].includes(entry.kind)) {
+  } else if (entry.kind === 'competing-consumers') {
+    assert.ok(nonempty(proof.sourceId) && Array.isArray(proof.attempts) && proof.attempts.length === 2,
+      'Exercise two documents that consume the same source.')
+    const [winner, refused] = [...proof.attempts].sort((left, right) => left.status - right.status)
+    assert.ok(successful(winner.status) && [400, 409, 422].includes(refused.status)
+      && nonempty(winner.id) && nonempty(refused.id) && winner.id !== refused.id
+      && proof.attempts.every(item => item.sourceId === proof.sourceId && item.reopenedId === item.id)
+      && winner.state === 'Posted' && refused.state === 'Draft' && nonempty(proof.expectedReason)
+      && refused.reason === proof.expectedReason, 'Read back the winning document and the distinct refused draft for the same source.')
+  } else if (entry.kind === 'paged-total') {
+    verifyPagedTotal(proof)
+  } else if (['owner-change', 'boundary-withdrawal', 'state-invariant', 'dated-withdrawal', 'effective-prerequisite', 'history-conflict', 'interval-overlap'].includes(entry.kind)) {
     assert.ok(successful(proof.controlStatus), 'The authorized positive control must succeed.')
     assert.ok([400, 409, 422].includes(proof.refusalStatus) && nonempty(proof.expectedReason)
       && proof.reason === proof.expectedReason, 'Expected the specific business refusal.')
     unchanged(proof.beforeRefusal, proof.afterRefusal)
-    if (entry.kind === 'state-invariant') {
+    if (entry.kind === 'owner-change') {
+      assert.ok(nonempty(proof.owner) && nonempty(proof.originalOwnerId) && nonempty(proof.revisedOwnerId)
+        && proof.originalOwnerId !== proof.revisedOwnerId && proof.sourceOwnerId === proof.originalOwnerId
+        && proof.persistedDraftOwnerId === proof.revisedOwnerId && proof.controlOwnerId === proof.sourceOwnerId
+        && nonempty(proof.sourceId) && nonempty(proof.persistedControlId),
+      'Change the persisted draft owner after establishing the original entitlement and verify the matching-owner control.')
+    } else if (entry.kind === 'boundary-withdrawal') {
+      assert.ok(nonempty(proof.resourceId) && nonempty(proof.originalId) && nonempty(proof.successorId)
+        && proof.originalId !== proof.successorId
+        && successful(proof.successorStatus) && proof.beforeRefusal.activeId === proof.successorId
+        && proof.beforeRefusal.activeCount === 1 && nonempty(proof.persistedControlId),
+      'Withdraw a release after a distinct successor takes the resource at the same instant; verify the remaining holder.')
+      const release = instant(proof.releasedAt)
+      const successor = instant(proof.successorAt)
+      if (proof.boundary === 'exclusive-end') assert.equal(successor, release, 'Exercise two adjacent events at the same instant.')
+      else assert.ok(proof.boundary === 'inclusive' && release < successor
+        && [400, 409, 422].includes(proof.sameInstantStatus), 'Verify the refused shared endpoint and the permitted successor.')
+    } else if (entry.kind === 'state-invariant') {
       assert.ok(nonempty(proof.persistedControlId) && nonempty(proof.operation),
         'Exercise the prohibited write and read back the authorized positive control.')
     } else if (entry.kind === 'dated-withdrawal') {
       assert.ok(nonempty(proof.sourceId) && nonempty(proof.consumerId) && proof.sourceId !== proof.consumerId
         && Date.parse(proof.sourceAt) <= Date.parse(proof.consumerAt), 'Read back the dependent operation and its original prerequisite.')
+      if (proof.replaceable === true) {
+        assert.ok(nonempty(proof.replacementId) && proof.replacementId !== proof.sourceId && nonempty(proof.replacementAt),
+          'Exercise the later replacement of the reviewed prerequisite.')
+      }
       if (proof.replacementAt !== undefined) {
         assert.ok(Date.parse(proof.consumerAt) < Date.parse(proof.replacementAt), 'Exercise a replacement effective after the dependent operation.')
       }
@@ -246,6 +309,10 @@ function verifyObservation(entry, proof) {
       assert.notDeepEqual(proof.afterControl.source, proof.beforeRefusal.source, 'The permitted correction must withdraw the source.')
       assert.deepEqual(proof.afterControl, proof.expectedControl, 'Incorrect source, consumer or dated balance after correction.')
     } else if (entry.kind === 'effective-prerequisite') {
+      if (proof.source !== undefined) {
+        assert.ok(nonempty(proof.ownerId) && proof.sourceOwnerId === proof.ownerId && nonempty(proof.sourceId)
+          && nonempty(proof.effectiveAt), 'Read the dated entitlement for the consuming owner.')
+      }
       assert.ok(nonempty(proof.persistedControlId) && Date.parse(proof.attemptAt) < Date.parse(proof.prerequisiteAt)
         && Date.parse(proof.prerequisiteAt) <= Date.parse(proof.controlAt),
       'Exercise both sides of the prerequisite effective date.')
@@ -276,6 +343,13 @@ function verifyObservation(entry, proof) {
       && Date.parse(proof.capturedAt) <= Date.parse(proof.changedAt)
       && Date.parse(proof.changedAt) < Date.parse(proof.consumedAt),
     'Change the source after capture and before completing the consuming operation.')
+    if (proof.from !== undefined || proof.until !== undefined) {
+      assert.ok(nonempty(proof.from) && nonempty(proof.until) && proof.from !== proof.until
+        && proof.capture?.operation === proof.from && proof.consumption?.operation === proof.until
+        && proof.capture.id === proof.sourceId && proof.consumption.id === proof.consumerId
+        && successful(proof.capture.status) && successful(proof.consumption.status),
+      'Read the captured and consumed facts through the two reviewed public operations.')
+    }
     for (const key of ['original', 'changed', 'expected', 'observed', 'freshExpected', 'freshObserved']) {
       assert.ok(proof[key] != null, `Missing snapshot observation: ${key}`)
     }
@@ -333,6 +407,9 @@ function verifyObservation(entry, proof) {
       assert.ok(sample && successful(sample.status) && sample.returnedRows === rows
         && Number.isSafeInteger(sample.queries) && sample.queries > 0, 'Measure a successful, instrumented read of the declared row count.')
       assert.ok(nonempty(sample.actor) && sample.operation === entry.key, 'Measure the bound operation with an identified actor.')
+      if (proof.operation !== undefined) {
+        assert.equal(sample.requestOperation, proof.operation, 'Measure the reviewed public operation in each request trace.')
+      }
       checkPageValues(sample, proof.valueFields)
     }
     assert.equal(small.actor, large.actor, 'Use the same actor for both requests.')

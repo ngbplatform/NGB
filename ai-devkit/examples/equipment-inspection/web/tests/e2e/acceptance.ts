@@ -12,7 +12,20 @@ type RegisterFieldExpectation = { label: string, display: string, literalText?: 
 
 type ReportDestination = { code: string, parameters: object, filters: object | null }
 
+type PriceRevision = {
+  type: string
+  id: string | null
+  date: { input: Locator, before: string, after: string, path: (string | number)[], stored: string }
+  amount: { field: Locator, before: string, after: string, path: (string | number)[], expected: number }
+  override?: { reasonPath: (string | number)[], reason: string, listPath: (string | number)[], listPrice: number }
+  quote?: { method: string, path: string, expected: number, readAmount: (response: Response) => Promise<number> }
+  changeDate: () => Promise<void>
+  save: Locator
+  post: () => Promise<void>
+}
+
 interface OutcomeChecks {
+  postRevisedPrice(revision: PriceRevision): Promise<void>
   postedRegisters(response: Response, type: string, id: string, operational: string[], reference: string[]): Promise<void>
   journalCreateAccess(expected: boolean, create: Locator, deniedRequest?: APIResponse): Promise<void>
   reportReference(field: string, control: Locator, display: string, target: string | ReportDestination, id: string): Promise<void>
@@ -326,6 +339,81 @@ export async function acceptanceProbe(page: Page, info: TestInfo) {
       expect(expected.trim()).toBeTruthy()
       await probe.text(result, expected)
       activeChecks?.add('current-retry')
+    },
+    async postRevisedPrice({ type, id, date, amount, override, quote, changeDate, save, post }: PriceRevision) {
+      expect(date.before).not.toBe(date.after)
+      expect(date.path.length).toBeGreaterThan(0)
+      expect(amount.path.length).toBeGreaterThan(0)
+      expect(date.path).not.toEqual(amount.path)
+      expect(date.stored.slice(0, 10)).toBe(date.after.slice(0, 10))
+      expect(Number.isFinite(amount.expected)).toBe(true)
+      if (override) {
+        expect(override.reason.trim()).toBeTruthy()
+        expect(override.listPrice).not.toBe(amount.expected)
+        expect(amount.before).toBe(amount.after)
+      } else {
+        expect(amount.before).not.toBe(amount.after)
+      }
+      const visibleAmount = await amount.field.evaluate(element => element.matches('input, textarea, select')) ? probe.value : probe.text
+      await probe.value(date.input, date.before)
+      await visibleAmount(amount.field, amount.before)
+      if (quote) {
+        const [request] = await Promise.all([
+          page.waitForRequest(request => {
+            const url = new URL(request.url())
+            return url.origin === origin && url.pathname === quote.path && request.method() === quote.method
+          }),
+          changeDate(),
+        ])
+        const response = await request.response()
+        expect(response?.ok()).toBe(true)
+        expect(Number.isFinite(quote.expected)).toBe(true)
+        expect(await quote.readAmount(response!)).toBe(quote.expected)
+        const path = new URL(request.url()).pathname.replace(/\/[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}(?=\/|$)/gi, '/{id}')
+        activeChecks?.add('price-request:' + request.method() + ' ' + path)
+      } else {
+        await changeDate()
+      }
+      await probe.value(date.input, date.after)
+      await visibleAmount(amount.field, amount.after)
+      const collection = '/documents/' + encodeURIComponent(type)
+      const api = origin + '/api' + collection
+      const written = page.waitForResponse(r => r.url() === (id ? api + '/' + id : api)
+        && r.request().method() === (id ? 'PUT' : 'POST'))
+      await save.click()
+      const saved = await written
+      expect(saved.ok()).toBe(true)
+      const draft = await saved.json()
+      expect(draft.id).toBeTruthy()
+      if (id) expect(draft.id).toBe(id)
+      const checkFields = (document: typeof draft) => {
+        const read = (path: (string | number)[]) => path.reduce((value, key) => value[key], document)
+        expect(document.id).toBe(draft.id)
+        expect(read(date.path)).toBe(date.stored)
+        expect(read(amount.path)).toBe(amount.expected)
+        if (override) {
+          expect(read(override.reasonPath)).toBe(override.reason)
+          expect(read(override.listPath)).toBe(override.listPrice)
+        }
+      }
+      checkFields(draft)
+      const path = collection + '/' + encodeURIComponent(draft.id)
+      const endpoint = origin + '/api' + path
+      const reopen = async () => {
+        const loaded = page.waitForResponse(r => r.url() === endpoint + '/editor-state' && r.request().method() === 'GET')
+        await page.goto(origin + path)
+        const response = await loaded
+        expect(response.ok()).toBe(true)
+        return (await response.json()).document
+      }
+      checkFields(await reopen())
+      const posted = page.waitForResponse(r => r.url() === endpoint + '/actions/post' && r.request().method() === 'POST')
+      await post()
+      expect((await posted).ok()).toBe(true)
+      const record = await reopen()
+      expect(record.status).toBe('Posted')
+      checkFields(record)
+      activeChecks?.add((override ? 'posted-override:' : 'posted-price:') + type)
     },
     async saveRetriedDraft(type: string, id: string | null, save: Locator, payloadPath: (string | number)[],
       expected: number, field: Locator, display: string) {

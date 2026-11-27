@@ -67,6 +67,20 @@ function check(kind, changes = {}, options = {}) {
   return { plan, observations }
 }
 
+test('dated rights carry their owner and validate the identity and timing of substitutes', () => {
+  const verify = (kind, fields) => {
+    const { plan, observations } = check(kind, fields)
+    return verifyBusinessObservations(plan, observations)
+  }
+  const right = { source: 'document:example.credit', owner: 'party', effectiveAt: 'businessDate',
+    sourceId: 'original', ownerId: 'a', sourceOwnerId: 'a' }
+  verify('effective-prerequisite', right)
+  assert.throws(() => verify('effective-prerequisite', { ...right, sourceOwnerId: 'b' }), /entitlement/)
+  verify('dated-withdrawal', { replaceable: true, replacementId: 'other' })
+  assert.throws(() => verify('dated-withdrawal', { replaceable: true, replacementId: 'first' }), /replacement/)
+  assert.throws(() => verify('dated-withdrawal', { replaceable: true, replacementId: 'other', replacementAt: '2026-04-01' }), /after the dependent/)
+})
+
 test('business bindings require unique applicable operations and explicit job classifications', () => {
   const { plan } = check('source-membership')
   validateBusinessChecks(plan)

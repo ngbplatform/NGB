@@ -18,7 +18,7 @@ test('only an empty starter can use the legacy plan, even before obligations are
   const plan = { schemaVersion: 1, documents: [] }
   await verifyRequirementTrace(root, plan)
   await assert.rejects(verifyRequirementTrace(root, { ...plan, documents: [{ type: 'example.booking' }] }), /Use schema 2/)
-  for (const file of ['business-obligations.json', 'business-obligations.lock.json', 'brief-sources.json', 'brief-context.json', 'requirement-trace.json']) {
+  for (const file of ['business-obligations.json', 'business-obligations.lock.json', 'brief-sources.json', 'brief-context.json', 'requirement-trace.json', 'operation-review.json']) {
     const path = join(root, 'ai', file)
     await writeFile(path, '{}')
     await assert.rejects(verifyRequirementTrace(root, plan), /Use schema 2/)
@@ -31,6 +31,8 @@ test('source bindings survive deletion of a declared check and preserve dated an
   t.after(() => rm(root, { recursive: true, force: true }))
   await mkdir(join(root, 'ai'))
   await verifyRequirementTrace(root, { schemaVersion: 1 })
+  await writeFile(join(root, 'ai/operation-review.json'), JSON.stringify([{ target: rule.target,
+    operation: 'post', requirement: 'exclusive', facts: [{ kind: 'exclusive', key: rule.key, correctable: false }] }]))
   await writeFile(join(root, 'ai/brief-sources.json'), JSON.stringify(['brief.md']))
   const quote = 'A resource can only be booked once in a given interval.'
   await writeFile(join(root, 'brief.md'), quote + '\nLimit the monthly report working set.')
@@ -141,6 +143,7 @@ test('a reviewed baseline binds actual values, named tests, visual evidence and 
   const root = await realpath(await mkdtemp(join(tmpdir(), 'ngb-reviewed-')))
   t.after(() => rm(root, { recursive: true, force: true }))
   await mkdir(join(root, 'ai'))
+  await writeFile(join(root, 'ai/operation-review.json'), '[]')
   const source = 'brief.md'
   const quote = 'Recover the closing balance, identity and attachments and display its period.'
   const requirement = { id: 'recovery', source, quote }
@@ -195,11 +198,12 @@ test('initial capture identifies omitted text and fingerprints explicit context 
   const root = await realpath(await mkdtemp(join(tmpdir(), 'ngb-brief-')))
   t.after(() => rm(root, { recursive: true, force: true }))
   await mkdir(join(root, 'ai'))
+  await writeFile(join(root, 'ai/operation-review.json'), '[]')
   const source = 'brief.md'
   const opening = 'Only active resources can start work.'
   const additional = '每项资源单独结算。'
-  const heading = 'Operations'
-  await writeFile(join(root, source), '# ' + heading + '\n\n' + opening + '\n' + additional)
+  const heading = '# Operations'
+  await writeFile(join(root, source), heading + '\n\n' + opening + '\n' + additional)
   const write = (file, data) => writeFile(join(root, 'ai', file), JSON.stringify(data))
   const obligation = { id: 'active', source, quote: opening, effect: 'write',
     proofs: [{ kind: 'state-invariant', target: 'catalog:example.resource', key: 'retire' }] }
@@ -227,6 +231,7 @@ test('capture checks each independently declared source before writing a lock', 
   const root = await realpath(await mkdtemp(join(tmpdir(), 'ngb-appendix-')))
   t.after(() => rm(root, { recursive: true, force: true }))
   await mkdir(join(root, 'ai'))
+  await writeFile(join(root, 'ai/operation-review.json'), '[]')
   const source = 'requirements.md'
   const appendix = 'limits.txt'
   const quote = 'Show the account position. The limits are specified in limits.txt.'
@@ -265,6 +270,7 @@ test('capture requires fixture values and a row-growth budget independent of the
   const root = await realpath(await mkdtemp(join(tmpdir(), 'ngb-fixture-')))
   t.after(() => rm(root, { recursive: true, force: true }))
   await mkdir(join(root, 'ai'))
+  await writeFile(join(root, 'ai/operation-review.json'), '[]')
   const requirement = { id: 'position', source: 'brief.md', quote: 'Show the position for each resource.' }
   await writeFile(join(root, requirement.source), requirement.quote)
   const write = (name, data) => writeFile(join(root, 'ai', name), JSON.stringify(data))
@@ -280,7 +286,8 @@ test('capture requires fixture values and a row-growth budget independent of the
     await assert.rejects(captureObligations(root, false), new RegExp('fixture expectation ' + field))
   }
   const fixture = { expected: 0, laterExpected: 7, timeZone: 'UTC' }
-  const values = { valueFields: ['number'] }
+  const operation = 'GET /api/resource-position'
+  const values = { valueFields: ['number'], operation }
   await record([{ ...history, expect: { expected: 0 } }])
   await assert.rejects(captureObligations(root, false), /laterExpected/)
   for (const [proof, error] of [
@@ -297,10 +304,12 @@ test('capture requires fixture values and a row-growth budget independent of the
   await assert.rejects(captureObligations(root, false), /valueFields/)
   await record([{ ...history, expect: { ...fixture, timeZone: null } }])
   await captureObligations(root, false)
+  await write('operation-review.json', [{ target, operation, requirement: requirement.id,
+    facts: [{ kind: 'rows', key: growth.key }] }])
   await record([{ ...history, expect: fixture }, { ...growth, budget, expect: values }])
   await captureObligations(root, true)
   await write('requirement-trace.json', { documentRules: [], requirements: [{ ...requirement, checks: [history, growth] }] })
-  const plan = { schemaVersion: 2, requirements: [{ id: requirement.id, cases: [] }], cases: [], documents: [],
+  const plan = { schemaVersion: 2, requirements: [{ id: requirement.id, cases: [] }], surfaces: [target], cases: [], documents: [],
     businessChecks: [history, { ...growth, budget }] }
   await verifyRequirementTrace(root, plan, new Set(), [{ proof: { ...history, ...fixture } }, { proof: { ...growth, ...values } }])
   await assert.rejects(verifyRequirementTrace(root, plan, new Set(), [{ proof: { ...history, expected: 0, laterExpected: 1 } }]), /laterExpected/)

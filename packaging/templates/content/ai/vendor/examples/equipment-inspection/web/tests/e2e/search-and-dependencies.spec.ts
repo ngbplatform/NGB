@@ -87,6 +87,79 @@ test('a failed quote retries with the same inputs and persists its calculated am
   await proof.finish('service-quote-retry', 'ngb-admin')
 })
 
+test('the revised pricing date persists through posting for an automatic price and a manual override', async ({ page }, info) => {
+  const proof = await acceptanceProbe(page, info)
+  const { origin, equipment, send, headers } = await seed(page)
+  const type = 'example.equipment-service'
+  const endpoint = '/api/documents/' + type
+  const create = (display: string, amount: number) => send(endpoint, {
+    fields: { display, hours: 1, amount, condition: 'Ready', equipment_id: equipment.id },
+  })
+  const priceList = 'Service rate ' + equipment.id
+  const before = '2026-04-07'
+  const after = '2026-04-09'
+  const original = await create(priceList + ' ' + before, 12)
+  const revised = await create(priceList + ' ' + after, 19)
+  for (const manual of [false, true]) {
+    const draft = await create('Scheduled service', 1)
+    const date = page.getByLabel('Pricing date')
+    const params = new URLSearchParams({ source: original.id, priceList, draft: draft.id })
+    await page.goto(origin + '/tests/e2e/fixtures/quoted-service.html?' + params)
+    await date.fill(before)
+    await page.getByRole('button', { name: 'Add line' }).click()
+    await page.getByRole('button', { name: 'Item', exact: true }).click()
+    await page.getByRole('option', { name: 'Standard service', exact: true }).click()
+    const agreed = page.getByTitle('Agreed price (cents)')
+    const reason = 'Approved service credit'
+    if (manual) {
+      await expect(agreed).toHaveValue('1200')
+      await page.getByTitle('Discount reason').fill(reason)
+      await agreed.fill('950')
+    } else {
+      await proof.outcome('preview', checks => checks.value(agreed, '1200'))
+    }
+    const outcome = manual ? 'posted-override:' + type : 'revised-price'
+    await proof.outcome(outcome, checks => checks.postRevisedPrice({
+      type, id: draft.id,
+      quote: {
+        method: 'GET', path: endpoint, expected: 19,
+        readAmount: async response => {
+          expect(new URL(response.url()).searchParams.get('search')).toBe(priceList + ' ' + after)
+          const { items } = await response.json()
+          expect(items).toHaveLength(1)
+          expect(items[0].id).toBe(revised.id)
+          return items[0].payload.fields.amount
+        },
+      },
+      date: { input: date, before, after, path: ['payload', 'fields', 'pricing_date'], stored: after },
+      amount: { field: agreed, before: manual ? '950' : '1200', after: manual ? '950' : '1900',
+        path: ['payload', 'fields', 'amount'], expected: manual ? 9.5 : 19 },
+      override: manual ? { reasonPath: ['payload', 'fields', 'adjustment_reason'], reason,
+        listPath: ['payload', 'fields', 'quoted_amount'], listPrice: 19 } : undefined,
+      changeDate: () => date.fill(after),
+      save: page.getByRole('button', { name: 'Save estimate' }),
+      post: () => page.getByRole('button', { name: 'Post', exact: true }).click(),
+    }))
+    if (!manual) {
+      const path = '/documents/' + type + '/' + draft.id
+      const response = await page.request.get(origin + endpoint + '/' + draft.id, { headers })
+      expect(response.ok()).toBe(true)
+      const posted = await response.json()
+      await proof.outcome('date-change', async checks => {
+        await checks.record(path, draft.id)
+        expect(posted.payload.fields.pricing_date).toBe(after)
+      })
+      await proof.outcome('posted', checks => checks.text(page.getByText('Posted', { exact: true }).first(), 'Posted'))
+      await proof.outcome('snapshot', async checks => {
+        await checks.record(path, draft.id)
+        expect(posted.payload.fields.amount).toBe(19)
+        expect(posted.payload.fields.quoted_amount).toBe(19)
+      })
+    }
+  }
+  await proof.finish('service-revised-price', 'ngb-admin')
+})
+
 test('Document Flow shows both derivations and opens the original document from the grandchild', async ({ page }, info) => {
   const proof = await acceptanceProbe(page, info)
   const data = await seed(page)
